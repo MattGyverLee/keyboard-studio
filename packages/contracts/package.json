@@ -18,11 +18,16 @@
     "./fixtures": {
       "types": "./dist/fixtures/index.d.ts",
       "import": "./dist/fixtures/index.js"
+    },
+    "./criteria": {
+      "types": "./dist/criteriaData.d.ts",
+      "import": "./dist/criteriaData.js"
     }
   },
   "files": [
     "dist",
     "src",
+    "data",
     "README.md"
   ],
   "scripts": {

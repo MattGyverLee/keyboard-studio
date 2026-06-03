@@ -30,6 +30,7 @@ import type {
 } from "./strategy";
 import { makeMockVirtualFS } from "./mocks/mockVirtualFS";
 import criteriaJsonRaw from "../data/criteria.json";
+import { ALL_CRITERIA, CRITERIA_BY_BAND } from "./criteriaData";
 
 // -----------------------------------------------------------------------------
 // VirtualFS (spec §11)
@@ -79,7 +80,7 @@ describe("VirtualFS interface", () => {
 
 describe("LintFinding interface", () => {
   it("accepts every LintSeverity literal", () => {
-    const severities: LintSeverity[] = ["info", "hint", "warn", "error", "fatal"];
+    const severities: LintSeverity[] = ["info", "hint", "warning", "error", "fatal"];
     severities.forEach((sev) => {
       const f: LintFinding = {
         code: "TEST",
@@ -96,7 +97,7 @@ describe("LintFinding interface", () => {
     layers.forEach((l) => {
       const f: LintFinding = {
         code: "TEST",
-        severity: "warn",
+        severity: "warning",
         layer: l,
         message: "x",
       };
@@ -107,7 +108,7 @@ describe("LintFinding interface", () => {
   it("optional location + hint can be omitted (exactOptionalPropertyTypes)", () => {
     const f: LintFinding = {
       code: "TEST",
-      severity: "warn",
+      severity: "warning",
       layer: "C",
       message: "x",
     };
@@ -217,47 +218,91 @@ describe("SurveyPhaseResult interface", () => {
 // Criterion (spec §11) + criteria.json schema validation
 // -----------------------------------------------------------------------------
 
-describe("Criterion interface", () => {
-  it("accepts all 4 CriteriaBand literals", () => {
-    const bands: CriteriaBand[] = [
-      "scaffolder-bake",
-      "layer-c-enforce",
-      "yellow-survey",
-      "red-checklist",
-    ];
-    bands.forEach((b) => {
-      const c: Criterion = {
-        id: "x.y-z",
-        section: "1. Test",
-        band: b,
-        description: "x",
-      };
-      expect(c.band).toBe(b);
-    });
-  });
-
-  it("automation-hook fields are all optional", () => {
-    const c: Criterion = {
-      id: "x.y-z",
+describe("Criterion discriminated union (#103)", () => {
+  it("accepts each band variant with no hook populated", () => {
+    const scaffolderBake: Criterion = {
+      id: "1.1-x",
+      section: "1. Test",
+      band: "scaffolder-bake",
+      description: "x",
+    };
+    const layerC: Criterion = {
+      id: "1.2-x",
       section: "1. Test",
       band: "layer-c-enforce",
       description: "x",
     };
-    expect("scaffolderRule" in c).toBe(false);
-    expect("lintRuleId" in c).toBe(false);
-    expect("surveyQuestionId" in c).toBe(false);
-    expect("preSubmitChecklistText" in c).toBe(false);
+    const yellow: Criterion = {
+      id: "1.3-x",
+      section: "1. Test",
+      band: "yellow-survey",
+      description: "x",
+    };
+    const red: Criterion = {
+      id: "1.4-x",
+      section: "1. Test",
+      band: "red-checklist",
+      description: "x",
+    };
+    expect(scaffolderBake.band).toBe("scaffolder-bake");
+    expect(layerC.band).toBe("layer-c-enforce");
+    expect(yellow.band).toBe("yellow-survey");
+    expect(red.band).toBe("red-checklist");
   });
 
-  it("automation hooks preserve values when provided", () => {
+  it("scaffolder-bake variant preserves scaffolderRule hook", () => {
     const c: Criterion = {
       id: "1.1-x",
+      section: "1. Test",
+      band: "scaffolder-bake",
+      description: "x",
+      scaffolderRule: "strip-ncaps",
+    };
+    expect(c.band).toBe("scaffolder-bake");
+    if (c.band === "scaffolder-bake") {
+      expect(c.scaffolderRule).toBe("strip-ncaps");
+    }
+  });
+
+  it("layer-c-enforce variant preserves lintRuleId hook", () => {
+    const c: Criterion = {
+      id: "1.2-x",
+      section: "1. Test",
+      band: "layer-c-enforce",
+      description: "x",
+      lintRuleId: "KM_LINT_MISSING_LICENSE",
+    };
+    if (c.band === "layer-c-enforce") {
+      expect(c.lintRuleId).toBe("KM_LINT_MISSING_LICENSE");
+    }
+  });
+
+  it("yellow-survey variant preserves surveyQuestionId hook", () => {
+    const c: Criterion = {
+      id: "1.3-x",
       section: "1. Test",
       band: "yellow-survey",
       description: "x",
       surveyQuestionId: "phase-a-q3",
     };
-    expect(c.surveyQuestionId).toBe("phase-a-q3");
+    if (c.band === "yellow-survey") {
+      expect(c.surveyQuestionId).toBe("phase-a-q3");
+    }
+  });
+
+  it("red-checklist variant preserves preSubmitChecklistText hook", () => {
+    const c: Criterion = {
+      id: "1.4-x",
+      section: "1. Test",
+      band: "red-checklist",
+      description: "x",
+      preSubmitChecklistText: "I confirm I am the copyright holder.",
+    };
+    if (c.band === "red-checklist") {
+      expect(c.preSubmitChecklistText).toBe(
+        "I confirm I am the copyright holder."
+      );
+    }
   });
 });
 
@@ -303,6 +348,41 @@ describe("criteria.json schema conformance", () => {
     });
     // Total matches the count documented in criteria-summary.md.
     expect(records.length).toBe(133);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// ALL_CRITERIA / CRITERIA_BY_BAND loader (#116)
+// -----------------------------------------------------------------------------
+
+describe("criteriaData loader (#116)", () => {
+  it("ALL_CRITERIA is a non-empty readonly Criterion[]", () => {
+    expect(Array.isArray(ALL_CRITERIA)).toBe(true);
+    expect(ALL_CRITERIA.length).toBe(133);
+  });
+
+  it("CRITERIA_BY_BAND partitions ALL_CRITERIA across the four bands", () => {
+    const sum =
+      CRITERIA_BY_BAND["scaffolder-bake"].length +
+      CRITERIA_BY_BAND["layer-c-enforce"].length +
+      CRITERIA_BY_BAND["yellow-survey"].length +
+      CRITERIA_BY_BAND["red-checklist"].length;
+    expect(sum).toBe(ALL_CRITERIA.length);
+  });
+
+  it("CRITERIA_BY_BAND entries match their declared band", () => {
+    CRITERIA_BY_BAND["scaffolder-bake"].forEach((c) =>
+      expect(c.band).toBe("scaffolder-bake")
+    );
+    CRITERIA_BY_BAND["layer-c-enforce"].forEach((c) =>
+      expect(c.band).toBe("layer-c-enforce")
+    );
+    CRITERIA_BY_BAND["yellow-survey"].forEach((c) =>
+      expect(c.band).toBe("yellow-survey")
+    );
+    CRITERIA_BY_BAND["red-checklist"].forEach((c) =>
+      expect(c.band).toBe("red-checklist")
+    );
   });
 });
 

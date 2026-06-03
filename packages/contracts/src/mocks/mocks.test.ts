@@ -206,7 +206,7 @@ describe("mockValidator", () => {
 
   it("validate result contains at least one warn-severity finding", async () => {
     const findings = await mockValidator.validate("c Test\n");
-    const hasWarn = findings.some((f) => f.severity === "warn");
+    const hasWarn = findings.some((f) => f.severity === "warning");
     expect(hasWarn).toBe(true);
   });
 
@@ -262,7 +262,7 @@ describe("mockLintEngine", () => {
 
   it("lint result contains at least one warn-severity finding", async () => {
     const findings = await mockLintEngine.lint(scaffoldedFS, "my_keyboard");
-    const hasWarn = findings.some((f) => f.severity === "warn");
+    const hasWarn = findings.some((f) => f.severity === "warning");
     expect(hasWarn).toBe(true);
   });
 
@@ -305,10 +305,12 @@ describe("mockCompiler", () => {
     expect(hasError).toBe(true);
   });
 
-  it("compile diagnostics contain at least one warn-severity finding", async () => {
+  it("compile diagnostics contain at least one warning-severity finding", async () => {
     const result = await mockCompiler.compile(scaffoldedFS, "my_keyboard");
-    const hasWarn = result.diagnostics.some((d) => d.severity === "warn");
-    expect(hasWarn).toBe(true);
+    const hasWarning = result.diagnostics.some(
+      (d) => d.severity === "warning"
+    );
+    expect(hasWarning).toBe(true);
   });
 
   it("compile diagnostics contain at least one info-severity finding", async () => {
@@ -490,7 +492,7 @@ describe("fixture cross-checks", () => {
   it("mixedDiagnosticsResult has all three required severity bands", () => {
     const severities = new Set(mixedDiagnosticsResult.diagnostics.map((d) => d.severity));
     expect(severities.has("error")).toBe(true);
-    expect(severities.has("warn")).toBe(true);
+    expect(severities.has("warning")).toBe(true);
     expect(severities.has("info")).toBe(true);
   });
 });

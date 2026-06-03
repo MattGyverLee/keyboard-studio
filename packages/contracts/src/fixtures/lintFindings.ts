@@ -18,7 +18,7 @@ export const layerAFindings: LintFinding[] = [
   },
   {
     code: "KM_WARN_DEPRECATED_STORE_ID",
-    severity: "warn",
+    severity: "warning",
     layer: "A",
     message: "Store 'KMW_RTL' is deprecated; use '&RightToLeft' instead.",
     location: { file: "source/my_keyboard.kmn", line: 5, column: 1 },
@@ -68,7 +68,7 @@ export const layerCFindings: LintFinding[] = [
   },
   {
     code: "KM_LINT_HISTORY_EMPTY",
-    severity: "warn",
+    severity: "warning",
     layer: "C",
     message: "HISTORY.md contains no version entries.",
     location: { file: "HISTORY.md", line: 1 },

@@ -7,6 +7,7 @@ export * from "./surveyPhaseResult";
 export * from "./patternMatch";
 export * from "./compileResult";
 export * from "./criteria";
+export * from "./criteriaData";
 export * from "./baseKeyboard";
 export * from "./validator";
 export * from "./compiler";
