@@ -4,6 +4,7 @@ import type { PatternLibraryService } from "../patternLibrary";
 import type { Pattern } from "../pattern";
 import type { BaseKeyboard } from "../baseKeyboard";
 import type { DiscoveryAxisVector } from "../axes";
+import type { PatternMatch, PatternMatchReason } from "../patternMatch";
 import { samplePatterns } from "../fixtures/index";
 
 /** In-memory index keyed by Pattern.id. */
@@ -30,7 +31,7 @@ export const mockPatternLibrary: PatternLibraryService = {
   filterFor(
     base: BaseKeyboard,
     axes?: DiscoveryAxisVector
-  ): Promise<Pattern[]> {
+  ): Promise<PatternMatch[]> {
     // MOCK ONLY — not a faithful subset of §7.2. The real
     // PatternLibraryService implementation must run the full 12-rule
     // decision tree. The single-line "multi-family -> S-02" heuristic
@@ -40,8 +41,11 @@ export const mockPatternLibrary: PatternLibraryService = {
     //
     // Behavior:
     // 1. Patterns whose appliesTo includes base.script (or is empty) qualify.
-    // 2. If axes is provided and a pattern's strategyId matches S-02, rank it first.
-    // 3. Reorder patterns always included (mock does not apply Three-group exclusion).
+    // 2. If axes is provided and a pattern's strategyId matches S-02, rank
+    //    it first with reason "primary-strategy"; other qualified patterns
+    //    get reason "appliesTo-match".
+    // 3. Without axes, every qualified pattern gets reason "appliesTo-match".
+    // 4. Reorder patterns always included (mock does not apply Three-group exclusion).
     const qualified = samplePatterns.filter(
       (p) =>
         p.appliesTo.length === 0 ||
@@ -49,19 +53,27 @@ export const mockPatternLibrary: PatternLibraryService = {
         p.appliesTo.includes(base.id)
     );
 
+    const toMatch = (p: Pattern, rank: number, reason: PatternMatchReason): PatternMatch => ({
+      patternId: p.id,
+      rank,
+      reason,
+      ...(p.strategyId !== undefined ? { strategyId: p.strategyId } : {}),
+    });
+
     if (axes === undefined) {
-      return Promise.resolve(qualified);
+      const matches = qualified.map((p, i) => toMatch(p, i + 1, "appliesTo-match"));
+      return Promise.resolve(matches);
     }
 
-    // Promote patterns whose strategyId matches a hypothetical primary recommendation.
-    // For the mock, S-02 is treated as the primary when diacriticBehavior is multi-family.
     const isPrimary = axes.diacriticBehavior === "multi-family"
       ? (p: Pattern) => p.strategyId === "S-02"
       : (_p: Pattern) => false;
 
-    const ranked = [
-      ...qualified.filter(isPrimary),
-      ...qualified.filter((p) => !isPrimary(p)),
+    const primaries = qualified.filter(isPrimary);
+    const rest = qualified.filter((p) => !isPrimary(p));
+    const ranked: PatternMatch[] = [
+      ...primaries.map((p, i) => toMatch(p, i + 1, "primary-strategy")),
+      ...rest.map((p, i) => toMatch(p, primaries.length + i + 1, "appliesTo-match")),
     ];
     return Promise.resolve(ranked);
   },

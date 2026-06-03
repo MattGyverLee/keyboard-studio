@@ -143,12 +143,21 @@ describe("mockPatternLibrary", () => {
     expect(result).toBeUndefined();
   });
 
-  it("filterFor without axes returns patterns matching base.script or empty appliesTo", async () => {
+  it("filterFor without axes returns PatternMatch[] with reason 'appliesTo-match'", async () => {
     const results = await mockPatternLibrary.filterFor(basicKbdus);
     expect(results.length).toBeGreaterThanOrEqual(1);
+    // PatternMatch shape: patternId + rank + reason; strategyId is optional
+    const first = results[0]!;
+    expect(typeof first.patternId).toBe("string");
+    expect(first.rank).toBe(1);
+    expect(first.reason).toBe("appliesTo-match");
+    // Ranks are 1-based and ascending
+    results.forEach((m, i) => {
+      expect(m.rank).toBe(i + 1);
+    });
   });
 
-  it("filterFor with multi-family diacriticBehavior promotes S-02 pattern first", async () => {
+  it("filterFor with multi-family diacriticBehavior ranks S-02 first with reason 'primary-strategy'", async () => {
     const axes = {
       scale: "small" as const,
       scriptClass: "alphabetic" as const,
@@ -160,7 +169,15 @@ describe("mockPatternLibrary", () => {
     };
     const results = await mockPatternLibrary.filterFor(silEuroLatin, axes);
     expect(results.length).toBeGreaterThanOrEqual(1);
-    expect(results[0]!.strategyId).toBe("S-02");
+    const top = results[0]!;
+    expect(top.rank).toBe(1);
+    expect(top.reason).toBe("primary-strategy");
+    expect(top.strategyId).toBe("S-02");
+    // Lower-ranked matches carry the non-primary reason
+    const lowerRanked = results.slice(1);
+    lowerRanked.forEach((m) => {
+      expect(m.reason).toBe("appliesTo-match");
+    });
   });
 });
 

@@ -3,6 +3,7 @@
 import type { Pattern } from "./pattern";
 import type { BaseKeyboard } from "./baseKeyboard";
 import type { DiscoveryAxisVector } from "./axes";
+import type { PatternMatch } from "./patternMatch";
 
 /**
  * Service contract for the pattern-library loader.
@@ -50,14 +51,22 @@ export interface PatternLibraryService {
   getById(id: string): Promise<Pattern | undefined>;
 
   /**
-   * Return patterns ranked for the given base keyboard and optional axis
-   * vector, applying the §7.2 decision tree.
+   * Return ranked pattern matches for the given base keyboard and optional
+   * axis vector, applying the §7.2 decision tree.
+   *
+   * Each returned {@link PatternMatch} carries `rank` (1 = top of gallery),
+   * `reason` (one of `"primary-strategy"`, `"secondary-strategy"`,
+   * `"appliesTo-match"`, `"user-expanded"`), and `patternId` for joining
+   * back to the full {@link Pattern} via {@link getById}. The gallery UI is
+   * then a pure renderer — it does not infer ordering reasons on its own.
    *
    * When `axes` is provided the decision tree fires and patterns whose
    * `strategyId` matches the primary recommendation are ranked first
-   * (reason: "primary-strategy"), secondaries next, then patterns whose
-   * `appliesTo` includes `base.script` or is empty. When `axes` is
-   * omitted only `appliesTo` matching is applied.
+   * (`reason: "primary-strategy"`), secondaries next
+   * (`reason: "secondary-strategy"`), then patterns whose `appliesTo`
+   * includes `base.script` or is empty (`reason: "appliesTo-match"`).
+   * When `axes` is omitted only `appliesTo` matching is applied and every
+   * match has `reason: "appliesTo-match"`.
    *
    * Reorder-category patterns are included only when the base keyboard's
    * script group (derived from `base.script`, §9) requires curated
@@ -69,12 +78,13 @@ export interface PatternLibraryService {
    *   `appliesTo` matching and Three-group routing (§9).
    * @param axes - Optional fully-computed discovery axis vector (§7.1).
    *   Pass the merged vector after Phase B completes.
-   * @returns Strategy-ranked patterns for the gallery, highest-ranked first.
+   * @returns Strategy-ranked pattern matches for the gallery, highest-ranked first.
    * @see spec.md §7.2
    * @see spec.md §8 step 4 (Phase C gallery ordering)
+   * @see PatternMatch
    */
   filterFor(
     base: BaseKeyboard,
     axes?: DiscoveryAxisVector
-  ): Promise<Pattern[]>;
+  ): Promise<PatternMatch[]>;
 }
