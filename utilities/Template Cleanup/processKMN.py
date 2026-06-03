@@ -3,10 +3,7 @@ import re
 import sys
 
 # === CONFIGURATION ===
-if len(sys.argv) < 2:
-    ROOT_DIR = "D:\\Github\\keyboards\\release\\basic"#\\basic_kbdcher"
-else:
-    ROOT_DIR = sys.argv[1]
+ROOT_DIR = sys.argv[1] if len(sys.argv) > 1 else "D:\\Github\\keyboards\\release\\basic"
 
 def parse_outputs(lines):
     outputs = {}
@@ -28,54 +25,12 @@ def parse_outputs(lines):
 def collect_base_keys(outputs):
     base_keys = set()
     for key in outputs:
-        key = key.replace("[", "")
-        key = key.replace("]", "")
-        # split key by spaces and overwrite key with the one that starts with K_
-        key_parts = key.split()
-        base = ""
-        for part in key_parts:
+        key = key.replace("[", "").replace("]", "")
+        for part in key.split():
             if part.startswith("K_"):
                 base_keys.add(part)
                 break
     return base_keys
-        
-        
-
-""" def scan_caps_sensitive_keys(outputs):
-    caps_sensitive = []
-    base_keys = collect_base_keys(outputs)  # Returns keys like "K_Q", "K_A", etc.
-
-    for base_key in base_keys:
-        base_form = f"[NCAPS {base_key}]"
-        shift_form = f"[NCAPS SHIFT {base_key}]"
-        caps_form = f"[CAPS {base_key}]"
-
-        caps_out = outputs.get(caps_form, set())
-        if caps_out:
-            # Skip if CAPS form doesn't exist (we can’t determine anything)
-            base_out = outputs.get(base_form, set())
-            shift_out = outputs.get(shift_form, set())
-            
-
-            
-            
-
-            if caps_out == base_out:
-                # CAPS has no effect
-                continue
-            elif caps_out == shift_out:
-                # CAPS behaves like SHIFT — case sensitive
-                caps_sensitive.append(base_key)
-            else:
-                # CAPS behaves differently from both SHIFT and base — possible error
-                print(f"⚠️ Warning: CAPS behavior for {base_key} differs from both base and shift:")
-                print(f"    Base : {base_out}")
-                print(f"    Shift: {shift_out}")
-                print(f"    CAPS : {caps_out}")
-
-    return caps_sensitive """
-
-import re
 
 def compress_single_letter_keys(keys):
     # Extract and sort the single-letter keys
@@ -129,10 +84,7 @@ def scan_caps_sensitive_keys(outputs):
         caps_form = f"[CAPS {base_key}]"
 
         caps_out = outputs.get(caps_form, set())
-        
-        
         if caps_out:
-            
             base_out = set()
             for key, value in outputs.items():
                 if key.replace("NCAPS ", "") == base_form:
@@ -152,10 +104,6 @@ def scan_caps_sensitive_keys(outputs):
                     letter_caps = True
                 caps_sensitive.append(base_key)
             else:
-                """ print(f"⚠️ Warning: CAPS behavior for {base_key} differs from both base and shift:")
-                print(f"    Base : {base_out}")
-                print(f"    Shift: {shift_out}")
-                print(f"    CAPS : {caps_out}") """
                 can_not_compress = True
         else:
             # If CAPS form doesn't exist, we can't determine anything
@@ -165,24 +113,17 @@ def scan_caps_sensitive_keys(outputs):
         return None
     
     if len(unknown_sensitivity) > 0:
-        inferred_sensitivity = []
         if letter_caps or number_row_caps:
             for k in unknown_sensitivity:
                 if number_row_caps and k[-1].isdigit():
                     # Assume all number keys are CAPS sensitive
                     caps_sensitive.append(k)
-                    inferred_sensitivity.append(f"[{k}]")
                 elif letter_caps and len(k) == 3 and k[-1].isalpha():
                     # Assume all letter keys are CAPS sensitive
                     caps_sensitive.append(k)
-                    inferred_sensitivity.append(f"[{k}]")
                 elif letter_caps and number_row_caps:
                     # Assume all unknowns are CAPS sensitive (Azerty style)
                     caps_sensitive.append(k)
-                    inferred_sensitivity.append(f"[{k}]")
-            #if len(inferred_sensitivity) > 0:
-                #print(f"⚠️ Warning: Inferring CAPS sensitivity for keys: {', '.join(inferred_sensitivity)}")
-        
 
     # === Cleanup and merge ===
     single_letter_chunks = sorted(compress_single_letter_keys(caps_sensitive))
@@ -192,20 +133,10 @@ def scan_caps_sensitive_keys(outputs):
     return combined
 
 
-
 def determine_casedkeys_entry(caps_sensitive_keys):
-    base = ""
-    additional = ""
-    if caps_sensitive_keys:
-        base = "store(&CasedKeys)"
-        additional = " " + " ".join(caps_sensitive_keys)
-        base += additional
-        if additional.strip() == "":
-            return "" 
-        else:
-            return base
-    else:
+    if not caps_sensitive_keys:
         return ""
+    return "store(&CasedKeys) " + " ".join(caps_sensitive_keys)
 
 def process_kmn_file(filepath):
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -225,11 +156,7 @@ def process_kmn_file(filepath):
     if caps_sensitive_keys:
         lines = [line.replace("NCAPS ","") for line in lines if "[CAPS" not in line]
 
-        # Check if store(&CasedKeys) already present
-        if any("store(&CasedKeys)" in line for line in lines):
-            store_exists = True
-        else:
-            store_exists = False
+        store_exists = any("store(&CasedKeys)" in line for line in lines)
 
         # Find &KEYBOARDVERSION line index
         version_index = next((i for i, line in enumerate(lines) if "&KEYBOARDVERSION" in line), None)
