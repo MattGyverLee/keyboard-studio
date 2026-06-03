@@ -167,6 +167,47 @@ describe("Pattern", () => {
   });
 });
 
+describe("makePattern optional-field handling (#78)", () => {
+  const requiredOnly = {
+    id: "x",
+    title: "x",
+    description: "x",
+    category: "desktop" as const,
+    appliesTo: [] as string[],
+    questions: [],
+    kmnFragment: "",
+    tests: [],
+    validatedForFamilies: [],
+    sourceKeyboards: [],
+    reviewedBy: "test",
+    reviewDate: "2026-06-02",
+  };
+
+  it("strips undefined optional fields from the result object", () => {
+    const p = makePattern(requiredOnly);
+    // Under exactOptionalPropertyTypes, omitted optionals must be ABSENT
+    // from the result, not present-but-undefined.
+    expect("strategyId" in p).toBe(false);
+    expect("combinesWith" in p).toBe(false);
+    expect("touchLayoutFragment" in p).toBe(false);
+    expect("reorderRules" in p).toBe(false);
+  });
+
+  it("preserves optional fields when provided", () => {
+    const p = makePattern({
+      ...requiredOnly,
+      strategyId: "S-02",
+      combinesWith: ["S-04"],
+      touchLayoutFragment: "{}",
+      reorderRules: "// no reorder\n",
+    });
+    expect(p.strategyId).toBe("S-02");
+    expect(p.combinesWith).toEqual(["S-04"]);
+    expect(p.touchLayoutFragment).toBe("{}");
+    expect(p.reorderRules).toBe("// no reorder\n");
+  });
+});
+
 describe("makeCompileResult", () => {
   it("returns a shape-conforming CompileResult", () => {
     const r = makeCompileResult({
