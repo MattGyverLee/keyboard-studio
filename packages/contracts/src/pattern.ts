@@ -130,7 +130,7 @@ export type PatternInit = {
  * optional keys so the result is a clean `Pattern` value.
  */
 export function makePattern(init: PatternInit): Pattern {
-  const result: Record<string, unknown> = {
+  return {
     id: init.id,
     title: init.title,
     description: init.description,
@@ -143,11 +143,11 @@ export function makePattern(init: PatternInit): Pattern {
     sourceKeyboards: init.sourceKeyboards,
     reviewedBy: init.reviewedBy,
     reviewDate: init.reviewDate,
+    ...(init.strategyId !== undefined ? { strategyId: init.strategyId } : {}),
+    ...(init.combinesWith !== undefined ? { combinesWith: init.combinesWith } : {}),
+    ...(init.touchLayoutFragment !== undefined
+      ? { touchLayoutFragment: init.touchLayoutFragment }
+      : {}),
+    ...(init.reorderRules !== undefined ? { reorderRules: init.reorderRules } : {}),
   };
-  if (init.strategyId !== undefined) result["strategyId"] = init.strategyId;
-  if (init.combinesWith !== undefined) result["combinesWith"] = init.combinesWith;
-  if (init.touchLayoutFragment !== undefined)
-    result["touchLayoutFragment"] = init.touchLayoutFragment;
-  if (init.reorderRules !== undefined) result["reorderRules"] = init.reorderRules;
-  return result as unknown as Pattern;
 }

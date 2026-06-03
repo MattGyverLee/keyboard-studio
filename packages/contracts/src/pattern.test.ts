@@ -4,6 +4,7 @@ import { makePattern } from "./pattern";
 import type { DiscoveryAxisVector } from "./axes";
 import type { PatternMatch } from "./patternMatch";
 import { ALL_STRATEGY_IDS } from "./strategy";
+import { makeCompileResult } from "./compileResult";
 
 describe("Pattern", () => {
   it("constructs the spec section 6 worked example (latin_deadkey_acute_single)", () => {
@@ -163,5 +164,43 @@ describe("Pattern", () => {
     const last = ALL_STRATEGY_IDS[ALL_STRATEGY_IDS.length - 1]!;
     expect(first).toBe("S-01");
     expect(last).toBe("S-12");
+  });
+});
+
+describe("makeCompileResult", () => {
+  it("returns a shape-conforming CompileResult", () => {
+    const r = makeCompileResult({
+      success: true,
+      artifacts: [
+        { filename: "foo.kmx", url: "blob:mock", sizeBytes: 1024 },
+      ],
+      diagnostics: [],
+      warmCompileMs: 137,
+    });
+    expect(r.success).toBe(true);
+    expect(r.artifacts).toHaveLength(1);
+    expect(r.diagnostics).toEqual([]);
+    expect(r.warmCompileMs).toBe(137);
+  });
+
+  it("preserves all required fields verbatim (no field drop)", () => {
+    const r = makeCompileResult({
+      success: false,
+      artifacts: [],
+      diagnostics: [
+        {
+          code: "KM_ERROR_TEST",
+          severity: "error",
+          layer: "A",
+          message: "test diagnostic",
+        },
+      ],
+      warmCompileMs: 200,
+    });
+    expect(r.success).toBe(false);
+    expect(r.artifacts).toEqual([]);
+    expect(r.diagnostics).toHaveLength(1);
+    expect(r.diagnostics[0]?.code).toBe("KM_ERROR_TEST");
+    expect(r.warmCompileMs).toBe(200);
   });
 });

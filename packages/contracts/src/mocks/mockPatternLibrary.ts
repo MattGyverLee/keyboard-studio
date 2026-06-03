@@ -31,7 +31,14 @@ export const mockPatternLibrary: PatternLibraryService = {
     base: BaseKeyboard,
     axes?: DiscoveryAxisVector
   ): Promise<Pattern[]> {
-    // Simple mock ranking:
+    // MOCK ONLY — not a faithful subset of §7.2. The real
+    // PatternLibraryService implementation must run the full 12-rule
+    // decision tree. The single-line "multi-family -> S-02" heuristic
+    // below exists so unit tests can observe rank changes when axes are
+    // provided; the mapping itself is NOT in spec.md §7.2 and must not
+    // be treated as authoritative.
+    //
+    // Behavior:
     // 1. Patterns whose appliesTo includes base.script (or is empty) qualify.
     // 2. If axes is provided and a pattern's strategyId matches S-02, rank it first.
     // 3. Reorder patterns always included (mock does not apply Three-group exclusion).

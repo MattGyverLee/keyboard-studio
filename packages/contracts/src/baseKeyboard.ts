@@ -89,15 +89,14 @@ export type BaseKeyboardInit = {
  * @see spec.md §11
  */
 export function makeBaseKeyboard(init: BaseKeyboardInit): BaseKeyboard {
-  const result: Record<string, unknown> = {
+  return {
     id: init.id,
     path: init.path,
     script: init.script,
     targets: init.targets,
     displayName: init.displayName,
     version: init.version,
+    ...(init.sourceUrl !== undefined ? { sourceUrl: init.sourceUrl } : {}),
+    ...(init.packageId !== undefined ? { packageId: init.packageId } : {}),
   };
-  if (init.sourceUrl !== undefined) result["sourceUrl"] = init.sourceUrl;
-  if (init.packageId !== undefined) result["packageId"] = init.packageId;
-  return result as unknown as BaseKeyboard;
 }

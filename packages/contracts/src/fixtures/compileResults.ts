@@ -1,6 +1,7 @@
 // see spec.md section 4 / section 8 step 11 — CompileResult test fixtures
 
 import type { CompileResult } from "../compileResult";
+import { makeCompileResult } from "../compileResult";
 import { validatorFindings } from "./lintFindings";
 
 /**
@@ -12,7 +13,7 @@ import { validatorFindings } from "./lintFindings";
  * URLs are static blob-URL placeholders (real ones would be created via
  * URL.createObjectURL in the browser, or be file:// / data: URIs in Node).
  */
-export const mixedDiagnosticsResult: CompileResult = {
+export const mixedDiagnosticsResult: CompileResult = makeCompileResult({
   success: false, // false because an error-level finding is present
   artifacts: [
     {
@@ -44,5 +45,5 @@ export const mixedDiagnosticsResult: CompileResult = {
     },
   ],
   warmCompileMs: 142,
-};
+});
 

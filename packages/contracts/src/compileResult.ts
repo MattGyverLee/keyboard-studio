@@ -25,3 +25,39 @@ export interface CompileResult {
   /** Wall-clock warm-recompile time in ms. Target: 100-300 ms (spec section 4). */
   warmCompileMs: number;
 }
+
+/**
+ * Input shape for {@link makeCompileResult}.
+ *
+ * Mirrors `CompileResult` exactly today (all fields required). The factory
+ * exists for symmetry with {@link makePattern} / {@link makeBaseKeyboard} and
+ * as a forward-compatible anchor: when optional fields are added to
+ * `CompileResult` in a future revision, the factory's conditional-spread
+ * idiom handles the `exactOptionalPropertyTypes` stripping without churn at
+ * the construction site.
+ */
+export type CompileResultInit = {
+  success: boolean;
+  artifacts: CompileArtifact[];
+  diagnostics: LintFinding[];
+  warmCompileMs: number;
+};
+
+/**
+ * Construct a {@link CompileResult} from a {@link CompileResultInit}.
+ *
+ * Mirrors the `makePattern` / `makeBaseKeyboard` factory pattern. All current
+ * fields are required so the body is straight-line; the function exists as a
+ * stable construction surface for fixtures + tests and to make future
+ * optional-field additions ergonomic.
+ *
+ * @see spec.md §4 (compiler service)
+ */
+export function makeCompileResult(init: CompileResultInit): CompileResult {
+  return {
+    success: init.success,
+    artifacts: init.artifacts,
+    diagnostics: init.diagnostics,
+    warmCompileMs: init.warmCompileMs,
+  };
+}

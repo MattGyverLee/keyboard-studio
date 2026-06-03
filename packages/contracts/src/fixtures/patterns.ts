@@ -94,16 +94,16 @@ export const longpressAlternates: Pattern = makePattern({
       answerType: "key-name",
     },
     {
-      id: "alternates",
-      prompt: "List the alternate characters to show in the menu (space-separated).",
-      answerType: "char-list",
+      id: "alternatesJson",
+      prompt:
+        'List the alternate characters to show in the menu. The LLM expands the user\'s plain-language answer into a JSON array of {"id":"U_XXXX","text":"X"} entries — e.g. `[{"id":"U_00E1","text":"á"},{"id":"U_00E0","text":"à"}]` — and that JSON is substituted verbatim into the touch-layout fragment\'s `sk` field.',
+      answerType: "text",
     },
   ],
   kmnFragment:
     "// Longpress alternates are defined in the touch-layout JSON fragment below.\n" +
     "// No additional KMN rules are required for longpress behaviour.\n",
-  touchLayoutFragment:
-    '{\n  "sk": [\n{{#each alternates}}\n    { "id": "U_{{codepoint}}", "text": "{{char}}" }{{#unless @last}},{{/unless}}\n{{/each}}\n  ]\n}\n',
+  touchLayoutFragment: '{\n  "sk": {{alternatesJson}}\n}\n',
   tests: [
     {
       input: ["T_LONGPRESS_BASE"],
@@ -149,7 +149,7 @@ export const nfdNormalization: Pattern = makePattern({
   tests: [
     {
       input: ["U_0061", "U_0301", "U_0308"], // a + combining acute + combining diaeresis
-      expectedOutput: "á̈", // canonical NFC would differ; NFD order preserved
+      expectedOutput: "á̈", // renders as U+0061 U+0301 U+0308; canonical NFC would differ; NFD order preserved
       description: "combining marks are emitted in canonical NFD order",
     },
   ],
