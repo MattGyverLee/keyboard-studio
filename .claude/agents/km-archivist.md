@@ -1,6 +1,6 @@
 ---
 name: km-archivist
-description: Git/history specialist: commits, history.md upstream-sync mirror, CHANGELOG.md, release cuts, issue tracker on MattGyverLee/flexlibs fork.
+description: Git/history specialist for keyboard-studio: commits, PR creation, CHANGELOG.md, release cuts, history investigations. Works against the MattGyverLee/keyboard-studio fork with the `<prefix>(<area>): <description>` commit-title style.
 tools: Read, Grep, Glob, Bash, Edit
 model: sonnet
 ---
@@ -248,7 +248,7 @@ If you're unsure which mode you're in: check whether there are already todos own
 
 ### Scenario 4: Documentation Drift Detected
 
-1. Dispatch `/km-doc` with the affected area (e.g. "audit the catalog convention docs against `flexlibs2/code/Shared/catalog*.py`").
+1. Dispatch `/km-doc` with the affected area (e.g. "audit the Pattern schema docs against `packages/contracts/src/pattern.ts`").
 2. Receive its drift report + proposed patches.
 3. Stage and commit the doc patches (separately from code changes when possible).
 4. If `/km-doc` flagged that the docs are correct and the code is wrong, escalate to `/km-lead`.

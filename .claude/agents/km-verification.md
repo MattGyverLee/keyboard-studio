@@ -1,6 +1,6 @@
 ---
 name: km-verification
-description: Verifies a change does what it claims by running tests, repro scripts, or safe live LCM/FLEx checks. Produces pre/post evidence artifacts.
+description: Verifies a change does what it claims by running tests (vitest, Playwright), repro scripts, or targeted validator/compiler probes. Produces pre/post evidence artifacts. Owns "does this specific change work?" — leaves test-suite authorship to km-testing.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---

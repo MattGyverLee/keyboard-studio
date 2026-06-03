@@ -1,6 +1,6 @@
 ---
 name: km-programmer
-description: Implements code changes for flexlibs2: features, bug fixes, refactors. Performs sweep-pattern audit on shaped bugs. Commits direct-to-main on solo forks with closes #N.
+description: Implements code changes for keyboard-studio: features, bug fixes, refactors across the TypeScript monorepo (contracts, scaffolder, engine, validator, etc.). Performs sweep-pattern audit on shaped bugs.
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: sonnet
 ---
@@ -168,9 +168,12 @@ def risky_operation(data):
 **Approach:**
 1. Reproduce the bug
 2. Identify root cause
-3. **Pattern sweep.** If the bug has a *shape* (typed attribute access,
-   list/sequence assumptions, default-arg semantics, role disambiguation,
-   ITsString vs IMultiString typing), invoke the `sweep-pattern` skill
+3. **Pattern sweep.** If the bug has a *shape* — examples for
+   keyboard-studio: KMN slot-ID drift between `Pattern.kmnFragment` and
+   `Pattern.questions[].id`; TS-check divergence from upstream kmcmplib;
+   host-disk writes inside VFS-mutation code; second 300 ms debounce
+   timer; layer-confusion (Layer A emitting style, Layer B blocking
+   compile); BCP47 / A2 axis mismatch — invoke the `sweep-pattern` skill
    *before* designing the fix. Feed it the pattern description, the
    original site, and a scope hint. Use the returned sibling list to
    widen the fix beyond a single file. Skip the sweep only for genuine
@@ -184,7 +187,7 @@ def risky_operation(data):
    test covering the class)
 7. **Decide workflow shape based on the receiving repo's norms.**
    - **Direct-commit workflow (default for solo forks / single-author repos
-     like `MattGyverLee/flexlibs`):** Commit straight to `main` with
+     like `MattGyverLee/keyboard-studio`):** Commit straight to `main` with
      `closes #N` in the message body. The "Pattern audit" section lives
      in the commit message body, between the prose summary and the
      `Co-Authored-By` footer. No feature branch needed.

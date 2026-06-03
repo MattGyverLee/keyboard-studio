@@ -66,26 +66,27 @@ on_return: <what the main session should do with results — usually "re-invoke 
 ````yaml
 ```dispatch_plan
 cycle: 1
-rationale: parallel deep-review of the LexSenseOperations refactor before merge
+rationale: parallel deep-review of a new Pattern landing in the library before approval
 groups:
   - mode: parallel
     tasks:
-      - subagent_type: km-qc
-        description: QC review of LexSenseOperations refactor
+      - subagent_type: km-keyman
+        description: Keyman review of the Pattern's kmnFragment
         prompt: |
-          Review flexlibs2/code/Lexicon/LexSenseOperations.py against the QC
-          checklist (style, complexity, error handling, test coverage).
-          Diff against HEAD~1 to see what changed.
-          Return: P0/P1/P2 issue list with file:line refs. Cap 300 words.
-        expected_artifact: QC report with prioritized issue list
-      - subagent_type: km-domain
-        description: Domain check on sense merge semantics
+          Review packages/contracts/data/patterns/latin_deadkey_acute.json
+          for KMN-fragment correctness: every store/deadkey resolves; offsets
+          in range; identifier and codepoint rules respected; test vectors
+          exercise every branch.
+          Return: pass/fail + finding list with file:line refs. Cap 300 words.
+        expected_artifact: Keyman domain review with finding list
+      - subagent_type: km-strategy
+        description: §7 coherence check on the new Pattern
         prompt: |
-          Validate the merge semantics in LexSenseOperations.MergeSense against
-          FLEx user expectations. Specifically: does survivor/victim ordering
-          match the FLEx UI? See docs/API_ISSUES_CATEGORIZED.md merge section.
+          The Pattern declares strategyId: 'S-02'. Verify the kmnFragment
+          structurally matches the S-02 card in spec.md §7.3, and that the
+          §7.5 self-check table still holds after this addition.
           Return: pass/fail + one paragraph rationale. Cap 200 words.
-        expected_artifact: Domain assessment
+        expected_artifact: Strategy framework assessment
 on_return: re-invoke /km-lead with both reports for synthesis
 ```
 ````

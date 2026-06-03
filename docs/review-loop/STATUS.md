@@ -58,28 +58,32 @@ EOF
 
 Pick ONE severity label + ONE area label + 0..2 content labels. Labels are pre-created; do not invent new ones (if a needed label is missing, file the issue without it and note `LABEL_GAP: <name>` in the body).
 
+**Labels were flattened 2026-06-03** — colon-prefixed labels (`type:*`, `team:*`, `area:*`, `day:*`) caused issues in some GitHub filter UIs. All prefixed labels were renamed to bare names; `day:*` was replaced by GitHub milestones (Day 1, Days 2-3, Day 4-7).
+
 | Severity in body | Severity label |
 |---|---|
-| `[BLOCKER]` | `type:blocker` |
-| `[WARN]` (likely bug / correctness) | `type:bug` |
-| `[QUESTION]` (needs clarification) | `type:question` |
+| `[BLOCKER]` | `blocker` |
+| `[WARN]` (likely bug / correctness) | `bug` |
+| `[QUESTION]` (needs clarification) | `question` |
 | `[GAP]` (missing field / missing test / missing doc) | `gap` |
 | `[NIT]` (style only) | no severity label; use area + `housekeeping` |
 
 | Batch / topic | Primary area label | Common secondary labels |
 |---|---|---|
-| Build/tooling configs | `area:tooling` | `build`, `team:shared` |
-| `pattern.ts` / pattern schema | `area:contracts` | `contracts`, `team:shared`, `day:1` |
-| Strategy framework | `area:patterns` | `contracts`, `team:content` |
-| Validator types | `area:validator` | `contracts`, `team:engine` |
-| Compile result types | `area:compiler` | `contracts`, `team:engine` |
-| Survey types | `area:flows` | `contracts`, `team:content` |
-| Virtual FS | `area:output` | `contracts`, `team:engine` |
-| Service interfaces (compiler/validator/scaffolder/output/etc.) | matching `area:<service>` | `contracts`, `team:engine` |
-| Public surface / barrel exports | `area:contracts` | `contracts`, `team:shared` |
-| Python utilities | `area:tooling` | `team:engine` |
-| Data files (json/dtd) | `area:tooling` or `area:inventories` | `team:engine` or `team:content` |
-| Docs alignment | `area:process` | `spec`, `documentation`, `team:shared` |
+| Build/tooling configs | `tooling` | `build`, `shared` |
+| `pattern.ts` / pattern schema | `contracts` | `shared` (milestone: Day 1) |
+| Strategy framework | `patterns` | `contracts`, `content` |
+| Validator types | `validator` | `contracts`, `engine` |
+| Compile result types | `compiler` | `contracts`, `engine` |
+| Survey types | `flows` | `contracts`, `content` |
+| Virtual FS | `output` | `contracts`, `engine` |
+| Service interfaces (compiler/validator/scaffolder/output/etc.) | matching service area | `contracts`, `engine` |
+| Public surface / barrel exports | `contracts` | `shared` |
+| Python utilities | `tooling` | `engine` |
+| Data files (json/dtd) | `tooling` or `inventories` | `engine` or `content` |
+| Docs alignment | `process` | `spec`, `documentation`, `shared` |
+
+**Milestones** (replaces former `day:*` labels): `Day 1`, `Days 2-3`, `Day 4`, `Day 5`, `Day 6`, `Day 7`. Set via `gh issue edit N --milestone "Day 4"`.
 
 **Title style examples** (mirror existing #67-#74):
 
@@ -102,10 +106,10 @@ Lead with the file or `spec.md §N`. Use an em-dash to separate the symptom from
 | 07 | done     | Scaffolder + criteria: `scaffolder.ts`, `criteria.ts`, `mocks/mockScaffolder.ts`                                       | Filed #103 (Criterion should discriminated-union by band; cross-ref #70), #104 (scaffold can't accept Three-group override per §9 user-confirmation step), #105 (mockScaffolder lists 4 templates vs spec §9's 3 routing groups), #106 (scaffold promises Layer-C-clean but returns bare VirtualFS — caller can't see what was checked), #107 (scaffold doesn't validate keyboardId per §10 Layer A check #1). | 0 (spec-only batch) |
 | 08 | done     | Public surface: `index.ts`, `fixtures/index.ts` re-exports vs declared types                                          | Filed #108 (index.ts doesn't re-export mocks/fixtures → no subpath exports → consumers can't reach test doubles), #109 (NIT: index.ts ordering arbitrary; mocks/index.ts omits makeMockVirtualFS/scaffoldedFS without clear reason). Also surfaced: `mocks/mocks.test.ts` (486 LOC) + `mockLintEngine` + `mockOutputService` + `mocks/index.ts` exist — substantially closes #71's test-coverage gap. | 0 (spec-only batch) |
 | 09 | done     | Python utilities: `utilities/Template Cleanup/processTouch.py`, `previewSymbolKey.py`, `processKMN.py`               | Filed #110 (multitap guard checks 'mt' instead of 'multitap' — dead code), #111 (sp=8 comment wrong; 8=deadkey not blank; blank/spacer keys get wrong nextlayer), #112 (process_modifier_key sets LOCAL 'modified' that never reaches outer scope — modifier-only changes silently not written), #113 (processKMN.py 'is not []' identity check always True — silent NCAPS corruption when no CAPS keys), #114 (processTouch.py hardcodes Windows path; no schema validation on mutated JSON), #115 (NIT: algorithm duplication, unused global, no-op string-as-comment, bare except, duplicate import). On-disk path still `utlilities/` pending #72 rename. | 1 query (current keyman-touch-layout schema confirmed) |
-| 10 | pending  | Data files: `criteria.json`, `symbols.json`, `symbol-caps.json`, `ldmlKeyboard3.dtd`                                  |                                                                                                                                                                                       |                |
-| 11 | pending  | Spec self-consistency: spec.md §7.1↔§7.2↔§7.3↔§7.5; D1–D5 vs contracts; §15 out-of-scope vs contracts                |                                                                                                                                                                                       |                |
-| 12 | pending  | Docs alignment: CLAUDE.md staleness, `strategy tree/strategies.md` stub, README, working-agreement                    |                                                                                                                                                                                       |                |
-| 13 | pending  | Synthesis: file ONE meta-issue listing all blocker/warn findings filed this loop with recommended fix-order            |                                                                                                                                                                                       |                |
+| 10 | done     | Data files: `criteria.json`, `symbols.json`, `symbol-caps.json`, `ldmlKeyboard3.dtd`                                  | Filed #116 (criteria.json orphaned — no TS loader, no schema-validation test, not exported), #117 (spec §11 estimates ~115/60/15 stale — actual 96/33/4 = 133), #118 (symbols.json T_<hex> vs symbol-caps.json K_<digit> identifier mismatch — keyboard K_rules may intercept), #119 (ldmlKeyboard3.dtd committed but LDML spec-out-of-scope §15 — document or relocate), #120 (13 criteria flagged for re-review in criteria-summary.md need tracking checklist). | 1 query (K_/T_/U_ key-id convention confirmed) |
+| 11 | done     | Spec self-consistency: spec.md §7.1↔§7.2↔§7.3↔§7.5; D1–D6 vs contracts; §16 out-of-scope vs contracts (note: STATUS originally said D1-D5/§15, but spec has D1-D6 in §14 and out-of-scope in §16) | Filed #121 (PatternQuestion has no required/optional flag — D1 can't be mechanically enforced), #122 (§7.2 firing order 1-8→11/12→9/10 in Mermaid but not table — misread risk), #123 ('secondaries' overloaded: tree rules 9-10 vs Pattern.combinesWith are two different mechanisms). D2-D6 vs contracts confirmed mostly consistent (D2-#99/#104 already filed; D3-#95 already filed; D4 OK; D5 OK; D6 OK). §16 out-of-scope vs contracts: all clean (no LDML/CJK/mobile/touch-first/predictive contracts present). | 0 (spec-only batch) |
+| 12 | done     | Docs alignment: CLAUDE.md staleness, `strategy tree/strategies.md` stub, README, working-agreement                    | Filed #124 (consolidated CLAUDE.md + README + working-agreement staleness: D1-D5 vs D1-D6, wrong section numbers Sec 9/13/15 vs 10/14/16, "no application code" outdated, ~200 criteria vs 133 actual, section-count 18 vs 19). strategy tree/strategies.md stub is clean. | 0 (spec-only batch) |
+| 13 | done     | Synthesis: file ONE meta-issue listing all blocker/warn findings filed this loop with recommended fix-order            | Filed #126 — 49 issues across 12 iterations grouped into 7 tiers (Tier 1: silent data corruption — #97, #112, #113; Tier 2: spec/contract blockers — #87, #88, #103, #116, #121; Tier 3-5: active bugs / contract gaps / docs; Tier 6: open design questions; Tier 7: NITs). Loop complete. | 0 (synthesis only) |
 | 14 | done     | Deps-currency sweep: TypeScript ^5.4.5, ESLint ^8.57.0, Prettier ^3.3.3, pnpm 9.12.0, @typescript-eslint ^7.18.0 vs current stable (Vitest already filed as #80 in iter-02) | Executed by hand 2026-06-03 alongside #80 close. Bumped vitest 2→4.1.8, typescript 5.4→6.0.3, eslint 8→10.4.1, prettier 3.3→3.8.3, @typescript-eslint 7→8.60.1, @types/node 20→22.x. Added explicit vite ^7 (vitest 4 peer dep). Kept pnpm@9.12.0 to avoid lockfile-format churn. typecheck 0, test 68/68, build 0. See #80 closure comment. | 0 (used iter-02 context7 result) |
 
 **Order rationale:** spec-only and internal-consistency bundles first (low context7 dependency), then library-anchored ones, then Python and data, then meta-passes. Each iteration is independent so the user can re-order by editing this table.

@@ -76,7 +76,8 @@ then fix any issues found.")
 - **Quality** — overlong functions, unclear names, dead branches, comments that
   describe *what* instead of *why*, premature abstractions.
 - **Efficiency** — obvious O(n^2) where O(n) is trivial, repeated work that could
-  be cached/memoized within the scope of one call, redundant LCM round-trips.
+  be cached/memoized within the scope of one call, redundant WASM-oracle calls
+  inside a single debounce cycle, redundant validator passes over the same source.
 
 `/simplify` is **not** a license to rewrite the architecture. If the agent finds
 something that would require a larger redesign, it **logs** the observation and
@@ -92,11 +93,13 @@ escalates — it does not refactor outside its scope.
    during a simplify pass. Those are architectural changes; route them through
    `/km-lead` -> `/km-author` -> `/km-programmer`.
 4. **Stop and ask** if the simplification would touch:
-   - `BaseOperations.py` (affects all operations)
-   - `FLExProject.py` (central interface)
-   - `lcm_casting.py` (casting internals)
-   - `wrapper_base.py` / `smart_collection.py` (shared infrastructure)
-   - Anything in `flexlibs2/sync/` core engine
+   - `packages/contracts/src/pattern.ts` — the locked Day-1 contract (`spec.md` §5)
+   - `packages/contracts/src/strategy.ts` — the `StrategyId` union and §7 wiring
+   - `packages/contracts/src/validator.ts` / `linter.ts` — the Layer A/B/C contracts
+   - The 300 ms debounce cycle implementation (decision D3, single timer)
+   - The WASM-oracle bridge (`kmcmplib` integration)
+   - The VirtualFS implementation (no host-disk writes during authoring; `spec.md` §11)
+   - Anything in `spec.md` §7 wiring (axes → tree → catalog → §7.5 table)
 
 ## Simplify Report Template
 
@@ -202,16 +205,22 @@ A Simplify pass FAILS — and must be reverted — if:
 - **Marking the work green yourself.** You do not run the test suite as the
   source of truth — verification does.
 
-## Customization Guide
+## Reuse targets (keyboard-studio)
 
-For non-FlexLibs2 projects, adjust:
-1. **Restricted infrastructure list** — replace `BaseOperations`, `FLExProject`,
-   `lcm_casting`, `wrapper_base`, `smart_collection` with this project's
-   equivalent "touch with care" modules.
-2. **Reuse targets** — list the project's actual shared utilities so `/simplify`
-   knows where to look for duplication.
-3. **Scope baseline** — if the project uses a feature-branch workflow,
-   "last green commit" may be the merge-base with `main` instead of HEAD~1.
+When `/simplify` looks for duplication that could collapse into a shared
+utility, the candidate hosts in this repo are:
+
+- `packages/contracts/src/` — shared types and small derivation helpers
+- `packages/contracts/src/fixtures/` — shared test fixtures (do not
+  duplicate Pattern fixtures across packages)
+- `packages/scaffolder/src/util/`, `packages/engine/src/util/` — package-local
+  utilities that may belong in `contracts` if they become cross-package
+- `utilities/Template Cleanup/` — Python tooling for template prep (Python
+  is local to that directory; do not reach into it from TS packages)
+
+If a simplification reveals a utility that genuinely belongs in
+`contracts/` but currently lives in a package, escalate to `/km-lead` rather
+than promoting it inside this pass.
 
 ---
 

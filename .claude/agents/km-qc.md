@@ -91,11 +91,27 @@ def divide(a, b):
 Runs **before** the four scored sections below. Failing the gate is an
 automatic FIX-ISSUES recommendation regardless of code-quality score.
 
-**Why this gate exists.** Three recurring bug classes in flexlibs2 -
-ITsString TypeError, unguarded `.Owner` chain on base `ICmObject`,
-first-element-fallback that ignores agent type - keep reappearing because
-past fixes landed without a horizontal audit. See issues #36/#39/#40,
-#32/#97/#98, #38/#55/#56 for the pattern.
+**Why this gate exists.** keyboard-studio has bug shapes that tend to
+recur across the codebase when a fix lands point-locally:
+
+- **KMN slot-ID drift** — `Pattern.kmnFragment` uses `{{slotId}}` placeholders
+  that must match a `Pattern.questions[].id`. Renames on one side without
+  the other ship a fragment that fills wrong.
+- **TS-check divergence from kmcmplib** — Layer A TS checks must accept
+  exactly what the upstream `kmcmplib` check accepts. Subtle parser
+  differences are easy to introduce in one check and easy to repeat across
+  the other 8.
+- **Host-disk write in VFS code** — `spec.md` §11 forbids host-disk writes
+  during authoring. `fs.writeFile` / `URL.createObjectURL` calls that slip
+  in tend to cluster (one developer's pattern repeats).
+- **Second debounce timer** — Decision D3 mandates a single 300 ms cycle.
+  Adding a second timer for a "different concern" is a recurring temptation.
+- **Layer confusion (A/B/C)** — Layer A emitting style guidance, Layer B
+  blocking compile, Layer C parsing AST internals — once the boundary
+  slips in one place it tends to slip in others.
+- **BCP47 / A2 mismatch** — a project's BCP47 script subtag and the
+  §7.1 A2 axis value must agree (e.g. `Arab` and A2=abjad). Survey wiring
+  bugs that produce a mismatch tend to repeat across question phases.
 
 **Gate rules:**
 

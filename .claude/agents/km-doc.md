@@ -1,6 +1,6 @@
 ---
 name: km-doc
-description: Maintains docs/ (ARCHITECTURE, API_ISSUES_CATEGORIZED, EXCEPTION_HANDLING) and module docstrings. Keeps user-facing documentation in sync with code.
+description: Maintains docs/ (spec-signoff log, review-loop status, ARCHITECTURE, criteria tracking) and module docstrings. Keeps user-facing documentation in sync with code and with `spec.md`.
 tools: Read, Grep, Glob, Edit, Write
 model: sonnet
 ---
@@ -70,7 +70,7 @@ For each candidate doc:
 1. Read the doc.
 2. Compare its claims against the actual code state (read the referenced source files).
 3. Classify each finding:
-   - **Drift** — doc and code disagree (e.g. docstring says "every enabled WS"; code iterates `CurrentAnalysisWritingSystems`).
+   - **Drift** — doc and code disagree (e.g. spec says `Pattern.appliesTo` defaults to all groups when empty; code throws on empty array).
    - **Missing entry** — doc should mention the change but doesn't (e.g. CHANGELOG has no `[Unreleased]` entry for a public-API addition).
    - **Stale** — doc references removed API, renamed method, or deprecated path.
    - **OK** — doc accurately reflects current code.
@@ -104,7 +104,7 @@ Categories the manifest should distinguish:
 - **Architecture docs** — ARCHITECTURE.md, ARCHITECTURE_*.md
 - **Convention docs** — CATALOG_CONVENTIONS, EXCEPTION_HANDLING, etc.
 - **Usage docs** — USAGE_*.md, *_USAGE.md
-- **Audit / inventory docs** — API_*.md, LCM_AUDIT_*.md
+- **Audit / inventory docs** — criteria summaries, validator-check inventories, spec-signoff logs
 - **Project guidance** — README, CLAUDE.md
 - **Templates** — `docs/_templates/`
 - **Archived** — kept for history but no update triggers apply
@@ -164,7 +164,7 @@ You operate in two modes:
 3. **Never claim a doc is "up to date" without reading both the doc and the referenced source.** Verification before assertion.
 4. **Never invent structure when a template exists.** Pull from `docs/_templates/`.
 5. **Always update the manifest in the same pass** that adds, archives, or re-scopes a doc.
-6. **Don't reference issue numbers in shipped doc text** unless the project's CLAUDE.md says otherwise — see `flexlibs2/CLAUDE.md`. Cross-link via the commit message and PR body instead.
+6. **Don't reference GitHub issue numbers in shipped doc text or in code comments** — `spec.md` §18 is explicit on this. Cross-link via the commit message and PR body instead.
 
 ## Common Scenarios
 
