@@ -43,13 +43,19 @@ export const mixedDiagnosticsResult: CompileResult = makeCompileResult({
       sizeBytes: 8192,
     },
   ],
+  // Layer A diagnostics + one upstream-style hint. Previous fixture used a
+  // synthetic "KM_INFO_COMPILE_START" progress event with `severity: "info"`
+  // — but kmcmplib never emits progress events, and `info` is studio-only
+  // (Layer C). Replaced with a real-shape hint (KM_HINT_INDEX_STORE_LONG)
+  // modeled on the upstream `HINT_IndexStoreLong` event class. See #96.
   diagnostics: [
     ...layerAOnly,
     {
-      code: "KM_INFO_COMPILE_START",
-      severity: "info",
+      code: "KM_HINT_INDEX_STORE_LONG",
+      severity: "hint",
       layer: "A",
-      message: "Compilation started for keyboard 'my_keyboard'.",
+      message: "Index store is long; consider splitting for readability.",
+      location: { file: "source/my_keyboard.kmn", line: 8 },
     },
   ],
   compileMs: 142,

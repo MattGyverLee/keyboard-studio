@@ -18,7 +18,29 @@ export interface VirtualFSEntry {
  */
 export interface VirtualFS {
   get(path: string): VirtualFSEntry | undefined;
-  set(path: string, content: Uint8Array | string, isBinary?: boolean): void;
+  /**
+   * Set or overwrite an entry at `path`.
+   *
+   * Returns the previous entry if `path` already existed (so callers can
+   * tell user-edited-existing from user-created-new), or `undefined` for
+   * a fresh path. Mirrors {@link delete}'s did-it-exist signal for
+   * symmetry.
+   */
+  set(
+    path: string,
+    content: Uint8Array | string,
+    isBinary?: boolean
+  ): VirtualFSEntry | undefined;
   delete(path: string): boolean;
   list(prefix?: string): string[];
+  /**
+   * Return entry snapshots filtered by prefix — equivalent to
+   * `list(prefix).map((p) => get(p)!)` but in one call, without the
+   * non-null assertion, and in O(n) rather than O(n²) for callers that
+   * iterate every entry (e.g. `OutputService.toZip` walking the tree).
+   *
+   * @param prefix - Optional path prefix; omitted → all entries.
+   * @returns An array of `VirtualFSEntry` snapshots. Order is unspecified.
+   */
+  entries(prefix?: string): VirtualFSEntry[];
 }

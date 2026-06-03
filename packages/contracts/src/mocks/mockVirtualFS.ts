@@ -18,8 +18,14 @@ export function makeMockVirtualFS(
     get(path: string): VirtualFSEntry | undefined {
       return store.get(path);
     },
-    set(path: string, content: Uint8Array | string, isBinary = false): void {
+    set(
+      path: string,
+      content: Uint8Array | string,
+      isBinary = false
+    ): VirtualFSEntry | undefined {
+      const prev = store.get(path);
       store.set(path, { path, content, isBinary });
+      return prev;
     },
     delete(path: string): boolean {
       return store.delete(path);
@@ -28,6 +34,11 @@ export function makeMockVirtualFS(
       const keys = [...store.keys()];
       if (prefix === undefined) return keys;
       return keys.filter((k) => k.startsWith(prefix));
+    },
+    entries(prefix?: string): VirtualFSEntry[] {
+      const all = [...store.values()];
+      if (prefix === undefined) return all;
+      return all.filter((e) => e.path.startsWith(prefix));
     },
   };
 }
@@ -41,7 +52,8 @@ export const scaffoldedFS: VirtualFS = makeMockVirtualFS([
     path: "source/my_keyboard.keyman-touch-layout",
     content: '{"phone":{"layer":[]}}\n',
   },
-  { path: "LICENSE.md", content: "MIT License\n" },
+  // criteria SS1 (spec §12 line 843): exact "Copyright © <year> <holder>" syntax required.
+  { path: "LICENSE.md", content: "Copyright © 2026 Test Contributor\n\nMIT License\n" },
   { path: "HISTORY.md", content: "## 1.0 (2026-06-02)\n* Initial release.\n" },
   { path: "README.md", content: "# My Keyboard\n" },
   { path: "welcome.htm", content: "<html><body>Welcome</body></html>\n" },

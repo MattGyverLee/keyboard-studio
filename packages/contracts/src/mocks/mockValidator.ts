@@ -9,7 +9,17 @@ import { validatorFindings } from "../fixtures/index";
 
 /**
  * In-memory mock of {@link ValidatorService}.
- * Returns fixture data without invoking the real implementation.
+ *
+ * Returns a FIXED fixture array for any input — `validate()` always returns
+ * `validatorFindings` regardless of `kmnSource`, and `validateFragment()`
+ * returns the Layer A subset regardless of `kmnFragment` or `projectContext`.
+ * Real ValidatorService implementations route inputs to the WASM oracle
+ * (spec §10) and produce input-dependent diagnostics.
+ *
+ * Use this mock for UI / contract / shape tests; it is NOT useful for
+ * validator-logic tests (use the real ValidatorService implementation
+ * once it lands).
+ *
  * @see spec.md §10
  */
 export const mockValidator: ValidatorService = {

@@ -7,7 +7,6 @@ import copy
 # be edited to point at a different keymanapp/keyboards checkout (see #114).
 # Matches the pattern processKMN.py and previewSymbolKey.py already use.
 root_folder = sys.argv[1] if len(sys.argv) > 1 else "D:\\Github\\_Projects\\_KM\\keyboards\\release\\basic"
-currentLanguage = ""
 addSymbols = True  # Set to False if you don't want to add symbols layer
 removePhone = True  # Set to True if you want to remove the phone layout
 test = False
@@ -121,11 +120,16 @@ def process_modifier_key(lid, key, type):
             print(f"{id} in {lid} layer")
         else:
             print(f"{id} in {lid} layer")
-            """ key["multitap"] = [{
-                "id": "T_CAPS",
-                "text": "*ShiftLock*",
-                "nextlayer": target_caps
-            }] """
+            # Stashed alternative: multitap-on-shift for caps transition.
+            # Kept as a real comment rather than a triple-quoted no-op string
+            # (the previous form is a string literal Python evaluates and
+            # discards — confusing to readers).
+            # Reference shape:
+            #   key["multitap"] = [{
+            #       "id": "T_CAPS",
+            #       "text": "*ShiftLock*",
+            #       "nextlayer": target_caps,
+            #   }]
 
         changed = True
     return key, changed

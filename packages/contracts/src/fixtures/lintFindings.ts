@@ -83,3 +83,21 @@ export const layerCFindings: LintFinding[] = [
     hint: "Fill in the keyboard display name and description in welcome.htm.",
   },
 ];
+
+/**
+ * Fatal-severity findings — the load-failure / unrecoverable class.
+ * Upstream Keyman models these as `FATAL_*` events (BadCallParams,
+ * MissingWasmModule, UnexpectedException). They block compilation
+ * entirely; consumers testing "fatal blocks WASM" behavior need a
+ * fixture (#91). Layer A because the WASM oracle is where these
+ * surface to the studio.
+ */
+export const fatalFindings: LintFinding[] = [
+  {
+    code: "KM_FATAL_MISSING_WASM_MODULE",
+    severity: "fatal",
+    layer: "A",
+    message: "kmcmplib WASM module failed to load or instantiate.",
+    hint: "Reload the studio; if the failure persists, file a bug.",
+  },
+];

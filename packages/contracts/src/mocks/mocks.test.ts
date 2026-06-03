@@ -314,10 +314,12 @@ describe("mockCompiler", () => {
     expect(hasWarning).toBe(true);
   });
 
-  it("compile diagnostics contain at least one info-severity finding", async () => {
+  it("compile diagnostics contain at least one hint-severity finding", async () => {
+    // 'info' is Layer C only; the WASM oracle (Layer A) never emits it.
+    // See #88 (severity rename) and #96 (KM_INFO_COMPILE_START removal).
     const result = await mockCompiler.compile(scaffoldedFS, "my_keyboard");
-    const hasInfo = result.diagnostics.some((d) => d.severity === "info");
-    expect(hasInfo).toBe(true);
+    const hasHint = result.diagnostics.some((d) => d.severity === "hint");
+    expect(hasHint).toBe(true);
   });
 
   it("compileMs is a positive number", async () => {
@@ -366,10 +368,10 @@ describe("mockScaffolder", () => {
     expect(paths.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("listTemplates returns an array including 'qwerty'", async () => {
+  it("listTemplates returns the three §9 routing-group templates", async () => {
     const templates = await mockScaffolder.listTemplates();
-    expect(templates.length).toBeGreaterThanOrEqual(1);
-    expect(templates).toContain("qwerty");
+    expect(templates.length).toBe(3);
+    expect(templates).toContain("qwerty-qwertz");
   });
 
   it("listTemplates includes 'non-roman'", async () => {
@@ -511,10 +513,17 @@ describe("fixture cross-checks", () => {
     expect(nonC).toHaveLength(0);
   });
 
-  it("mixedDiagnosticsResult has all three required severity bands", () => {
-    const severities = new Set(mixedDiagnosticsResult.diagnostics.map((d) => d.severity));
+  it("mixedDiagnosticsResult covers error / warning / hint (Layer A severity bands)", () => {
+    // 'info' is Layer C only after #88; mixedDiagnosticsResult is a Layer A
+    // compiler-output fixture so it must NOT contain 'info'. Bands present:
+    // error (KM_ERROR_DUPLICATE_STORE), warning (KM_WARN_DEPRECATED_STORE_ID),
+    // hint (KM_HINT_INDEX_STORE_LONG — see #96).
+    const severities = new Set(
+      mixedDiagnosticsResult.diagnostics.map((d) => d.severity)
+    );
     expect(severities.has("error")).toBe(true);
     expect(severities.has("warning")).toBe(true);
-    expect(severities.has("info")).toBe(true);
+    expect(severities.has("hint")).toBe(true);
+    expect(severities.has("info")).toBe(false);
   });
 });
