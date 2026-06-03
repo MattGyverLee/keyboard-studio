@@ -23,6 +23,24 @@ export interface PatternQuestion {
   options?: Array<{ value: string; label: string }>;
   /** Default value pre-filled when the base keyboard suggests one. */
   default?: string;
+  /**
+   * Whether this slot must be filled before a Pattern can be applied.
+   *
+   * - `required: true` (or field omitted — defaults to true) — the validator
+   *   blocks submission when the slot is empty post-substitution
+   *   (spec §14 Decision 1).
+   * - `required: false` — the substituted fragment is allowed to leave this
+   *   slot empty IF the result still passes Layer A validation
+   *   (spec §14 Decision 1 explicit carve-out for "optional slot").
+   *
+   * The validator adjudicates mechanically using this field; no heuristic
+   * or LLM judgment is involved. Omitting the field implies `required: true`
+   * (the safe default — every slot is required unless explicitly marked
+   * optional).
+   *
+   * @see spec.md §14 Decision 1
+   */
+  required?: boolean;
 }
 
 export interface TestVector {
@@ -55,14 +73,14 @@ export interface Pattern {
    * The strategy card (S-01..S-12, spec section 7.3) this pattern implements.
    * The strategy selector uses this to map a decision-tree result to the
    * pattern(s) the gallery should surface.
-   * PROPOSED ADDITION - pending Day-1 issue #5 sign-off (see section 18 revision policy).
+   * @see spec.md §5, §7.3
    */
   strategyId?: StrategyId;
   /**
    * Secondary strategy cards this pattern commonly combines with (e.g. ["S-04"]).
    * Mirrors the "Combines well with" line on each strategy card (section 7.3) and the
    * "+ secondaries" output of the decision tree (section 7.2).
-   * PROPOSED ADDITION - pending Day-1 issue #5 sign-off.
+   * @see spec.md §5, §7.3
    */
   combinesWith?: StrategyId[];
   /** Survey questions that fill the named slots in kmnFragment. */
@@ -100,4 +118,54 @@ export interface Pattern {
   reviewedBy: string;
   /** ISO date of review. Format: YYYY-MM-DD. */
   reviewDate: string;
+}
+
+/**
+ * Input shape for `makePattern`. Mirrors `Pattern` but all optional fields
+ * may be omitted cleanly without fighting `exactOptionalPropertyTypes`.
+ */
+export type PatternInit = {
+  id: string;
+  title: string;
+  description: string;
+  category: PatternCategory;
+  appliesTo: string[];
+  strategyId?: StrategyId;
+  combinesWith?: StrategyId[];
+  questions: PatternQuestion[];
+  kmnFragment: string;
+  touchLayoutFragment?: string;
+  reorderRules?: string;
+  tests: TestVector[];
+  validatedForFamilies: string[];
+  sourceKeyboards: string[];
+  reviewedBy: string;
+  reviewDate: string;
+};
+
+/**
+ * Construct a `Pattern` from a `PatternInit`, stripping any `undefined`-valued
+ * optional keys so the result is a clean `Pattern` value.
+ */
+export function makePattern(init: PatternInit): Pattern {
+  return {
+    id: init.id,
+    title: init.title,
+    description: init.description,
+    category: init.category,
+    appliesTo: init.appliesTo,
+    questions: init.questions,
+    kmnFragment: init.kmnFragment,
+    tests: init.tests,
+    validatedForFamilies: init.validatedForFamilies,
+    sourceKeyboards: init.sourceKeyboards,
+    reviewedBy: init.reviewedBy,
+    reviewDate: init.reviewDate,
+    ...(init.strategyId !== undefined ? { strategyId: init.strategyId } : {}),
+    ...(init.combinesWith !== undefined ? { combinesWith: init.combinesWith } : {}),
+    ...(init.touchLayoutFragment !== undefined
+      ? { touchLayoutFragment: init.touchLayoutFragment }
+      : {}),
+    ...(init.reorderRules !== undefined ? { reorderRules: init.reorderRules } : {}),
+  };
 }

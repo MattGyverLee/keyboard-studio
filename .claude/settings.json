@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile processTouch.py)",
+      "Bash(PYTHONIOENCODING=utf-8 python processTouch.py)",
+      "Bash(tee processTouch_symkey.log)",
+      "Bash(echo '=== __TRACKED_VAR__ ===')",
+      "Read(//c/Users/thoua/AppData/Local/Temp/claude/d--Github--Projects--KM-keyboard-studio/1897f15a-ed36-453c-876f-e58f429f0e4c/**)",
+      "Bash(echo \"[not ready]\")",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(gh label *)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c ' *)"
+    ]
+  }
+}
