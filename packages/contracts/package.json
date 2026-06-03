@@ -10,6 +10,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./mocks": {
+      "types": "./dist/mocks/index.d.ts",
+      "import": "./dist/mocks/index.js"
+    },
+    "./fixtures": {
+      "types": "./dist/fixtures/index.d.ts",
+      "import": "./dist/fixtures/index.js"
     }
   },
   "files": [
