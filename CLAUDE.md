@@ -54,3 +54,33 @@ Use the LEX crew for review cycles on spec or code changes; `docs/spec-signoff.m
 - Windows environment: no emoji in console output (global CLAUDE.md rule). Use `[OK]`, `[ERROR]`, `[WARN]` etc.
 - File references in user-facing text use markdown links (`[spec.md](spec.md)`), not backticks, per the VSCode-extension guidance in the system prompt.
 - Don't cite specific GitHub issue numbers inside shipped code or comments — cross-link via commit messages and PR bodies (spec Sec 18).
+
+## Commit and issue title style
+
+Adopted from [keymanapp/keyman](https://github.com/keymanapp/keyman/issues). Format: `<prefix>(<area>): <description>`.
+
+**Prefixes**
+
+- `bug` — issue titles only; a reported defect
+- `fix` — PRs / commits that close a `bug`
+- `feat` — new functionality (issues, PRs, commits)
+- `docs` — documentation only
+- `chore` — housekeeping with no behaviour change (deps bumps, formatting, build wiring)
+- `maint` — internal cleanup that touches functional code but is not a feature or fix (renames, dead-code removal, shape-preserving cleanup)
+- `refactor` — structural restructuring with no behaviour change
+- `epic` — umbrella tracking issue (no area)
+- `auto` — machine-generated (dep bumps, version bumps)
+
+**Areas** (parenthesised after the prefix; pick the smallest that locates the change):
+`contracts`, `tools`, `scaffolder`, `engine`, `studio`, `output`, `criteria`, `spec`, `process`, `base-browser`, `deps`, `deps-dev`. Drop the area if the change spans more than one (e.g. `chore: bump TS across packages`).
+
+**Examples**
+
+- `bug(scaffolder): scaffold() doesn't validate keyboardId per §10 Layer A check #1`
+- `fix(scaffolder): validate keyboardId in scaffold() before VirtualFS write` (PR closing the bug)
+- `feat(tools): K_SYMBOLS placement algorithm + dry-run preview`
+- `docs(spec): clarify §7.2 decision-tree firing order`
+- `chore(deps): bump vitest 1.6 → 2.0`
+- `maint(contracts): rename PatternQuestion.required → optional`
+
+Keep `bug` and `fix` separate — `bug(...)` issues link to `fix(...)` PRs via `closes #N`. Mixing the two blurs the issue/PR relationship.
