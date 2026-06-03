@@ -290,10 +290,11 @@ def _apply_symbol_plan(non_symbol_layers, plan):
     return n
 
 
-# Load symbols layer data from files
-with open("symbols.json", "r", encoding="utf-8") as f:
+# Load symbols layer data from files (paths relative to this script, not CWD)
+_HERE = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(_HERE, "symbols.json"), "r", encoding="utf-8") as f:
     symbols_layer = json.load(f)
-with open("symbol-caps.json", "r", encoding="utf-8") as f:
+with open(os.path.join(_HERE, "symbol-caps.json"), "r", encoding="utf-8") as f:
     symbol_caps_layer = json.load(f)
 
 # Walk through all subdirectories and process matching files

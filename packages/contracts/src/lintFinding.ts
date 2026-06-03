@@ -61,7 +61,6 @@ export interface SourceLocation {
 export type LintCode =
   | `KM_ERROR_${string}`
   | `KM_WARN_${string}`
-  | `KM_WARNING_${string}`
   | `KM_HINT_${string}`
   | `KM_FATAL_${string}`
   | `KM_INFO_${string}`

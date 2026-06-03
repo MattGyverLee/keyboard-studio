@@ -169,7 +169,8 @@ def find_plan(non_symbol_layers):
 
 
 def summarise(path):
-    data = json.load(open(path, encoding="utf-8"))
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
     out = {}
     for device in ("tablet", "phone"):
         if device not in data or "layer" not in data[device]:
