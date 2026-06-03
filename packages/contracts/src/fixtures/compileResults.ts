@@ -1,20 +1,31 @@
 // see spec.md section 4 / section 8 step 11 — CompileResult test fixtures
 
-import type { CompileResult } from "../compileResult";
+import type { CompileResult, CompilerDiagnostic } from "../compileResult";
 import { makeCompileResult } from "../compileResult";
-import { validatorFindings } from "./lintFindings";
+import { layerAFindings } from "./lintFindings";
+
+// Layer A only — kmcmplib WASM oracle never emits Layer B (style) or
+// Layer C (hygiene) findings (#93). Drop the Layer B fixtures the previous
+// mixed-diagnostics result was reusing.
+const layerAOnly: CompilerDiagnostic[] = layerAFindings.map((f) => ({
+  ...f,
+  layer: "A" as const,
+}));
 
 /**
- * A mixed-diagnostics CompileResult carrying at least one info, one warn,
- * and one error finding — exercises downstream rendering that must handle
- * all three severity bands.
+ * Recoverable-error fixture (`success: false` + non-empty artifacts).
  *
- * The artifacts simulate a successful kmcmplib WASM run for "my_keyboard";
+ * Carries error + warning + info severities — exercises downstream
+ * rendering that must handle every band the compiler can emit. The error
+ * is a duplicate-store finding (Layer A check #3) that kmcmplib treats as
+ * recoverable: it strips the offending rules and emits partial artifacts.
+ * The live-preview pane MAY load them for best-effort rendering.
+ *
  * URLs are static blob-URL placeholders (real ones would be created via
  * URL.createObjectURL in the browser, or be file:// / data: URIs in Node).
  */
 export const mixedDiagnosticsResult: CompileResult = makeCompileResult({
-  success: false, // false because an error-level finding is present
+  success: false,
   artifacts: [
     {
       filename: "my_keyboard.kmx",
@@ -32,11 +43,8 @@ export const mixedDiagnosticsResult: CompileResult = makeCompileResult({
       sizeBytes: 8192,
     },
   ],
-  // Reuse the validator findings (layers A + B) which already include
-  // error, warn, and hint severities; add an explicit "info" to ensure
-  // all four test-required severity bands are present.
   diagnostics: [
-    ...validatorFindings,
+    ...layerAOnly,
     {
       code: "KM_INFO_COMPILE_START",
       severity: "info",
@@ -44,6 +52,91 @@ export const mixedDiagnosticsResult: CompileResult = makeCompileResult({
       message: "Compilation started for keyboard 'my_keyboard'.",
     },
   ],
-  warmCompileMs: 142,
+  compileMs: 142,
+  isWarmCompile: true,
+});
+
+/**
+ * Clean compile fixture (`success: true` + non-empty artifacts).
+ *
+ * No error / fatal diagnostics; carries one warning and one hint to
+ * exercise renderers that distinguish non-blocking severities. The
+ * preview pane loads the artifacts unconditionally.
+ */
+export const cleanCompileResult: CompileResult = makeCompileResult({
+  success: true,
+  artifacts: [
+    {
+      filename: "my_keyboard.kmx",
+      url: "blob:http://localhost/mock-kmx-clean-00000000",
+      sizeBytes: 1900,
+    },
+    {
+      filename: "my_keyboard.kvk",
+      url: "blob:http://localhost/mock-kvk-clean-00000000",
+      sizeBytes: 500,
+    },
+    {
+      filename: "my_keyboard.js",
+      url: "blob:http://localhost/mock-js-clean-00000000",
+      sizeBytes: 8000,
+    },
+  ],
+  diagnostics: [
+    {
+      code: "KM_HINT_CANONICAL_STORE_ORDER",
+      severity: "hint",
+      layer: "A",
+      message:
+        "Stores declared after the first rule group — canonical layout would put them at top of file.",
+    },
+  ],
+  compileMs: 187,
+  isWarmCompile: true,
+});
+
+/**
+ * Parse-fatal fixture (`success: false` + empty artifacts).
+ *
+ * kmcmplib could not produce any output — typically an unterminated string
+ * or syntax error before the first `group(...)` declaration. The live
+ * preview pane MUST hide; no partial artifacts to load.
+ */
+export const parseFatalCompileResult: CompileResult = makeCompileResult({
+  success: false,
+  artifacts: [],
+  diagnostics: [
+    {
+      code: "KM_FATAL_UNTERMINATED_STRING",
+      severity: "fatal",
+      layer: "A",
+      message: "Unterminated string literal at line 12, column 24.",
+      location: { file: "source/my_keyboard.kmn", line: 12, column: 24 },
+    },
+  ],
+  compileMs: 38,
+  isWarmCompile: true,
+});
+
+/**
+ * Cold-start fixture (`isWarmCompile: false`).
+ *
+ * The first compile() call after page load: `compileMs` includes the
+ * 1-3 second WASM fetch + instantiate overhead. Consumers that filter
+ * telemetry on the 100-300 ms target from spec §4 must exclude cold-start
+ * compiles (`isWarmCompile === false`).
+ */
+export const coldStartCompileResult: CompileResult = makeCompileResult({
+  success: true,
+  artifacts: [
+    {
+      filename: "my_keyboard.kmx",
+      url: "blob:http://localhost/mock-kmx-cold-00000000",
+      sizeBytes: 1900,
+    },
+  ],
+  diagnostics: [],
+  compileMs: 2387,
+  isWarmCompile: false,
 });
 

@@ -216,12 +216,14 @@ describe("makeCompileResult", () => {
         { filename: "foo.kmx", url: "blob:mock", sizeBytes: 1024 },
       ],
       diagnostics: [],
-      warmCompileMs: 137,
+      compileMs: 137,
+      isWarmCompile: true,
     });
     expect(r.success).toBe(true);
     expect(r.artifacts).toHaveLength(1);
     expect(r.diagnostics).toEqual([]);
-    expect(r.warmCompileMs).toBe(137);
+    expect(r.compileMs).toBe(137);
+    expect(r.isWarmCompile).toBe(true);
   });
 
   it("preserves all required fields verbatim (no field drop)", () => {
@@ -236,12 +238,14 @@ describe("makeCompileResult", () => {
           message: "test diagnostic",
         },
       ],
-      warmCompileMs: 200,
+      compileMs: 200,
+      isWarmCompile: false,
     });
     expect(r.success).toBe(false);
     expect(r.artifacts).toEqual([]);
     expect(r.diagnostics).toHaveLength(1);
     expect(r.diagnostics[0]?.code).toBe("KM_ERROR_TEST");
-    expect(r.warmCompileMs).toBe(200);
+    expect(r.compileMs).toBe(200);
+    expect(r.isWarmCompile).toBe(false);
   });
 });

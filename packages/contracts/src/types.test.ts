@@ -135,34 +135,54 @@ describe("LintFinding interface", () => {
 // -----------------------------------------------------------------------------
 
 describe("CompileResult and CompileArtifact", () => {
-  it("success:false with empty artifacts is a valid shape", () => {
+  it("success:false with empty artifacts is a valid shape (parse-fatal)", () => {
     const r: CompileResult = makeCompileResult({
       success: false,
       artifacts: [],
       diagnostics: [],
-      warmCompileMs: 0,
+      compileMs: 0,
+      isWarmCompile: true,
     });
     expect(r.success).toBe(false);
     expect(r.artifacts).toEqual([]);
     expect(r.diagnostics).toEqual([]);
+    expect(r.isWarmCompile).toBe(true);
   });
 
-  it("diagnostics is typed as LintFinding[]", () => {
+  it("diagnostics is typed as CompilerDiagnostic[] (Layer A only)", () => {
     const r: CompileResult = makeCompileResult({
       success: false,
       artifacts: [],
       diagnostics: [
         {
-          code: "KM_E_X",
+          code: "KM_ERROR_X",
           severity: "error",
           layer: "A",
           message: "boom",
         },
       ],
-      warmCompileMs: 137,
+      compileMs: 137,
+      isWarmCompile: true,
     });
     expect(r.diagnostics[0]?.severity).toBe("error");
     expect(r.diagnostics[0]?.layer).toBe("A");
+    // layer is narrowed to the literal "A" — assigning "B" or "C" to a
+    // CompilerDiagnostic is a TS error (verified by typecheck, not at runtime).
+  });
+
+  it("isWarmCompile=false is the cold-start indicator (#92)", () => {
+    const cold: CompileResult = makeCompileResult({
+      success: true,
+      artifacts: [],
+      diagnostics: [],
+      compileMs: 2400, // 2.4 seconds — well outside the 100-300ms target
+      isWarmCompile: false,
+    });
+    // Filtering on isWarmCompile === true is the documented contract for
+    // applying the spec §4 perf target to telemetry. Cold-start compiles
+    // are excluded from that comparison.
+    expect(cold.isWarmCompile).toBe(false);
+    expect(cold.compileMs).toBeGreaterThan(300);
   });
 
   it("CompileArtifact has filename + url + sizeBytes", () => {

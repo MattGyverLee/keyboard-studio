@@ -283,7 +283,8 @@ describe("mockCompiler", () => {
     expect(typeof result.success).toBe("boolean");
     expect(Array.isArray(result.artifacts)).toBe(true);
     expect(Array.isArray(result.diagnostics)).toBe(true);
-    expect(typeof result.warmCompileMs).toBe("number");
+    expect(typeof result.compileMs).toBe("number");
+    expect(typeof result.isWarmCompile).toBe("boolean");
   });
 
   it("compile returns at least one artifact", async () => {
@@ -319,9 +320,30 @@ describe("mockCompiler", () => {
     expect(hasInfo).toBe(true);
   });
 
-  it("compile warmCompileMs is a positive number", async () => {
+  it("compileMs is a positive number", async () => {
     const result = await mockCompiler.compile(scaffoldedFS, "my_keyboard");
-    expect(result.warmCompileMs).toBeGreaterThan(0);
+    expect(result.compileMs).toBeGreaterThan(0);
+  });
+
+  it("init() is idempotent and isReady() reflects load state", async () => {
+    // mockCompiler is module-scoped; init() may have been called by a
+    // previous test in this describe block. Either way the test asserts
+    // the idempotency contract: repeat init() returns the same promise,
+    // and after the promise resolves isReady() is true.
+    const a = mockCompiler.init();
+    const b = mockCompiler.init();
+    expect(a).toBe(b); // same promise returned on repeat call
+    await a;
+    expect(mockCompiler.isReady()).toBe(true);
+  });
+
+  it("compile() returns a Layer-A-only diagnostic stream", async () => {
+    const result = await mockCompiler.compile(scaffoldedFS, "my_keyboard");
+    // CompilerDiagnostic = LintFinding & { layer: "A" }. Every diagnostic in
+    // the array MUST have layer === "A"; B and C come from other services.
+    result.diagnostics.forEach((d) => {
+      expect(d.layer).toBe("A");
+    });
   });
 });
 
