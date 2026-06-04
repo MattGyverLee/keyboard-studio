@@ -1,9 +1,9 @@
-# Corpus scan — 20 representative Keyman keyboards
+# Corpus scan — 22 representative Keyman keyboards
 
 ## Purpose
 
-This scan documents twenty real Keyman keyboards as the empirical groundwork for the keyboard
-studio. The goal is to show, in plain language, *which real-world keyboards solve which writing-system
+This scan documents twenty-two real Keyman keyboards as the empirical groundwork for the keyboard
+studio (plus a small set of deliberately rough keyboards, documented separately below). The goal is to show, in plain language, *which real-world keyboards solve which writing-system
 problems and how* — so the pattern library and the strategy catalog in [spec.md](../spec.md) (§5, §7)
 are built from observed practice rather than invented in the abstract. The notes are written for a
 **linguist audience**: each keyboard's day-to-day behaviour is described in ordinary words, and the
@@ -12,10 +12,12 @@ the top of each entry.
 
 ## Selection basis
 
-The keyboards were **handpicked by popularity** — ranked by monthly download counts on
-keyman.com — so the scan reflects the layouts people actually use. All twenty were nominated as
-"clean" examples to start from. Each was then read in full from the local source clone at
-`keymanapp/keyboards` (`release/<bucket>/<id>/source/<id>.kmn`) and classified against the spec.
+The core set was **handpicked by popularity** — ranked by monthly download counts on
+keyman.com — so the scan reflects the layouts people actually use. All twenty popularity picks were
+nominated as "clean" examples to start from; two further AZERTY keyboards (French Basic, Akebu) were
+added afterwards as targeted coverage, bringing the representative set to twenty-two. Each was then
+read in full from the local source clone at `keymanapp/keyboards`
+(`release/<bucket>/<id>/source/<id>.kmn`) and classified against the spec.
 
 ## Coverage summary
 
@@ -61,7 +63,7 @@ recorded openly here rather than papered over, so a follow-up pass can fill them
    Both are documented below alongside Cameroon AZERTY, bringing AZERTY coverage to three. A mnemonic
    Burkina Faso keyboard (clavbur9) is also documented, in the Known-rough section, as an AZERTY-region
    rough example.
-2. **"Known-rough" examples.** All twenty clean keyboards were chosen as positive references; none
+2. **"Known-rough" examples.** All twenty-two clean keyboards were chosen as positive references; none
    is outright defective. This gap is now closed: four deliberately rough keyboards from
    `keymanapp/keyboards experimental/` — elfdalian, gff_geez_emufi, wancho, alkelang — have been
    scanned with `scan_hygiene.py` and documented in the [Known-rough keyboards](#known-rough-keyboards)
