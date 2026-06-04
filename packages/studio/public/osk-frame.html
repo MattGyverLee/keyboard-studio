@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Keyboard Studio — OSK frame</title>
+    <!--
+      Iframe host for the KeymanWeb engine. Loaded by <OSKFrame> in #39.
+      KeymanWeb 18.0.x must be vendored at /kmw/18.0/keymanweb.js
+      before this page can mount the engine — see public/kmw/README.md.
+
+      postMessage contract (defined in #39):
+        host -> frame: { type: "SET_KEYBOARD", jsUrl, keyboardId }
+        host -> frame: { type: "SET_MODIFIERS", modifiers }
+        frame -> host: { type: "TEXT_UPDATED", value }
+        frame -> host: { type: "ENGINE_READY" }
+        frame -> host: { type: "ENGINE_ERROR", message }
+    -->
+  </head>
+  <body>
+    <textarea
+      id="osk-target"
+      style="width: 100%; height: 120px; font-size: 18px"
+      autofocus
+    ></textarea>
+    <div id="osk-mount"></div>
+    <script>
+      // Placeholder bootstrap. #39 will replace this with the KeymanWeb
+      // mount, message bridge, and MinimumKeymanVersion guard.
+      window.parent?.postMessage(
+        { type: "ENGINE_ERROR", message: "KeymanWeb not yet vendored — see public/kmw/README.md" },
+        "*",
+      );
+    </script>
+  </body>
+</html>
