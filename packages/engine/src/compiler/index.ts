@@ -17,7 +17,6 @@ import type {
   VirtualFS,
 } from "@keyboard-studio/contracts";
 import { CompilerLoadError } from "@keyboard-studio/contracts";
-import { parseKmnHeaderStores } from "./parseKmnHeaderStores.js";
 import { parseKpjFlags, type CompilerOptions } from "./parseKpjFlags.js";
 
 // ---------------------------------------------------------------------------
@@ -137,6 +136,23 @@ function blobUrl(bytes: Uint8Array): string {
   const b64 =
     typeof Buffer !== "undefined" ? Buffer.from(bytes).toString("base64") : "";
   return `data:application/octet-stream;base64,${b64}`;
+}
+
+/**
+ * Candidate VFS paths to probe when kmcmplib asks for a file by name.
+ * The kmcmplib glue passes filenames in various shapes (with/without
+ * the `source/` prefix, sometimes absolute-looking) — try each variant
+ * so the lookup succeeds regardless of which form the WASM emits.
+ */
+function vfsPathCandidates(filename: string): string[] {
+  const basename = filename.split(/[\\/]/).pop() ?? filename;
+  return [
+    filename,
+    `source/${filename}`,
+    filename.replace(/^source[\\/]/, ""),
+    basename,
+    `source/${basename}`,
+  ];
 }
 
 function unavailableResult(
@@ -289,14 +305,7 @@ export async function compile(
       });
     },
     loadFile(filename: string): Uint8Array | null {
-      const candidates = [
-        filename,
-        `source/${filename}`,
-        filename.replace(/^source[\\/]/, ""),
-        filename.split(/[\\/]/).pop() ?? filename,
-        `source/${filename.split(/[\\/]/).pop() ?? filename}`,
-      ];
-      for (const c of candidates) {
+      for (const c of vfsPathCandidates(filename)) {
         const bytes = entryContentAsBytes(fs, c);
         if (bytes !== null) return bytes;
       }
@@ -315,14 +324,7 @@ export async function compile(
       // writeFileSync (a no-op — artifacts come back via .run()'s
       // return value).
       existsSync(filename: string): boolean {
-        const candidates = [
-          filename,
-          `source/${filename}`,
-          filename.replace(/^source[\\/]/, ""),
-          filename.split(/[\\/]/).pop() ?? filename,
-          `source/${filename.split(/[\\/]/).pop() ?? filename}`,
-        ];
-        for (const c of candidates) {
+        for (const c of vfsPathCandidates(filename)) {
           if (fs.get(c) !== undefined) return true;
         }
         return false;
@@ -426,11 +428,6 @@ export async function compile(
   );
   // eslint-disable-next-line no-console
   console.info(`[kmcmplib] diagnostics: ${diagnostics.length}`, diagnostics);
-
-  // Use a private reference to silence the "declared but unused" warning
-  // about parseKmnHeaderStores — kmc-kmn does its own header scanning, so
-  // our parser isn't needed in this code path. Keep the export available.
-  void parseKmnHeaderStores;
 
   const hasFatal = diagnostics.some(
     (d) => d.severity === "fatal" || d.severity === "error",

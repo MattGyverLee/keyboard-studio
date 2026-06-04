@@ -3,12 +3,6 @@ import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
 import { localKeyboardsPlugin } from "./vite-plugins/localKeyboards.ts";
 
-// Dev-server proxy for keymanapp/keyboards release tree source files.
-// Bypasses CORS on raw.githubusercontent.com. POC fetches from
-// `/kbd-proxy/release/<initial>/<id>/source/<id>.kmn` etc. and feeds
-// the bytes into the VirtualFS before CompilerService.compile() runs.
-// Production needs a CSP-safe alternative (cached artifact server,
-// signed CDN URLs, or compile-on-demand backend) — tracked separately.
 // keymanapp/keyboards sibling-clone path (matches fetch-kmcmplib dev mode's
 // expectation of ../keyman). Override with KEYBOARDS_REPO env var if needed.
 const KEYBOARDS_REPO_ROOT = fileURLToPath(
@@ -27,11 +21,10 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      // kmc-kmn's wasm-host.js has Node-only `require('path')` that
-      // Vite rewrites into an ESM default import. Without an alias
-      // this hits path-browserify (CJS, no default) and crashes.
-      // Alias BOTH names to a self-contained POSIX-style shim that
-      // exports a real default object.
+      // kmc-kmn's wasm-host.js has Node-only `require('path')` that Vite
+      // rewrites into an ESM default import. Without an alias this hits
+      // path-browserify (CJS, no default) and crashes. Alias BOTH names
+      // to a self-contained POSIX-style shim that exports a real default.
       path: fileURLToPath(new URL("./src/lib/pathShim.ts", import.meta.url)),
       "path-browserify": fileURLToPath(
         new URL("./src/lib/pathShim.ts", import.meta.url),
@@ -41,35 +34,24 @@ export default defineConfig({
   optimizeDeps: {
     // Exclude kmc-kmn from pre-bundling so its internal wasm-host.js
     // resolves at runtime in node_modules and `import.meta.url` points
-    // at the real file location (where wasm-host.wasm sits as a
-    // sibling). Pre-bundling moves wasm-host.js into a chunk where the
-    // .wasm sibling-fetch 404s.
+    // at the real file location (where wasm-host.wasm sits as a sibling).
+    // Pre-bundling moves wasm-host.js into a chunk where the .wasm
+    // sibling-fetch 404s.
     exclude: ["@keymanapp/kmc-kmn"],
   },
   server: {
     port: 5173,
     proxy: {
-      // Source files in the keymanapp/keyboards repo (.kmn, .kvks,
-      // touch layouts, etc.).
+      // Fallback path for the source-file fetch when the localKeyboards
+      // plugin can't be used (e.g. CI without a sibling clone). The
+      // canonical POC path is /local-kbd-proxy via the plugin above.
+      // Production needs a CSP-safe alternative (cached artifact server,
+      // signed CDN URLs, or compile-on-demand backend) — tracked separately.
       "/kbd-proxy": {
         target: "https://raw.githubusercontent.com",
         changeOrigin: true,
         rewrite: (path) =>
           path.replace(/^\/kbd-proxy/, "/keymanapp/keyboards/master"),
-      },
-      // Prebuilt KMW .js artifacts published per-version by Keyman CI.
-      // Used as a stand-in until kmw-compiler runs in-browser (POC only).
-      "/kbd-js-proxy": {
-        target: "https://downloads.keyman.com",
-        changeOrigin: true,
-        rewrite: (path) =>
-          path.replace(/^\/kbd-js-proxy/, "/keyboards"),
-      },
-      // Keyman keyboard metadata API (returns current version + filenames).
-      "/kbd-api": {
-        target: "https://api.keyman.com",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/kbd-api/, ""),
       },
     },
   },
