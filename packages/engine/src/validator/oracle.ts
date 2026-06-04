@@ -224,9 +224,20 @@ export function _createOracle(
   if (handle === null) {
     return makeOracle(() =>
       Promise.reject(
-        new OracleLoadError("test seam: WASM disabled", "wasm-fetch-failed")
+        new OracleLoadError("test seam: WASM disabled", "wasm-load-failed")
       )
     );
   }
   return makeOracle(() => Promise.resolve(handle));
+}
+
+/**
+ * Test seam — construct an oracle backed by a caller-supplied LoadHandle.
+ * Bypasses the default `loadWasmOracle()` while still exercising the lazy
+ * init + catch-then-degrade path inside `makeOracle()`. Use this to test
+ * loader failure modes (e.g. a loader that rejects with a typed
+ * OracleLoadError vs. a generic Error).
+ */
+export function _createOracleWithLoader(load: LoadHandle): OracleInstance {
+  return makeOracle(load);
 }
