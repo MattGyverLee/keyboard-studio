@@ -1,5 +1,5 @@
 store(&NAME) 'Minimal'
-store(&VERSION) '10.0'
+store(&VERSION) '14.0'
 store(&KEYBOARDVERSION) '1.0'
 store(&TARGETS) 'any'
 begin Unicode > use(main)

@@ -20,6 +20,7 @@
 import type { GroupName } from "./types.js";
 import { OracleLoadError } from "./OracleLoadError.js";
 import { getKmnCompilerCtor, type KmnCompilerLike } from "../compiler/index.js";
+import { pathUtils } from "../compiler/pathUtils.js";
 import { CompilerLoadError } from "@keyboard-studio/contracts";
 
 /**
@@ -64,33 +65,6 @@ export interface WasmOracleHandle {
 const ORACLE_SOURCE_FILE = "__oracle_source__.kmn";
 const ORACLE_OUTPUT_FILE = "__oracle_out__.kmx";
 
-const oraclePathUtils = {
-  join: (...parts: string[]): string =>
-    parts
-      .filter((p) => p !== undefined && p !== null && p !== "")
-      .join("/")
-      .replace(/\/{2,}/g, "/"),
-  dirname: (p: string): string => {
-    const stripped = p.replace(/[/\\]+$/, "");
-    const idx = Math.max(stripped.lastIndexOf("/"), stripped.lastIndexOf("\\"));
-    return idx < 0 ? "" : stripped.slice(0, idx);
-  },
-  basename: (p: string, ext?: string): string => {
-    const stripped = p.replace(/[/\\]+$/, "");
-    const idx = Math.max(stripped.lastIndexOf("/"), stripped.lastIndexOf("\\"));
-    let base = idx < 0 ? stripped : stripped.slice(idx + 1);
-    if (ext !== undefined && base.endsWith(ext)) {
-      base = base.slice(0, base.length - ext.length);
-    }
-    return base;
-  },
-  extname: (p: string): string => {
-    const base = oraclePathUtils.basename(p);
-    const dot = base.lastIndexOf(".");
-    return dot <= 0 ? "" : base.slice(dot);
-  },
-};
-
 class KmnCompilerOracleHandle implements WasmOracleHandle {
   constructor(private readonly Ctor: new () => KmnCompilerLike) {}
 
@@ -127,7 +101,7 @@ class KmnCompilerOracleHandle implements WasmOracleHandle {
       },
       resolveFilename(baseFilename: string, filename: string): string {
         if (/^[/\\]/.test(filename) || /[/\\]/.test(filename)) return filename;
-        const base = oraclePathUtils.dirname(baseFilename ?? "");
+        const base = pathUtils.dirname(baseFilename ?? "");
         return base === "" ? filename : `${base}/${filename}`;
       },
       fs: {
@@ -139,7 +113,7 @@ class KmnCompilerOracleHandle implements WasmOracleHandle {
           /* artifacts unused — oracle only consumes reportMessage */
         },
       },
-      path: oraclePathUtils,
+      path: pathUtils,
     };
 
     const compiler = new this.Ctor();
@@ -177,7 +151,7 @@ export async function loadWasmOracle(_options?: {
     if (err instanceof CompilerLoadError) {
       throw new OracleLoadError(
         `kmcmplib WASM unavailable: ${err.message}`,
-        "wasm-fetch-failed",
+        "wasm-load-failed",
         { cause: err }
       );
     }

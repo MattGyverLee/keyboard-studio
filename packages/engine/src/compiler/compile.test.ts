@@ -6,7 +6,7 @@ import { makeMockVirtualFS } from "@keyboard-studio/contracts/mocks";
 import { compile } from "./index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const minimalKmnPath = resolve(here, "..", "fixtures", "minimal.kmn");
+const minimalKmnPath = resolve(here, "__fixtures__", "minimal.kmn");
 const minimalKmn = readFileSync(minimalKmnPath, "utf8");
 
 describe("compile() — kmc-kmn pipeline against minimal.kmn fixture", () => {

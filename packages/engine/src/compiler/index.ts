@@ -18,6 +18,7 @@ import type {
 } from "@keyboard-studio/contracts";
 import { CompilerLoadError } from "@keyboard-studio/contracts";
 import { parseKpjFlags, type CompilerOptions } from "./parseKpjFlags.js";
+import { pathUtils } from "./pathUtils.js";
 
 // ---------------------------------------------------------------------------
 // Lazy kmc-kmn import + compiler singleton
@@ -190,39 +191,8 @@ function unavailableResult(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Path utility callbacks (browser-side replacements for Node's path/fs)
-// ---------------------------------------------------------------------------
-
-const pathUtils = {
-  join: (...parts: string[]): string => {
-    // Simple POSIX join, collapse multiple slashes.
-    return parts
-      .filter((p) => p !== undefined && p !== null && p !== "")
-      .join("/")
-      .replace(/\/{2,}/g, "/");
-  },
-  dirname: (p: string): string => {
-    const stripped = p.replace(/[/\\]+$/, "");
-    const idx = Math.max(stripped.lastIndexOf("/"), stripped.lastIndexOf("\\"));
-    if (idx < 0) return "";
-    return stripped.slice(0, idx);
-  },
-  basename: (p: string, ext?: string): string => {
-    const stripped = p.replace(/[/\\]+$/, "");
-    const idx = Math.max(stripped.lastIndexOf("/"), stripped.lastIndexOf("\\"));
-    let base = idx < 0 ? stripped : stripped.slice(idx + 1);
-    if (ext !== undefined && base.endsWith(ext)) {
-      base = base.slice(0, base.length - ext.length);
-    }
-    return base;
-  },
-  extname: (p: string): string => {
-    const base = pathUtils.basename(p);
-    const dot = base.lastIndexOf(".");
-    return dot <= 0 ? "" : base.slice(dot);
-  },
-};
+// Note: shared path-utility callbacks live in ./pathUtils.ts (also used by
+// the validator oracle's WASM loader).
 
 // ---------------------------------------------------------------------------
 // compile()
