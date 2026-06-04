@@ -47,7 +47,7 @@ describe("mockBaseBrowser", () => {
     const result = await mockBaseBrowser.getById("basic_kbdus");
     expect(result).toBeDefined();
     expect(result!.id).toBe("basic_kbdus");
-    expect(result!.path).toBe("release/b/basic_kbdus");
+    expect(result!.path).toBe("release/basic/basic_kbdus");
     expect(result!.script).toBe("Latn");
   });
 
@@ -478,7 +478,7 @@ describe("fixture cross-checks", () => {
   });
 
   it("basicKbdus path matches spec §4", () => {
-    expect(basicKbdus.path).toBe("release/b/basic_kbdus");
+    expect(basicKbdus.path).toBe("release/basic/basic_kbdus");
   });
 
   it("silEuroLatin is at the release/sil path (spec §7.5)", () => {
