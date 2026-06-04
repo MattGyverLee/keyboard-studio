@@ -38,11 +38,16 @@ jobs:
         env:
           KEYBOARD_STUDIO_KMCMPLIB_SOURCE: prod
 
+      # Build before typecheck — engine/studio depend on contracts'
+      # dist/*.d.ts at type-resolution time. Without this, downstream
+      # typechecks fail with "Cannot find module '@keyboard-studio/contracts'"
+      # and trigger cascade errors (e.g. switch-exhaustiveness loss
+      # because LintFinding["severity"] degrades to any).
+      - name: Build (all packages)
+        run: pnpm -r build
+
       - name: Typecheck (all packages)
         run: pnpm -r typecheck
 
       - name: Test (all packages)
         run: pnpm -r test
-
-      - name: Build (all packages)
-        run: pnpm -r build
