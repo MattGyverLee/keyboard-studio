@@ -28,18 +28,16 @@ questions:
     answerType: char-list
 
 kmnFragment: |
-  c Longpress alternates are defined entirely in the touch-layout JSON (sk arrays).
-  c No KMN rules are required for this pattern.
+  c Longpress alternates live entirely in the touch-layout JSON sk array.
+  c No KMN rules are required — leave this fragment empty.
 
 touchLayoutFragment: |
   {
     "id": "{{hostKey}}",
-    "sk": [
-      {{#each alternatesList}}
-      { "id": "U_{{codepoint}}", "text": "{{char}}" }{{#unless @last}},{{/unless}}
-      {{/each}}
-    ]
+    "sk": {{alternates}}
   }
+  c Note: {{alternates}} is a char-list slot. The engine serializes it as a
+  c JSON array of {"id":"U_XXXX","text":"x"} objects, one per character.
 
 reorderRules: null
 
@@ -69,7 +67,11 @@ provenance:
       U+00E3 ã, U+00E4 ä, U+00E5 å, U+0101 ā, U+0103 ă, U+00E6 æ, U+01E3 æ-macron, …).
       K_E has 15 alternates (U+00E8 è through U+025B ɛ). K_S has 9 (ś ŝ š ṡ ṣ ş ș ß ſ).
       109 keys carry sk arrays in total. Primary reference for this pattern.
-    rule: '"sk": [{"id": "U_00E0", "text": ""}, {"id": "U_00E1", "text": ""}, ...]'
+    rule: '"sk": [{"id": "U_00E0", "text": "à"}, {"id": "U_00E1", "text": "á"}, ...]'
+    encoding_note: >
+      This keyboard stores characters via the id field (U_XXXX codepoint) and
+      uses blank text fields — the Keyman runtime resolves the display character
+      from the id. The sk structure is identical either way.
   - keyboard: "release/sil/sil_ipa/source/sil_ipa.keyman-touch-layout"
     note: >
       Tablet layout. K_Q longpress → ʔ ʕ ʡ ʢ (glottals); K_E → ɘ ə ɛ ɜ œ (mid vowels);
@@ -141,21 +143,19 @@ skeleton:
   touch_layout_template: |
     {
       "id": "{{hostKey}}",
-      "sk": [
-        { "id": "U_XXXX", "text": "{{alternates[0]}}" },
-        { "id": "U_XXXX", "text": "{{alternates[1]}}" }
-      ]
+      "sk": {{alternates}}
     }
 
   parameters:
     - id: hostKey
       description: >
         Virtual-key name for the key whose longpress popup you are defining
-        (e.g. K_A, K_E, K_N). One skeleton entry per key.
+        (e.g. K_A, K_E, K_N). One skeleton entry per key — repeat the whole
+        block for each key that needs a popup.
     - id: alternates
       description: >
-        Ordered list of characters to appear in the popup. Each entry needs
-        both a Unicode codepoint ID (U_XXXX in uppercase hex, four digits
-        minimum) and a display text string. Order determines left-to-right
-        display in the popup. Up to 10 entries is practical; more than 10 is
+        Ordered list of characters to appear in the popup, entered as a
+        char-list (e.g. àáâãäåā). The engine serializes this into a JSON
+        array of {"id":"U_XXXX","text":"x"} objects. Order determines
+        left-to-right display. Up to 10 entries is practical; more than 10 is
         flagged by the KM_WARN_LONGPRESS_OVERSIZE lint rule (warn >8, error >10).
