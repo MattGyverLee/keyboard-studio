@@ -87,6 +87,7 @@ kmnFragment: |
   group(main) using keys
   c Context-sensitive sequence rules
   c Pattern: ascii_sequence + next_char > expanded_output / context
+  # TODO(km-keyman): add context rule for RR → ṛ collapse; single-R rule alone will produce ṛṛ
   {{kmnRules}}
 
 touchLayoutFragment: null
@@ -125,7 +126,7 @@ tests:
       ITRANS length vowel: second 'a' after 'a' produces long ā (U+0906).
       Context rule: a + a > ā.
   - input: ["R", "R"]
-    expectedOutput: "ṛṛ"
+    expectedOutput: "ṛ"
     description: >
       ITRANS retroflex: "RR" produces the retroflex vowel ṛ (U+0943).
       Context rule: R + R > ṛ.
