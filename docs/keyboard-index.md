@@ -49,6 +49,7 @@ Fields and parsing mirror [packages/engine/src/base-browser/kps-parser.ts](../pa
 | Russian Mnemonic R | `russian_mnemonic_r` | `ru` | Tigran Sarukhanyan | `../keyboards/release/r/russian_mnemonic_r` |
 | Umatilla Sahaptin/Ičiškíin | `sahaptin_umatilla` | `uma` | Jonathan A. Geary | `../keyboards/release/s/sahaptin_umatilla` |
 | Saraiki | `saraiki` | `skr` | Parvez Qadir | `../keyboards/release/s/saraiki` |
+| Bengali National/Jatiya (SIL) | `sil_bengali_national_jatiya` | `bn` | © SIL Global | `../keyboards/release/sil/sil_bengali_national_jatiya` |
 | Cameroon AZERTY | `sil_cameroon_azerty` | `aal`, `agq`, `muc`, `bss`, `aku`, `ael`, `ato`, `azo`, `bbk`, `bfj`, `bwt`, `ksf`, `bfd`, `bkc`, `bqz` … (+263 more) | Matthew Lee | `../keyboards/release/sil/sil_cameroon_azerty` |
 | Cameroon QWERTY | `sil_cameroon_qwerty` | `aal`, `agq`, `muc`, `bss`, `aku`, `ael`, `ato`, `azo`, `bbk`, `bfj`, `bwt`, `ksf`, `bfd`, `bkc`, `bqz` … (+263 more) | Matthew Lee | `../keyboards/release/sil/sil_cameroon_qwerty` |
 | Devanagari Phonetic (SIL) | `sil_devanagari_phonetic` | `hi`, `mai`, `lif-Deva`, `cdm-Deva` | 2002-2020 SIL International | `../keyboards/release/sil/sil_devanagari_phonetic` |
@@ -68,6 +69,7 @@ Fields and parsing mirror [packages/engine/src/base-browser/kps-parser.ts](../pa
 | Yorùbá with Dot | `sil_yoruba_dot` | `yo-Latn` | P. Baehr | `../keyboards/release/sil/sil_yoruba_dot` |
 | Yorùbá 8 | `sil_yoruba8` | `yo-Latn` | P. Baehr | `../keyboards/release/sil/sil_yoruba8` |
 | Sorani Behdini (Qwerty) | `sorani_behdini_arab_qwerty` | `ku-Arab`, `kmr-Arab`, `ku-Arab-TR`, `ckb` | © SIL Global | `../keyboards/release/s/sorani_behdini_arab_qwerty` |
+| Tamil 99 | `tamil99` | `ta` | Muthu Nedumaran | `../keyboards/release/tamil/tamil99` |
 | த99-விரிவு \| ta99 Extended | `thamizha_tamil99_ext` | `ta` | Umar(csd_one@yahoo.com), Mugunth (mugunth@gmail.com) and K. Sethu (skhome@gmail.com) | `../keyboards/release/t/thamizha_tamil99_ext` |
 | Triqui Itunyoso | `triqui_itunyoso` | `trq` | Kayla Shames | `../keyboards/release/t/triqui_itunyoso` |
 | Vietnamese Telex | `vietnamese_telex` | `vi` | Mike Vo | `../keyboards/release/v/vietnamese_telex` |
