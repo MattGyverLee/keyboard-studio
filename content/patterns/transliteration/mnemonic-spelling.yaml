@@ -59,7 +59,7 @@ questions:
     answerType: text
     required: false
 
-  - id: characterDescriptions
+  - id: translitCharDescriptions
     prompt: >
       For each sequence, describe the output character in user-facing language.
       Format: ascii_sequence,description
