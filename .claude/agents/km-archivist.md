@@ -128,7 +128,24 @@ When asked "when did X change?" or "why does Y exist?":
 **Implications for current question:** <what this means>
 ```
 
-### Phase 5: Doc Handoff
+### Phase 5: Sprint Status Tracking
+
+When an issue is picked up or completed, update the relevant sprint file (`sprints/engine_sprints.md` or `sprints/content_sprints.md`) to reflect its current status. Every issue line carries one of three markers:
+
+- `— *unassigned*` — no one has started it yet
+- `— *started by @username*` — someone has self-assigned it (update when a GitHub assignee appears)
+- `— *done*` — the issue is closed or all acceptance criteria are checked
+
+**When to update:**
+- When a PR is merged that closes an issue → change to `*done*`
+- When someone assigns an issue to themselves on GitHub → change to `*started by @username*`
+- When an issue is unassigned again → revert to `*unassigned*`
+
+Always commit sprint file updates alongside the relevant code commit or PR merge — not in a separate unrelated commit. Use `docs(process): update sprint status for #N` as the commit prefix when the only change is a status update.
+
+The milestone on each issue should match the sprint it belongs to (`KS-S1` through `KS-S7`). If an issue slips to a later sprint, update both the GitHub milestone and the sprint file.
+
+### Phase 6: Doc Handoff
 
 After a meaningful change lands (and before the commit goes out):
 
