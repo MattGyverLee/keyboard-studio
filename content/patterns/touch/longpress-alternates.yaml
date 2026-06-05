@@ -1,0 +1,161 @@
+# longpress-alternates.yaml
+# Touch pattern: press and hold a key to reveal a popup of related characters.
+# Strategy: S-08 (RALT/layer expansion — on touch this becomes a longpress subkey menu).
+# Priority 1 — the lead touch gallery pattern.
+
+id: longpress_alternates
+title: "Hold a key to see related letters"
+description: >
+  Press and hold any key on the touch keyboard to see a popup of related
+  characters. Lift your finger onto the one you want. This is the standard
+  way to access accented letters and script variants on a phone or tablet.
+category: touch
+appliesTo: []
+priority: 1
+group_visibility: any
+strategyId: "S-08"
+
+questions:
+  - id: hostKey
+    prompt: "Which key should show the popup? (virtual-key name, e.g. K_A)"
+    answerType: key-name
+    default: "K_A"
+
+  - id: alternates
+    prompt: >
+      The characters to show in the popup, in display order.
+      Type them without spaces. Example: àáâãäåā
+    answerType: char-list
+
+kmnFragment: |
+  c Longpress alternates are defined entirely in the touch-layout JSON (sk arrays).
+  c No KMN rules are required for this pattern.
+
+touchLayoutFragment: |
+  {
+    "id": "{{hostKey}}",
+    "sk": [
+      {{#each alternatesList}}
+      { "id": "U_{{codepoint}}", "text": "{{char}}" }{{#unless @last}},{{/unless}}
+      {{/each}}
+    ]
+  }
+
+reorderRules: null
+
+tests:
+  - input: ["K_A"]
+    expectedOutput: "a"
+    description: "plain tap on K_A still produces a (longpress does not affect tap)"
+
+validatedForFamilies: ["Latn"]
+sourceKeyboards:
+  - "release/sil/sil_euro_latin"
+  - "release/sil/sil_ipa"
+  - "release/b/bukawa"
+reviewedBy: "keyboard-studio-content-team"
+reviewDate: "2026-06-05"
+
+# ---------------------------------------------------------------------------
+# Extended metadata — YAML-only; not part of the TypeScript Pattern interface
+# ---------------------------------------------------------------------------
+
+frequency_in_corpus: "3/3 scanned touch keyboards use sk arrays; sil_euro_latin alone has 109 keys with longpress subkeys"
+
+provenance:
+  - keyboard: "release/sil/sil_euro_latin/source/sil_euro_latin.keyman-touch-layout"
+    note: >
+      Tablet layout. K_A has 16 longpress alternates (U+00E0 à, U+00E1 á, U+00E2 â,
+      U+00E3 ã, U+00E4 ä, U+00E5 å, U+0101 ā, U+0103 ă, U+00E6 æ, U+01E3 æ-macron, …).
+      K_E has 15 alternates (U+00E8 è through U+025B ɛ). K_S has 9 (ś ŝ š ṡ ṣ ş ș ß ſ).
+      109 keys carry sk arrays in total. Primary reference for this pattern.
+    rule: '"sk": [{"id": "U_00E0", "text": ""}, {"id": "U_00E1", "text": ""}, ...]'
+  - keyboard: "release/sil/sil_ipa/source/sil_ipa.keyman-touch-layout"
+    note: >
+      Tablet layout. K_Q longpress → ʔ ʕ ʡ ʢ (glottals); K_E → ɘ ə ɛ ɜ œ (mid vowels);
+      K_R → ɹ ɻ ɽ ɾ (rhotics). Shows the pattern used outside Latin accents — the same
+      sk mechanic works for any script's related-character groupings.
+    rule: '"sk": [{"id": "U_0294", "text": "ʔ"}, {"id": "U_0295", "text": "ʕ"}, ...]'
+  - keyboard: "release/b/bukawa/source/bukawa.keyman-touch-layout"
+    note: >
+      Phone layout (Bukawa, Papua New Guinea, BCP47 buk). K_Q longpress → ö Ö;
+      K_E → ê Ê; K_O → ô Ô; K_J → ŋ Ŋ. Minimal two-alternate pattern — shows
+      that sk arrays work equally well with just 2 entries as with 16.
+    rule: '"sk": [{"text": "ö", "id": "U_00F6"}, {"text": "Ö", "id": "U_00D6"}]'
+
+demo:
+  filled_kmn: |
+    c Demo: Longpress alternates on K_A
+    c On touch: hold A to see a popup with a-grave, a-acute, a-circumflex, a-tilde.
+    c No KMN rules are needed — the sk array in the touch layout handles everything.
+
+    store(&VERSION) '10.0'
+    store(&NAME) 'Longpress Alternates Demo'
+    store(&TARGETS) 'phone tablet'
+
+    begin Unicode > use(main)
+
+    group(main) using keys
+
+    c (no rules — longpress behaviour is defined in the touch layout JSON below)
+
+  touch_layout_fragment: |
+    {
+      "phone": {
+        "font": "Tahoma",
+        "layer": [
+          {
+            "id": "default",
+            "row": [
+              {
+                "id": 1,
+                "key": [
+                  {
+                    "id": "K_A",
+                    "text": "a",
+                    "sk": [
+                      { "id": "U_00E0", "text": "à" },
+                      { "id": "U_00E1", "text": "á" },
+                      { "id": "U_00E2", "text": "â" },
+                      { "id": "U_00E3", "text": "ã" }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+
+  sample_keys:
+    - keys: ["(hold A)"]
+      output: "popup: à á â ã"
+      note: "hold K_A on touch to see four a-variants; lift onto the desired letter"
+
+  sample_output: >
+    Hold A to see a popup showing a-grave (à), a-acute (á), a-circumflex (â),
+    and a-tilde (ã). Slide your finger onto the one you want and lift.
+
+skeleton:
+  touch_layout_template: |
+    {
+      "id": "{{hostKey}}",
+      "sk": [
+        { "id": "U_XXXX", "text": "{{alternates[0]}}" },
+        { "id": "U_XXXX", "text": "{{alternates[1]}}" }
+      ]
+    }
+
+  parameters:
+    - id: hostKey
+      description: >
+        Virtual-key name for the key whose longpress popup you are defining
+        (e.g. K_A, K_E, K_N). One skeleton entry per key.
+    - id: alternates
+      description: >
+        Ordered list of characters to appear in the popup. Each entry needs
+        both a Unicode codepoint ID (U_XXXX in uppercase hex, four digits
+        minimum) and a display text string. Order determines left-to-right
+        display in the popup. Up to 10 entries is practical; more than 10 is
+        flagged by the KM_WARN_LONGPRESS_OVERSIZE lint rule (warn >8, error >10).

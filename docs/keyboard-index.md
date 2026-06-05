@@ -28,6 +28,7 @@ Fields and parsing mirror [packages/engine/src/base-browser/kps-parser.ts](../pa
 | French Basic | `basic_kbdfr` | `fr` | (c) 2009-2019 SIL International | `../keyboards/release/basic/basic_kbdfr` |
 | Khmer (NIDA) Basic | `basic_kbdkni` | `km` | © SIL Global | `../keyboards/release/basic/basic_kbdkni` |
 | US Basic | `basic_kbdus` | `en`, `bg-Latn`, `id`, `io-Latn`, `ia-Latn`, `zlm-Latn`, `ms`, `bi-Latn`, `gil-Latn`, `ht`, `mwl-Latn`, `blc-Latn`, `roo-Latn`, `so`, `sw` … (+6 more) | © 2008-2020 SIL International | `../keyboards/release/basic/basic_kbdus` |
+| Bukawa Character Chart | `bukawa` | `buk` | William Eckermann | `../keyboards/release/b/bukawa` |
 | Clavier du Burkina | `clavbur9` | `bm`, `bbo`, `beh`, `bfo`, `bib`, `bmq`, `bof`, `box`, `bwj`, `bwq`, `bwy`, `bxl`, `cme`, `dgd`, `dgs` … (+18 more) | © SIL Burkina Faso | `../keyboards/release/c/clavbur9` |
 | Simplified Chinese | `cs_pinyin` | `zh` | SIL International | `../keyboards/release/c/cs_pinyin` |
 | Naija NFD | `el_naija` | `abn-Latn`, `bky-Latn`, `bwr-Latn`, `deg-Latn`, `igb-Latn`, `bin-Latn`, `efi-Latn`, `eka-Latn`, `ekp-Latn`, `elm-Latn`, `enn-Latn`, `ish-Latn`, `gbr-Latn`, `aaa-Latn`, `gkn-Latn` … (+37 more) | Andrew Cunningham and Chinedu Uchechukwu | `../keyboards/release/el/el_naija` |
