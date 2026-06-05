@@ -1,0 +1,298 @@
+# sea-stack-reorder.yaml
+# Reorder pattern for Southeast Asian scripts with complex character stacking
+# (Khmer, Burmese, Lao, etc.)
+# Strategy: S-09 (Context-sensitive cluster formation)
+# Priority 3 — complex, script-specific pattern.
+
+id: sea_stack_reorder
+title: "Subscript consonants reorder: type after base, display below"
+description: >
+  Southeast Asian scripts (Khmer, Burmese, Lao, Thai) use subscript consonants
+  to build consonant clusters. Subscripts are typed after the base consonant
+  but must be stored before vowel signs so they render below the base.
+  This pattern handles the reordering of subscripts, vowels, and tone marks
+  to match the Unicode canonical order for syllables in these scripts.
+category: reorder
+appliesTo: ["Khmr", "Mymr", "Laoo", "Thai", "Sinh"]
+priority: 3
+group_visibility: non-roman
+strategyId: "S-09"
+combinesWith: []
+
+questions:
+  - id: coengCodepoint
+    prompt: >
+      What is the Unicode codepoint for this script's subscript marker (without U+ prefix)?
+      Example for Khmer: 17D2 (Khmer Sign Coeng, displays as ◌)
+      Example for Burmese: 1039 (Myanmar Sign Virama, displays as ◌)
+    answerType: text
+
+  - id: baseConsonantMap
+    prompt: >
+      Map each keystroke to the base consonant it produces, one per line.
+      Format: keystroke,Unicode-codepoint
+      Example for Khmer Angkor:
+        K_K,U+1780
+        K_G,U+1784
+        K_D,U+178A
+    answerType: text
+
+  - id: subscriptConsonantMap
+    prompt: >
+      Map each keystroke to the subscript consonant it produces (after the coeng marker).
+      Format: keystroke,Unicode-codepoint
+      Example for Khmer Angkor:
+        K_D,U+178F
+        K_N,U+1793
+        K_M,U+1798
+    answerType: text
+
+  - id: vowelSignList
+    prompt: >
+      List all dependent vowel sign Unicode codepoints (space-separated, without U+ prefix).
+      Example for Khmer: 17B6 17B7 17B8 17B9 17BA 17BB 17BC 17BD 17BE 17BF 17C0 17C1 17C2 17C3 17C4 17C5
+    answerType: text
+
+  - id: toneMarkList
+    prompt: >
+      List tone mark or diacritic codepoints that appear after vowels (space-separated, without U+ prefix).
+      Leave blank if not applicable.
+      Example for Khmer: 17CB 17CD 17CE 17CF 17D0 17D1
+    answerType: text
+    required: false
+
+kmnFragment: |
+  c Subscript reordering for Southeast Asian scripts
+  c Type: base consonant, then subscript consonant, then vowel, then diacritics
+  c Store order: base consonant + coeng + subscript + vowel + diacritics
+
+  store(baseConsonants) '{{baseConsonants}}'
+  store(subscriptConsonants) '{{subscriptConsonants}}'
+  store(vowelSigns) '{{vowelSigns}}'
+
+  begin Unicode > use(main)
+
+  group(main) using keys
+  c Subscript input rule: type coeng, then subscript consonant
+  c output as: coeng + subscript
+  {{subscriptRules}}
+
+  c Vowel reordering rules: move vowels to after subscripts
+  {{vowelReorderRules}}
+
+  c Diacritic handling (if applicable)
+  {{diacriticRules}}
+
+reorderRules: |
+  c Subscript and vowel reordering rules (context-based)
+  c Example for Khmer:
+  c   any(vowelSigns) U+17D2 any(subscriptConsonants) > context(2) context(3) context(1)
+  {{kmnRules}}
+
+touchLayoutFragment: null
+
+tests:
+  - input: ["U+1780", "U+17D2", "U+178F", "U+17B6"]
+    expectedOutput: "ក្តា"
+    description: >
+      Khmer: Type ka (U+1780) + coeng (U+17D2) + ta (U+178F) + aa-vowel (U+17B6).
+      The coeng+ta represents the subscript consonant ta below ka.
+      The vowel is stored after the subscript for Unicode canonical order.
+  - input: ["U+1784", "U+17D2", "U+1793", "U+17B7"]
+    expectedOutput: "ង្និ"
+    description: >
+      Khmer: Type ga (U+1784) + coeng (U+17D2) + na (U+1793) + i-vowel (U+17B7).
+      Demonstrates subscript with a different consonant and vowel combination.
+
+validatedForFamilies: ["Khmr"]
+sourceKeyboards:
+  - "release/k/khmer_angkor/source/khmer_angkor.kmn"
+reviewedBy: "keyboard-studio-content-team"
+reviewDate: "2026-06-05"
+
+# ---------------------------------------------------------------------------
+# Extended metadata — YAML-only; not part of the TypeScript Pattern interface
+# ---------------------------------------------------------------------------
+
+frequency_in_corpus: "All Southeast Asian abugida keyboards require subscript reordering"
+
+notes: >
+  Subscript reordering is one of the most complex patterns in keyboard authoring.
+  Southeast Asian scripts (Khmer, Burmese, Lao, Thai, Sinhala) use subscript
+  consonants to represent consonant clusters, but the visual order doesn't match
+  the typing order or the Unicode canonical order.
+
+  **Why SEA scripts differ from Indic vowels:**
+
+  While both Indic (Devanagari, Tamil, Bengali) and SEA (Khmer, Burmese) scripts
+  have pre-base vowels and complex stacking, they differ in cluster formation:
+  - **Indic**: Vowels are inherent marks that attach to a single consonant; the
+    `indic-pre-base-vowel` pattern handles single pre-base vowels with context rules.
+  - **SEA**: Consonants cluster via an explicit subscript marker (coeng/virama) followed by
+    the subscript consonant; vowels apply to the entire cluster, requiring multi-step
+    reordering rules that account for the marker's position.
+
+  **The reordering flow:**
+
+  1. User types: base consonant (e.g., ក) + subscript marker (้) + subscript consonant (e.g., ល) + vowel (e.g., ា)
+  2. Input buffer: ក + U+17D2 + ល + ា
+  3. Reordering rule fires: `any(vowelSigns) U+17D2 any(subscriptConsonants) > context(2) context(3) context(1)`
+  4. Stored order: ក + U+17D2 + ល + ា (subscript before vowel)
+  5. Renderer reads stored order and displays subscript visually below: ក្លា
+
+  **Additional complexity:**
+
+  - Multiple subscripts stacking: some Khmer words have consonant clusters like ក្ល្ល (ka-la-la)
+    requiring cascading coeng markers and dual-subscript reordering rules
+  - Consonant shifters (Khmer U+17C9, U+17CA) that modify consonant class and affect vowel position
+  - Multi-part vowels (Khmer ាំ, ោះ, etc.) that comprise two combining marks
+  - Tone marks appearing after vowels with their own positioning rules
+
+  **Canonical reference:**
+
+  The Khmer Angkor keyboard (SIL Global, https://keyman.com/keyboards/khmer_angkor) is the
+  reference because its source code (khmer_angkor.kmn, lines 311-397) comprehensively documents
+  these rules with inline comments explaining each reordering case and edge case.
+
+provenance:
+  - keyboard: "release/k/khmer_angkor/source/khmer_angkor.kmn"
+    note: >
+      Khmer Angkor (SIL Global) implements subscript reordering via context rules.
+      Key rules (lines 311-397):
+      - Line 311: `+ any(input_subcons) > U+17D2 index(subcons, 1)` — output coeng + subscript
+      - Line 313-315: Delete subscript on backspace
+      - Lines 367-369: Remove coeng when vowels follow
+      - Lines 373-374: Reorder vowel + coeng + subscript → coeng + subscript + vowel
+      - Lines 379-381: Handle shifter + vowel + subscript reordering
+      - Lines 385-397: Complex dual-subscript reordering rules for ្ដ and ្រ combinations
+      The keyboard's README and inline comments explain the Unicode canonical order
+      and why each reordering rule is necessary. Canonical reference for S-09.
+
+demo:
+  filled_kmn: |
+    c Demo: Khmer subscript and vowel reordering
+    c Type base consonant, then subscript marker, then subscript consonant, then vowel
+    c Vowels typed after subscripts are reordered to the correct position.
+
+    store(&VERSION) '10.0'
+    store(&NAME) 'SEA Stack Reorder Demo'
+    store(&TARGETS) 'any'
+
+    store(vowelSigns) U+17B6 U+17B7 U+17B8 U+17B9 U+17BA U+17BB U+17BC U+17BD U+17BE U+17BF U+17C0 U+17C1 U+17C2 U+17C3 U+17C4 U+17C5
+
+    store(subscriptConsonants) U+1780 U+1781 U+1782 U+178F U+1793 U+1798
+
+    begin Unicode > use(main)
+
+    group(main) using keys
+    c Consonant keys
+    + [K_K] > U+1780   c ka
+    + [K_G] > U+1784   c ga
+
+    c Subscript rule: coeng (U+17D2) followed by subscript consonant
+    + [K_D] > U+17D2 U+178F   c coeng + ta
+    + [K_N] > U+17D2 U+1793   c coeng + na
+
+    c Vowel rules
+    + [K_A] > U+17B6   c aa-vowel
+    + [K_I] > U+17B7   c i-vowel
+
+    group(reorder)
+    c Reordering rules: if vowel comes after subscript, move vowel before subscript
+    c Pattern: vowel + coeng + subscript-consonant > coeng + subscript-consonant + vowel
+    any(vowelSigns) U+17D2 any(subscriptConsonants) > context(2) context(3) context(1)
+
+  sample_keys:
+    - keys: ["K_K", "K_D", "K_A"]
+      output: "ក្តា"
+      note: "ka + (coeng + ta) + aa-vowel → stored as ka + coeng + ta + aa, displayed as ka-with-ta-subscript and aa vowel"
+    - keys: ["K_G", "K_N", "K_I"]
+      output: "ង្និ"
+      note: "ga + (coeng + na) + i-vowel → stored as ga + coeng + na + i, displayed as ga-with-na-subscript and i vowel"
+
+  sample_output: >
+    Type a Khmer base consonant (ក or ង), then subscript marker+consonant (្ត or ្ន),
+    then vowel sign (ា or ិ). The subscript appears visually below the base consonant.
+    In the text buffer, the reordering rule ensures the order is:
+    base + coeng + subscript + vowel, which is the Unicode canonical order for Khmer syllables.
+
+skeleton:
+  kmn_template: |
+    c Subscript and vowel reordering for {{script}}
+    c Based on {{sourceKeyboard}} pattern
+
+    store(vowelSigns) {{vowelSignCodes}}
+    {{optionalToneMarks}}
+
+    begin Unicode > use(main)
+
+    group(main) using keys
+    c Base consonant rules
+    {{baseConsonantRules}}
+
+    c Subscript rule: type coeng marker, then subscript consonant
+    {{subscriptInputRule}}
+
+    c Vowel reordering rule: move vowel from after subscript to before it
+    c Pattern: vowel + coeng + subscript > coeng + subscript + vowel
+    group(reorder)
+    any(vowelSigns) U+{{coengCodepoint}} any(subscriptConsonants) > context(2) context(3) context(1)
+
+    c Optional: additional reordering for multi-subscript cases
+    c (uncomment if your script supports consonant clusters)
+    {{multiSubscriptRules}}
+
+  note: >
+    The core reordering rule (the `any(vowelSigns) U+COENG any(subscriptConsonants)` pattern)
+    moves a vowel that was typed after a subscript to after the subscript in the stored order.
+    The `context(N)` notation preserves the Nth matched item and repositions it.
+
+    **Key concepts:**
+
+    1. **Typing order:** base consonant → coeng marker → subscript consonant → vowel → diacritics
+    2. **Storage order (Unicode canonical):** base + subscript + vowel + diacritics
+       (the coeng marker acts as an intra-cluster connector and is stored accordingly)
+    3. **Reordering:** happens automatically via context rules when vowels are typed after subscripts
+
+    **For more complexity:**
+
+    - Multiple subscripts stacking: requires additional rules matching patterns like
+      `any(vowelSigns) U+COENG subscript1 U+COENG subscript2 > ... > U+COENG subscript1 U+COENG subscript2 vowel`
+    - Tone marks after vowels: add rules like `any(vowelSigns) any(toneMarks) U+COENG ... > ...`
+    - Consonant shifters (if present): requires rules handling shifter + vowel + subscript reordering
+
+    See Khmer Angkor (lines 311-397) for comprehensive examples of all these cases.
+
+  parameters:
+    - id: coengCodepoint
+      description: >
+        The subscript marker codepoint (without U+ prefix).
+        Example for Khmer: 17D2
+    - id: vowelSignCodes
+      description: >
+        Unicode codepoints for vowel signs (without U+ prefix, space-separated).
+        Example for Khmer: U+17B6 U+17B7 U+17B8 ... U+17C5
+    - id: baseConsonantRules
+      description: >
+        Rules mapping keystroke to base consonant output (one per line).
+        Example for Khmer:
+          + [K_K] > U+1780   c ka
+          + [K_G] > U+1784   c ga
+    - id: subscriptInputRule
+      description: >
+        Rule defining subscript input (coeng marker + subscript consonant).
+        Example: `+ [K_D] > U+17D2 U+178F   c coeng + ta-subscript`
+    - id: subscriptConsonants
+      description: >
+        Store containing subscript consonant codepoints.
+        Example: store(subscriptConsonants) U+1780 U+1781 U+1782 U+178F U+1793 U+1798
+    - id: multiSubscriptRules
+      description: >
+        Rules for dual or triple subscript cases (if applicable).
+        Leave blank if your script doesn't support multiple subscripts.
+        Example for Khmer (line 385-397 of khmer_angkor.kmn):
+          U+17D2 U+178A U+17D2 U+179A > context(1) U+178F context(3) context(4)
+    - id: optionalToneMarks
+      description: >
+        Store definition for tone marks (if applicable).
+        Example: store(toneMarks) U+17CB U+17CD U+17CE U+17CF U+17D0 U+17D1
