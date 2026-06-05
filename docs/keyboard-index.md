@@ -26,6 +26,7 @@ Fields and parsing mirror [packages/engine/src/base-browser/kps-parser.ts](../pa
 | Armenian Mnemonic R | `armenian_mnemonic_r` | `hy` | Tigran Sarukhanyan | `../keyboards/release/a/armenian_mnemonic_r` |
 | Vai (Athinkra) | `athinkra_vai` | `vai` | Jason Glavy | `../keyboards/release/athinkra/athinkra_vai` |
 | Vai Typewriter (Athinkra) | `athinkra_vai_typewriter` | `vai` | Jason Glavy | `../keyboards/release/athinkra/athinkra_vai_typewriter` |
+| Balochi Urdu | `balochi_urdu` | `bal` | © SIL Global | `../keyboards/release/b/balochi_urdu` |
 | French Basic | `basic_kbdfr` | `fr` | (c) 2009-2019 SIL International | `../keyboards/release/basic/basic_kbdfr` |
 | Khmer (NIDA) Basic | `basic_kbdkni` | `km` | © SIL Global | `../keyboards/release/basic/basic_kbdkni` |
 | US Basic | `basic_kbdus` | `en`, `bg-Latn`, `id`, `io-Latn`, `ia-Latn`, `zlm-Latn`, `ms`, `bi-Latn`, `gil-Latn`, `ht`, `mwl-Latn`, `blc-Latn`, `roo-Latn`, `so`, `sw` … (+6 more) | © 2008-2020 SIL International | `../keyboards/release/basic/basic_kbdus` |
@@ -39,6 +40,7 @@ Fields and parsing mirror [packages/engine/src/base-browser/kps-parser.ts](../pa
 | GFF Amharic | `gff_amharic` | `am` | The Geʾez Frontier Foundation | `../keyboards/release/gff/gff_amharic` |
 | Hausa Kano | `hausa_kano` | `ha-Latn` | Hamza Sulayman | `../keyboards/release/h/hausa_kano` |
 | Hindi Devanagari Phonetic (ITRANS) | `itrans_devanagari_hindi` | `hi`, `mr`, `sa`, `bho`, `mai`, `awa`, `bra`, `mag`, `raj`, `kok`, `gom`, `knn-Deva`, `hne`, `bgc`, `sck` … (+2 more) | Shree Devi Kumar | `../keyboards/release/itrans/itrans_devanagari_hindi` |
+| Ibọnọ Chwerty | `ibono_chwerty` | `ibn` | Rogers Katelem Edeh | `../keyboards/release/i/ibono_chwerty` |
 | Khmer Angkor | `khmer_angkor` | `km` | Makara Sok | `../keyboards/release/k/khmer_angkor` |
 | Komono (Côte d'Ivoire) | `komono_ci` | `kqg` | Kirk Rogers | `../keyboards/release/k/komono_ci` |
 | Nulisa Aksara Jawa | `jawa` | `id-Java`, `jv-Java`, `kaw-Java`, `mad-Java`, `sas-Java`, `su-Java`, `osi`, `tes` | Benny Lin | `../keyboards/release/j/jawa` |
@@ -69,3 +71,4 @@ Fields and parsing mirror [packages/engine/src/base-browser/kps-parser.ts](../pa
 | த99-விரிவு \| ta99 Extended | `thamizha_tamil99_ext` | `ta` | Umar(csd_one@yahoo.com), Mugunth (mugunth@gmail.com) and K. Sethu (skhome@gmail.com) | `../keyboards/release/t/thamizha_tamil99_ext` |
 | Triqui Itunyoso | `triqui_itunyoso` | `trq` | Kayla Shames | `../keyboards/release/t/triqui_itunyoso` |
 | Vietnamese Telex | `vietnamese_telex` | `vi` | Mike Vo | `../keyboards/release/v/vietnamese_telex` |
+| Winchus | `winchus` | `qu` | Alex Castille Larkin (SIL) | `../keyboards/release/w/winchus` |
