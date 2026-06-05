@@ -104,7 +104,7 @@ demo:
 
     store(&VERSION) '10.0'
     store(&NAME) 'Hint Characters Demo'
-    store(&TARGETS) 'phone tablet'
+    store(&TARGETS) 'any'
 
     begin Unicode > use(main)
 
