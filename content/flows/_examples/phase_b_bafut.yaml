@@ -72,8 +72,10 @@ answers:
   - questionId: pb_digit_set
     value: "western"
 
-  # 5 special letters + 4 diacritic marks + uppercase variants = ~14 new characters.
-  # Falls in the 5-20 range -> A1: small.
+  # For A1, count the base inventory entries: 5 special letters + their 5
+  # uppercase forms = 10. The 4 tone marks are combining marks applied to a
+  # base, not separate inventory entries, so they are not counted here. 10
+  # falls in the 5-20 range -> A1: small.
   - questionId: pb_char_count
     value: "small"
 

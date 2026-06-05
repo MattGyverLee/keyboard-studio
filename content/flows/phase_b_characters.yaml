@@ -1,6 +1,9 @@
 # Phase B -- Character inventory discovery (spec §8 step 4)
 #
 # Key outputs:
+#   computed_axes : a Partial<DiscoveryAxisVector> (packages/contracts). The
+#                   labels below (A1/A3/A4/A7) are shorthand for this footer; the
+#                   actual TS field names live in axes.ts (DiscoveryAxisVector).
 #   computed_axes.A1 : character-count scale
 #                      ("tiny" | "small" | "medium" | "large")
 #   computed_axes.A3 : phonetic intuition strength
@@ -9,11 +12,26 @@
 #                      ("none" | "stacking-combining" | "replacing-cycling" | "multi-family")
 #   computed_axes.A7 : spare-key availability
 #                      ("many" | "RAlt-only" | "fully-booked")
-#   eligible_pattern_ids  : see footer comments
-#   eligible_inventory_entries : InventoryChar[] fed by all discovery methods
+#
+# How the footer names map to contract types (these are NOT SurveyPhaseResult
+# fields except where noted):
+#   eligible_pattern_ids       -- an engine INTERMEDIATE: the gallery candidates
+#                                 narrowed by the §7.2 strategy resolution. The
+#                                 user's eventual picks become
+#                                 SurveyPhaseResult.selectedPatternIds (a
+#                                 different, later set).
+#   eligible_inventory_entries -- the confirmed InventoryChar[] from
+#                                 CharacterDiscoveryService; NOT a field on
+#                                 SurveyPhaseResult.
+#   The phase emits SurveyPhaseResult { phase: "B", answers: SurveyAnswer[],
+#   computedAxes?, selectedPatternIds? }.
 #
 # Routing context supplied by the engine from Phase A:
-#   {{detected_group}}   -- "qwerty-qwertz" | "azerty" | "non-roman"
+#   The engine promotes the Phase A completed-instance footer value
+#   `routing_group` (see content/flows/_examples/phase_a_bafut.yaml) into the
+#   `ctx.routing_group` namespace before Phase B runs; likewise `script_family`
+#   -> `ctx.script_family`. Conditions in this flow read `ctx.*`.
+#   {{detected_group}}   -- "qwerty-qwertz" | "azerty" | "non-roman" (= ctx.routing_group)
 #   {{script_family}}    -- "indic" | "sea" | "rtl" | "syllabic" | "other"
 #                          (non-roman only; engine passes "" for Latin groups)
 #   {{language_name}}    -- autonym from Phase A language_name_autonym answer
@@ -579,8 +597,8 @@ questions:
       other without a vowel between them, the writing system joins them into
       a special combined shape. For example, in Devanagari the letters k and
       sh can combine into a single two-part shape. The keyboard needs a special
-      sign (sometimes called a vowel-removal sign) to trigger this joining.
-      Does your script do this?
+      sign that removes the built-in vowel from a consonant to trigger this
+      joining. Does your script do this?
     type: bool
     required: true
     next:
@@ -650,10 +668,10 @@ questions:
   - id: pb_sea_stacked_consonants
     prompt: "Does your script stack consonants (place one on top of or below another) to represent consonant clusters?"
     help_text: >
-      Some Southeast Asian scripts place consonants in a smaller subscript
-      form below the main consonant row when consonants cluster together, for
-      example in Khmer where a subscript marker causes the following consonant
-      to appear as a smaller form below the base. This is different from the
+      Some Southeast Asian scripts place consonants in a smaller form below
+      the main consonant row when consonants cluster together, for example in
+      Khmer where a small connector sign causes the following consonant to
+      appear as a smaller form below the base. This is different from the
       side-attachment described in the previous question. Does your script
       do this?
     type: bool
@@ -712,12 +730,12 @@ questions:
     prompt: "In your writing system, does each character represent a complete syllable, or do you combine parts (such as a consonant symbol and a vowel symbol) to form a syllable?"
     help_text: >
       Some writing systems give each possible syllable its own distinct
-      character (for example, Cherokee and Vai). Others let you combine a
-      consonant symbol with a vowel symbol to express any syllable (for
-      example, Canadian Aboriginal Syllabics and Ethiopic/Ge'ez). Note: full
-      support for Ethiopic and some large syllabic inventories is still being
-      added to this tool (spec section 16). This branch currently supports
-      Vai, Cherokee, and Canadian Aboriginal Syllabics best.
+      character that you type with a single keypress (for example, Cherokee,
+      Vai, and Ethiopic/Ge'ez). Others let you build a syllable by combining a
+      consonant symbol with a vowel symbol (for example, Canadian Aboriginal
+      Syllabics). Note: full support for Ethiopic and some large syllable-based
+      writing systems is still being added to this tool. This branch currently
+      works best for Vai, Cherokee, and Canadian Aboriginal Syllabics.
     type: radio
     required: true
     options:

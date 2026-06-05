@@ -164,7 +164,21 @@ the array entirely.
 
 The `computed_axes` and `routing_group` fields below the answers array are
 informational — they document what the engine computed from the answers but are
-not part of the `SurveyAnswer` contract.
+not part of the `SurveyAnswer` contract. `computed_axes` uses shorthand axis
+labels (e.g. `A1`, `A4`); the corresponding TypeScript field names live in
+`DiscoveryAxisVector` (`packages/contracts/src/axes.ts`) and may differ.
+
+**Carrying context across phases.** A later phase may need a value an earlier
+phase computed. The engine promotes the informational footer values of a
+completed phase into a `ctx.<key>` namespace before the next phase runs — e.g.
+Phase A's `routing_group` and `script_family` become `ctx.routing_group` and
+`ctx.script_family`, which Phase B conditions read (see Branching).
+
+**Question-id prefixing.** Phase A ids are unprefixed (`language_name_autonym`);
+later phases prefix their ids by phase (Phase B uses `pb_`) so answers from
+multiple phases never collide if merged into one map. New flows should follow
+the per-phase prefix convention; existing Phase A ids are stable and are not
+retro-prefixed.
 
 ---
 
