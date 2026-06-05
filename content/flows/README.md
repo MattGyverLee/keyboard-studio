@@ -35,13 +35,14 @@ questions:
 | Field | Required | Description |
 |---|---|---|
 | `id` | yes | Stable snake_case key. Used as `questionId` in completed instances. |
-| `prompt` | yes | The question shown to the user. Plain language; no technical jargon. |
-| `help_text` | yes | One or two friendly sentences expanding on the prompt. |
-| `type` | yes | Input type — see Types below. |
-| `options` | when type is `select` or `radio` | List of `{value, label}` pairs. |
-| `options_source` | when type is `autocomplete` | Data-source token (e.g. `@langtags_iso639`). |
-| `required` | yes | `true` or `false`. |
+| `prompt` | yes (unless `engine_resolved`) | The question shown to the user. Plain language; no technical jargon. |
+| `help_text` | yes (unless `engine_resolved`) | One or two friendly sentences expanding on the prompt. |
+| `type` | yes (unless `engine_resolved`) | Input type — see Types below. |
+| `options` | when type is `select`, `radio`, or `multi_select` (and not seeded via `options_source`) | List of `{value, label}` pairs. |
+| `options_source` | when type is `autocomplete`, or a runtime-seeded `multi_select` | Data-source token (e.g. `@langtags_iso639`, `@picker_candidates_seeded`). |
+| `required` | yes (unless `engine_resolved`) | `true` or `false`. |
 | `next` | yes | Routing rule — see Branching below. |
+| `engine_resolved` | no | Optional boolean. When `true`, the question is never shown to the user; the engine evaluates its `next` rules from context and prior answers (never `value`) and jumps directly. `prompt`, `help_text`, `type`, `options`, and `required` are ignored and should be omitted. Used for routing nodes that branch on Phase A state. |
 
 ### Types
 
@@ -52,6 +53,7 @@ questions:
 | `autocomplete` | Searchable list; `options_source` names the data provider. |
 | `radio` | Mutually-exclusive option buttons (short lists). |
 | `bool` | Yes / No toggle. |
+| `multi_select` | Checkbox grid; zero or more options may be selected. Answer `value` is a comma-and-space-delimited token string, e.g. `"U+0301, U+0300, U+0304"`. An empty selection is encoded as an empty string `""`. `options_source` may be used instead of a literal `options` list when the grid is seeded at runtime (e.g. `@picker_candidates_seeded`). |
 
 Options are objects with `value` (the stored token) and `label` (the display string).
 
@@ -89,8 +91,33 @@ next:
   - default: author_display_name
 ```
 
-`condition` expressions use the current question's answer value. The engine
-evaluates them in order; the first matching rule's `goto` target is used.
+The engine evaluates rules in order; the first matching rule's `goto` target is
+used.
+
+`condition` expressions may reference any of three namespaces:
+
+| Reference | Meaning |
+|---|---|
+| `value` | The current question's own answer (the common case). |
+| `answers.<questionId>` | Any earlier answer in the same flow, by question id. |
+| `ctx.<key>` | An engine-computed context value set before this phase began. |
+
+Valid `ctx` keys carried from Phase A into Phase B:
+
+- `ctx.routing_group` — `"qwerty-qwertz"` \| `"azerty"` \| `"non-roman"`.
+- `ctx.script_family` — `"indic"` \| `"sea"` \| `"rtl"` \| `"syllabic"` \| `"other"`
+  (only set when `ctx.routing_group == "non-roman"`).
+
+```yaml
+next:
+  - condition: "ctx.routing_group == 'non-roman'"
+    goto: pb_non_roman_branch
+  - default: pb_standard_letters
+```
+
+The bare `value == '...'` form remains valid and refers to the current
+question. An `engine_resolved` question's conditions must use only `ctx.*` or
+`answers.*` (never `value`, since it is never answered).
 
 ### Template variables
 
@@ -102,8 +129,9 @@ render time. These are NOT user answers — they come from engine-computed conte
 | `{{detected_group}}` | Auto-detected routing group from Phase A heuristics (spec §9). |
 | `{{language_name}}` | The `language_name_autonym` answer from earlier in the same flow. |
 
-Do not put template variables in `id` fields or `value` fields — only in `prompt`
-and `help_text` strings.
+Template variables may appear in `prompt`, `help_text`, and option `label`
+strings. Do not put them in `id` or `value` fields — those are stored tokens and
+must be literal strings.
 
 ---
 
@@ -157,7 +185,9 @@ output time (spec §12). It is never written into the `.kmn` source file.
 | File | Shape | Description |
 |---|---|---|
 | `phase_a_identity.yaml` | Template | Phase A identity and routing questions (spec §8 step 3). |
-| `_examples/phase_a_bafut.yaml` | Completed instance | Hypothetical Bafut keyboard — shows expected answer shape. |
+| `phase_b_characters.yaml` | Template | Phase B character-inventory discovery questions (spec §8 step 4). Branches on `routing_group` and `script_family` from Phase A. |
+| `_examples/phase_a_bafut.yaml` | Completed instance | Hypothetical Bafut keyboard — shows expected Phase A answer shape. |
+| `_examples/phase_b_bafut.yaml` | Completed instance | Hypothetical Bafut keyboard — shows expected Phase B answer shape (routing_group: qwerty-qwertz, primary_strategy: S-02). |
 
 ---
 
