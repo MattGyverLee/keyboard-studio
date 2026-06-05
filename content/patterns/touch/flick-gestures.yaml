@@ -14,6 +14,7 @@ appliesTo: []
 priority: 3
 group_visibility: any
 strategyId: "S-08"
+combinesWith: []
 
 questions:
   - id: hostKey
