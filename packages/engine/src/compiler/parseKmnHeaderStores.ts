@@ -4,6 +4,9 @@
 //
 // Per km-keyman (#39 cycle 3): five names matter for the source-on-the-fly
 // compile path: LAYOUTFILE, VISUALKEYBOARD, BITMAP, KMW_EMBEDJS, KMW_HELPFILE.
+// DISPLAYMAP added: PUA-font JSON sidecars (e.g. KbdArab.json) referenced via
+// relative paths that traverse into release/shared/; kmc warns (not errors) if
+// absent, but the compile fails for PUA-mapped keyboards when it cannot resolve.
 
 export interface KmnHeaderStore {
   /** Store name without the leading '&', uppercased (e.g. "LAYOUTFILE"). */
@@ -20,6 +23,7 @@ const SYSTEM_STORES: Record<string, boolean> = {
   BITMAP: false,
   KMW_EMBEDJS: true,
   KMW_HELPFILE: false,
+  DISPLAYMAP: false,
 };
 
 /**
