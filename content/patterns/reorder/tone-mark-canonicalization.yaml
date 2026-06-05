@@ -1,0 +1,382 @@
+# tone-mark-canonicalization.yaml
+# Tone mark canonicalization pattern for Southeast Asian scripts
+# Strategy: S-09 (Context-sensitive cluster formation)
+# Priority 3 — complex, script-specific pattern.
+
+id: tone_mark_canonicalization
+title: "Tone mark canonicalization: reorder to canonical position"
+description: >
+  Southeast Asian scripts (Thai, Lao) use tone marks that must appear in a
+  fixed position relative to the syllable, regardless of typing order. The
+  user can type the tone mark before, after, or in the middle of the syllable
+  — the keyboard always stores it in the same canonical position (above the
+  base consonant or vowel). This pattern uses context rules to reorder tone
+  marks so the rendered output always has the correct visual appearance.
+category: reorder
+appliesTo: ["Thai", "Laoo"]
+priority: 3
+group_visibility: non-roman
+strategyId: "S-09"
+combinesWith: []
+
+questions:
+  - id: toneMarkCodepoints
+    prompt: >
+      List all tone marks used in your script.
+      Format: one per line, comma-separated: tone_name,unicode_codepoint
+
+      Example for Thai:
+        mai_tho,U+0E48      (tone 2 — grave accent above)
+        mai_tri,U+0E49      (tone 3 — acute accent above)
+        mai_chatha,U+0E4A   (tone 4 — vertical line above)
+        mai_kham,U+0E4B     (tone 5 — circumflex above)
+
+      Example for Lao:
+        mai_kho,U+0EC8      (tone 2)
+        mai_tho,U+0EC9      (tone 3)
+        mai_khang,U+0ECA    (tone 4)
+        mai_chantha,U+0ECB  (tone 5)
+
+      Find codepoints at unicode.org or in the exemplar keyboard.
+    answerType: text
+
+  - id: baseCharacterClasses
+    prompt: >
+      Which character classes can tone marks attach to?
+      List the character classes with their Unicode codepoints.
+      Format: class_name followed by codepoints (space-separated)
+
+      Example for Lao (from lao_2008_basic.kmn):
+        Consonants: U+0E81 U+0E82 U+0E84 (etc.)
+        Vowels: U+0EB4 U+0EB5 U+0EB6 U+0EB7 U+0EB8 U+0EB9 U+0EBB U+0EB1 U+0EB3
+
+      Tone marks typically attach to:
+      - Vowels that appear above the consonant
+      - Consonants (in syllables with no written vowel)
+      - The last vowel in a sequence (for diphthongs)
+
+      List the characters that can precede a tone mark in canonical position.
+    answerType: text
+
+  - id: canonicalPosition
+    prompt: >
+      What is the canonical position for tone marks in your script?
+
+      In Lao and Thai, the canonical order for a syllable is:
+        (initial consonant) + (vowel signs) + (tone mark) + (final consonant)
+
+      Typing order varies by user and keyboard layout. Describe which reordering
+      cases apply to your keyboard:
+
+      Case A: User types tone mark BEFORE the vowel
+        typed: consonant + tone + vowel → store: consonant + vowel + tone
+
+      Case B: User types tone mark AFTER a vowel-already-in-place
+        typed: consonant + vowel + tone → store: no reordering needed (already canonical)
+
+      Case C: Certain vowel sequences (like sala-am U+0EB3 in Lao) are typed
+        AFTER the tone mark is already applied to the consonant:
+        typed: consonant + tone + sala-am key → store: consonant + sala-am + tone
+        (lao_2008_basic line 72 handles this)
+
+      List the cases relevant to your script.
+    answerType: text
+
+  - id: constraintCombinations
+    prompt: >
+      Are there invalid combinations to block with a beep?
+
+      Example from lao_2008_basic.kmn (lines 76–88):
+        any(Tone) + any(ToneKey) → beep       (no double tone marks)
+        any(VPrefix) + any(ToneKey) → beep    (pre-vowel cannot take tone)
+        any(VSuffix) + any(ToneKey) → beep    (post-vowel cannot take tone)
+        any(Vowel) + any(VScriptKey) → beep   (no double vowel scripts)
+
+      If you want invalid combinations to beep (A6=loud, secondary S-10),
+      list them here. Leave blank if all combinations should be allowed silently.
+    answerType: text
+    required: false
+
+kmnFragment: |
+  c Tone mark canonicalization for Southeast Asian scripts (S-09)
+  c Reorder tone marks to canonical position (after vowel signs, before finals).
+  c Tone marks appear in any typing order; stored in canonical order.
+
+  store(Tone) {{toneMarkCodepoints}}
+  store(ToneKey) '{{toneMarkKeys}}'
+  store(Vowel) {{vowelCodepoints}}
+  store(Consonant) {{consonantCodepoints}}
+
+  begin Unicode > use(main)
+
+  group(main) using keys
+  c Reorder tone after sala-am or similar special vowels (Case C)
+  {{salaamReorderRule}}
+
+  c Prevent double tone marks and other invalid combinations
+  {{constraintRules}}
+
+  c Direct tone mark input
+  + any(ToneKey) > index(Tone, 1)
+
+reorderRules: |
+  c Tone mark reordering rules (KMN context syntax)
+  c Example for Lao (lao_2008_basic.kmn line 72):
+  c   U+0EB3 + any(ToneKey) > index(Tone,2) context
+  c   (sala-am typed after tone → tone moves after sala-am)
+  {{kmnRules}}
+
+touchLayoutFragment: null
+
+tests:
+  - input: ["U+0EB3", "U+0EC9"]
+    expectedOutput: "ໃ້"
+    description: >
+      Lao: sala-am (U+0EB3) already in buffer, then type tone 3 (U+0EC9 via ToneKey).
+      Rule on line 72 fires: U+0EB3 + ToneKey → index(Tone,2) context
+      = tone mark stored before sala-am: U+0EC9 U+0EB3. Renders tone above sala-am.
+  - input: ["U+0EC9", "U+0EC9"]
+    expectedOutput: "[beep — double tone blocked]"
+    description: >
+      Lao: tone + tone → beep and suppress (constraint rule line 76).
+      any(Tone) + any(ToneKey) → context beep.
+  - input: ["U+0E81", "U+0EC9"]
+    expectedOutput: "ກ້"
+    description: >
+      Lao: consonant ko (U+0E81) + tone 3 (U+0EC9) → stored as U+0E81 U+0EC9.
+      No reordering needed; tone mark falls after consonant.
+
+validatedForFamilies: ["Laoo"]
+sourceKeyboards:
+  - "release/l/lao_2008_basic/source/lao_2008_basic.kmn"
+reviewedBy: "keyboard-studio-content-team"
+reviewDate: "2026-06-05"
+
+# ---------------------------------------------------------------------------
+# Extended metadata — YAML-only; not part of the TypeScript Pattern interface
+# ---------------------------------------------------------------------------
+
+frequency_in_corpus: "Common in Lao and Thai keyboards; present in all tone-bearing SEA scripts"
+
+notes: >
+  **Tone mark canonicalization vs. subscript reordering:**
+  Both are S-09 (context-sensitive cluster formation), but they handle different
+  structural needs:
+
+  - **Subscript reordering** (sea-stack-reorder): base consonant + coeng marker
+    + subscript consonant + vowel. The subscript must be stored BEFORE the vowel
+    so it displays below the base. Uses coeng (U+17D2 or similar) as a connector.
+
+  - **Tone mark canonicalization** (this pattern): consonant/vowel + tone mark.
+    The tone mark must be stored in a fixed position AFTER the base and vowel
+    signs so it displays above the syllable correctly. No connector character.
+
+  **The lao_2008_basic reordering case:**
+  The Lao sala-am vowel (U+0EB3 = ◌ໍ + ◌ ຳ) is a composite vowel that can
+  follow a tone mark already applied to the consonant. If the user has typed
+  consonant + tone + sala-am, the keyboard must reorder to consonant + sala-am
+  + tone. This is lao_2008_basic.kmn line 72:
+
+    U+0EB3 + any(ToneKey) > index(Tone,2) context
+
+  The output `index(Tone,2) context` means:
+  - index(Tone,2): the tone mark that matches position 2 (the key being pressed)
+  - context: the existing buffer content (the sala-am already stored)
+  So tone mark is stored BEFORE sala-am in the buffer (tone + sala-am), not after.
+  The renderer places tone above, sala-am beside — Unicode canonical order for Lao.
+
+  **Why Vietnamese is NOT in this pattern:**
+  Standard Vietnamese (Quoc Ngu) uses precomposed Latin characters (á, ề, ộ etc.)
+  — tone marks are part of the precomposed codepoint, not combining marks. No
+  reordering is needed. Only NFC-normalized output via S-03/S-05 is required.
+  Vietnamese tone-rich variants that use combining marks are outside v1 scope.
+
+  **Common mistakes to avoid:**
+
+  1. **Using `any()` in output without checking targets**
+     `any(X)` in KMN output is only supported for desktop targets. For cross-platform
+     keyboards, use `index(storeName, N)` where N is the context position of the
+     `any(storeName)` match. Always use `index()` for portability.
+
+  2. **Confusing tone mark visual position with storage order**
+     The tone mark renders ABOVE the syllable — but this is a font/shaping decision.
+     The keyboard's job is to emit codepoints in Unicode canonical order. Check the
+     Unicode standard for your script to confirm canonical ordering.
+
+  3. **Not handling the sala-am / composite vowel case**
+     Some Lao/Thai vowels are composites typed after the tone mark is already in
+     buffer. These require explicit reorder rules (like lao_2008_basic line 72).
+     Missing this produces tone-after-vowel in buffer, which can mismatch rendering.
+
+  4. **Not blocking invalid combinations**
+     Double tone marks, tone on pre-vowels, tone on suffixes — all should beep if
+     A6=loud. Use constraint rules before the main rules (see lao_2008_basic lines 76–88).
+
+  5. **Testing only canonical typing order**
+     Test every input order: tone first, tone in the middle, tone after the vowel.
+     Also test constraint rules: verify the beep fires on invalid combinations.
+
+  **Testing checklist:**
+  Before submitting, verify:
+  - [ ] KMN compiles with zero errors (kmc build keyboard.kmn)
+  - [ ] Canonical typing order produces correct output
+  - [ ] Sala-am (or similar composite vowel) reorder fires correctly if applicable
+  - [ ] Double-tone beep fires
+  - [ ] Invalid vowel-sequence beeps fire
+  - [ ] All tone marks produce correct Unicode codepoints
+  - [ ] Visual output matches exemplar keyboard
+
+provenance:
+  - keyboard: "release/l/lao_2008_basic/source/lao_2008_basic.kmn"
+    note: >
+      Lao 2008 Basic (© John Durdin). The primary reference for Lao tone mark
+      canonicalization. Canonical exemplar for this pattern.
+
+      Key structures:
+      - Line 34: store(Tone) U+0EC8 U+0EC9 U+0ECA U+0ECB U+0ECC
+      - Line 35: store(ToneKey) "jhHJ%"  — keystroke set for tone marks
+      - Line 72: U+0EB3 + any(ToneKey) > index(Tone,2) context
+          The canonical reordering rule: when sala-am (U+0EB3) is followed by a
+          tone key, output the TONE first (index(Tone,2)) then context (sala-am).
+          This places tone before sala-am in the buffer — correct Lao canonical order.
+      - Lines 76–88: Constraint rules blocking invalid combinations:
+          any(Tone) + any(ToneKey) > context beep   (no double tones)
+          any(VPrefix) + any(ToneKey) > context beep (pre-vowels can't take tone)
+          any(VSuffix) + any(ToneKey) > context beep (suffixes can't take tone)
+          any(Vowel) + any(VScriptKey) > context beep (no double vowel scripts)
+      - Line 97: + any(ToneKey) > index(Tone,1)  — direct tone mark input
+
+demo:
+  filled_kmn: |
+    c Tone mark canonicalization demo: Lao
+    c Based on lao_2008_basic.kmn (John Durdin)
+    c Demonstrates sala-am reorder (line 72) and double-tone constraint (line 76)
+
+    store(&VERSION) '10.0'
+    store(&NAME) 'Lao Tone Reorder Demo'
+    store(&TARGETS) 'desktop'
+
+    store(Tone)     U+0EC8 U+0EC9 U+0ECA U+0ECB U+0ECC
+    store(ToneKey)  "jhHJ%"
+    store(Consonant) U+0E81 U+0E82 U+0E84 U+0E87 U+0E88
+    store(Vowel)    U+0EB4 U+0EB5 U+0EB6 U+0EB7 U+0EB8 U+0EB9 U+0EBB U+0EB1
+
+    begin Unicode > use(main)
+
+    group(main) using keys
+    c Reorder tone after sala-am (lao_2008_basic line 72)
+    c User typed: consonant + tone + sala-am key
+    c Stored as: consonant + sala-am + tone (tone before sala-am in buffer)
+    U+0EB3 + any(ToneKey) > index(Tone,2) context
+
+    c Block double tone marks (lao_2008_basic line 76)
+    any(Tone) + any(ToneKey) > context beep
+
+    c Direct tone mark input: keystroke → tone mark codepoint
+    + any(ToneKey) > index(Tone,1)
+
+    c Consonant and vowel pass-through (abbreviated)
+    + "k" > U+0E81   c ko
+    + "f" > U+0E82   c kho
+    + ";" > U+0EB3   c sala-am
+
+  sample_keys:
+    - keys: [";", "j"]
+      output: "ໍ້"
+      note: "sala-am then tone-3 key: reorder fires — tone stored before sala-am"
+    - keys: ["k", "j"]
+      output: "ກ້"
+      note: "consonant ko + tone-3 key: no reorder, tone stored after consonant"
+    - keys: ["j", "j"]
+      output: "[beep]"
+      note: "double tone: blocked by constraint rule, beep sounds"
+
+  sample_output: >
+    Type Lao consonants and then the tone key (j=tone2, h=tone3, H=tone4, J=tone5).
+    When sala-am (;) is typed after a tone mark, the tone reorders to appear before
+    sala-am in the buffer — the correct Unicode canonical order for Lao.
+    Typing two tone marks in a row triggers a beep and suppresses the second.
+
+skeleton:
+  kmn_template: |
+    c Tone mark canonicalization ({{language}})
+    c Based on {{sourceKeyboard}}
+
+    store(&VERSION) '10.0'
+    store(&NAME) '{{keyboardName}}'
+    store(&TARGETS) 'desktop'
+
+    store(Tone)     {{toneMarkCodepoints}}
+    store(ToneKey)  '{{toneMarkKeys}}'
+    store(Vowel)    {{vowelCodepoints}}
+    store(Consonant) {{consonantCodepoints}}
+
+    begin Unicode > use(main)
+
+    group(main) using keys
+    c Reorder tone after composite vowel (if applicable — see lao_2008_basic line 72)
+    {{compositeVowelReorderRule}}
+
+    c Block invalid combinations (double tone, pre-vowel + tone, etc.)
+    {{constraintRules}}
+
+    c Direct tone mark input
+    + any(ToneKey) > index(Tone, 1)
+
+    c Consonant and vowel rules
+    {{baseRules}}
+
+  note: >
+    The critical rule pattern for sala-am / composite vowel reordering is:
+      U+XXXX + any(ToneKey) > index(Tone, 2) context
+    where U+XXXX is the composite vowel codepoint. This stores the tone BEFORE
+    the composite vowel in the buffer — counterintuitive but canonical.
+
+    For direct tone input (no reordering needed):
+      + any(ToneKey) > index(Tone, 1)
+
+    NOTE: Use index() not any() in output — any() only works on desktop targets.
+    index(Tone, N) where N is the context position of the any(ToneKey) match.
+
+  parameters:
+    - id: language
+      description: "Language name (e.g., 'Lao', 'Thai')."
+    - id: sourceKeyboard
+      description: >
+        Reference keyboard this pattern is based on.
+        Example: release/l/lao_2008_basic/source/lao_2008_basic.kmn
+    - id: keyboardName
+      description: "Display name for the keyboard. Example: 'Lao 2008 Basic'"
+    - id: toneMarkCodepoints
+      description: >
+        Unicode codepoints for all tone marks (space-separated).
+        Example for Lao: U+0EC8 U+0EC9 U+0ECA U+0ECB U+0ECC
+    - id: toneMarkKeys
+      description: >
+        Keystroke characters that trigger tone marks (same order as toneMarkCodepoints).
+        Example for Lao: "jhHJ%"
+    - id: vowelCodepoints
+      description: >
+        Unicode codepoints for vowel signs (space-separated).
+        Example for Lao: U+0EB4 U+0EB5 U+0EB6 U+0EB7 U+0EB8 U+0EB9 U+0EBB U+0EB1
+    - id: consonantCodepoints
+      description: >
+        Unicode codepoints for consonants (space-separated).
+        Example for Lao: U+0E81 U+0E82 U+0E84 U+0E87 U+0E88
+    - id: compositeVowelReorderRule
+      description: >
+        Optional reorder rule for composite vowels typed after a tone mark.
+        Omit if your script has no composite vowels.
+        Example for Lao sala-am:
+          U+0EB3 + any(ToneKey) > index(Tone, 2) context
+    - id: constraintRules
+      description: >
+        Rules blocking invalid combinations (double tones, tone on pre-vowel, etc.).
+        Example from lao_2008_basic lines 76–88:
+          any(Tone) + any(ToneKey) > context beep
+          any(VPrefix) + any(ToneKey) > context beep
+          any(VSuffix) + any(ToneKey) > context beep
+    - id: baseRules
+      description: >
+        Consonant and vowel keystroke rules.
+        Example: + "k" > U+0E81
