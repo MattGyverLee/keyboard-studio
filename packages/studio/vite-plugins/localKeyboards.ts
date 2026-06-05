@@ -144,8 +144,14 @@ export function localKeyboardsPlugin(opts: LocalKeyboardsOptions): Plugin {
         }
         const decoded = decodeURIComponent(url);
         const fsPath = path.normalize(path.join(root, decoded));
-        // Path-traversal guard.
-        if (!fsPath.startsWith(path.normalize(root))) {
+        // Path-traversal guard. Append a trailing separator so a sibling
+        // directory whose name shares the root's prefix (e.g. `<root>-evil`)
+        // cannot pass the check, while still allowing the root itself.
+        const normalizedRoot = path.normalize(root);
+        const rootWithSep = normalizedRoot.endsWith(path.sep)
+          ? normalizedRoot
+          : normalizedRoot + path.sep;
+        if (fsPath !== normalizedRoot && !fsPath.startsWith(rootWithSep)) {
           res.statusCode = 403;
           res.end("forbidden");
           return;
