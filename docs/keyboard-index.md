@@ -37,6 +37,8 @@ Fields and parsing mirror [packages/engine/src/base-browser/kps-parser.ts](../pa
 | GFF Amharic | `gff_amharic` | `am` | The Geʾez Frontier Foundation | `../keyboards/release/gff/gff_amharic` |
 | Hausa Kano | `hausa_kano` | `ha-Latn` | Hamza Sulayman | `../keyboards/release/h/hausa_kano` |
 | Hindi Devanagari Phonetic (ITRANS) | `itrans_devanagari_hindi` | `hi`, `mr`, `sa`, `bho`, `mai`, `awa`, `bra`, `mag`, `raj`, `kok`, `gom`, `knn-Deva`, `hne`, `bgc`, `sck` … (+2 more) | Shree Devi Kumar | `../keyboards/release/itrans/itrans_devanagari_hindi` |
+| Khmer Angkor | `khmer_angkor` | `km` | Makara Sok | `../keyboards/release/k/khmer_angkor` |
+| Komono (Côte d'Ivoire) | `komono_ci` | `kqg` | Kirk Rogers | `../keyboards/release/k/komono_ci` |
 | Nulisa Aksara Jawa | `jawa` | `id-Java`, `jv-Java`, `kaw-Java`, `mad-Java`, `sas-Java`, `su-Java`, `osi`, `tes` | Benny Lin | `../keyboards/release/j/jawa` |
 | Pak Urdu Phonetic | `pak_urdu_phonetic` | `ur` | Nashit Ahmed Barq | `../keyboards/release/p/pak_urdu_phonetic` |
 | Remington GAIL (SIL) | `remington_gail` | `hi` | © SIL Global | `../keyboards/release/r/remington_gail` |
@@ -58,4 +60,5 @@ Fields and parsing mirror [packages/engine/src/base-browser/kps-parser.ts](../pa
 | Yorùbá with Dot | `sil_yoruba_dot` | `yo-Latn` | P. Baehr | `../keyboards/release/sil/sil_yoruba_dot` |
 | Yorùbá 8 | `sil_yoruba8` | `yo-Latn` | P. Baehr | `../keyboards/release/sil/sil_yoruba8` |
 | த99-விரிவு \| ta99 Extended | `thamizha_tamil99_ext` | `ta` | Umar(csd_one@yahoo.com), Mugunth (mugunth@gmail.com) and K. Sethu (skhome@gmail.com) | `../keyboards/release/t/thamizha_tamil99_ext` |
+| Triqui Itunyoso | `triqui_itunyoso` | `trq` | Kayla Shames | `../keyboards/release/t/triqui_itunyoso` |
 | Vietnamese Telex | `vietnamese_telex` | `vi` | Mike Vo | `../keyboards/release/v/vietnamese_telex` |
