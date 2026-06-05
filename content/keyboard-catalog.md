@@ -1,3 +1,12 @@
+# Keyboard catalog — per-keyboard scan notes
+
+> This is the detailed per-keyboard reference backing the corpus analysis in
+> [scan_report.md](scan_report.md). Each entry records a keyboard's group, strategy,
+> discovery axes, quality, and source citations. For the narrative summary — what is
+> common, what is exemplary, what we learned — start with [scan_report.md](scan_report.md).
+
+---
+
 # Corpus scan — 22 representative Keyman keyboards
 
 ## Purpose
