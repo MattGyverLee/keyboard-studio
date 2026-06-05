@@ -1,0 +1,380 @@
+# Phase A -- Identity + routing (spec §8 step 3)
+#
+# Key outputs:
+#   routing_group : derived from the layout_family answer
+#                   ("qwerty-qwertz" | "azerty" | "non-roman")
+#   script_family : derived from the script_family answer (non-Roman only)
+#                   ("indic" | "sea" | "rtl" | "syllabic" | "other")
+#
+# These two values determine which template pipeline and which pattern set
+# the studio shows in Phase B. The base-keyboard picker is a separate UI
+# owned by the Engine team; this flow does not ask for it.
+
+flow_id: phase_a_identity
+phase: "A"
+
+questions:
+
+  # -- Language identity -------------------------------------------------------
+
+  - id: language_name_autonym
+    prompt: "What is your language called in your own language?"
+    help_text: >
+      Type the name your community uses for the language, using your own
+      spelling and characters. For example: Fà', Kiswahili, हिन्दी.
+      This name will appear on the keyboard package exactly as you write it.
+    type: text
+    required: true
+    next: language_name_english
+
+  - id: language_name_english
+    prompt: "What is your language called in English?"
+    help_text: >
+      The English name used in directories and official language lists, for
+      example: Bafut, Swahili, Hindi. If your language does not have a
+      widely-used English name, repeat the name you gave above.
+    type: text
+    required: true
+    next: iso_code
+
+  - id: iso_code
+    prompt: "Does your language have a three-letter language code?"
+    help_text: >
+      Language codes are short tags used by linguists to identify languages
+      uniquely, for example: bfd for Bafut, swa for Swahili.
+      Search the list to find yours. Leave blank if you are unsure.
+    type: autocomplete
+    options_source: "@langtags_iso639"
+    required: false
+    next: region
+
+  - id: region
+    prompt: "Which country or region is this keyboard mainly for?"
+    help_text: >
+      Name the primary country or region where speakers of your language live,
+      for example: Cameroon, Tanzania, Northwest India. You can list more
+      than one if needed.
+    type: text
+    required: true
+    next: primary_script
+
+  # -- Script and direction ----------------------------------------------------
+
+  - id: primary_script
+    prompt: "Which writing system does your language use?"
+    help_text: >
+      Choose the alphabet or script your language is normally written in.
+      If your language uses more than one script, pick the one this keyboard
+      is for.
+    type: select
+    options:
+      - value: Latn
+        label: "Latin (A, B, C, and accented letters like é, ñ, ŋ)"
+      - value: Arab
+        label: "Arabic"
+      - value: Hebr
+        label: "Hebrew"
+      - value: Deva
+        label: "Devanagari (used for Hindi, Nepali, Marathi, and others)"
+      - value: Beng
+        label: "Bengali"
+      - value: Taml
+        label: "Tamil"
+      - value: Telu
+        label: "Telugu"
+      - value: Knda
+        label: "Kannada"
+      - value: Mlym
+        label: "Malayalam"
+      - value: Guru
+        label: "Gurmukhi (Punjabi)"
+      - value: Gujr
+        label: "Gujarati"
+      - value: Orya
+        label: "Odia"
+      - value: Sinh
+        label: "Sinhala"
+      - value: Thai
+        label: "Thai"
+      - value: Khmr
+        label: "Khmer"
+      - value: Mymr
+        label: "Myanmar / Burmese"
+      - value: Laoo
+        label: "Lao"
+      - value: Ethi
+        label: "Ethiopic (Ge'ez, Amharic, Tigrinya, and others)"
+      - value: Hang
+        label: "Hangul (Korean)"
+      - value: Geor
+        label: "Georgian"
+      - value: Armn
+        label: "Armenian"
+      - value: Cyrl
+        label: "Cyrillic (Russian, Ukrainian, Serbian, and others)"
+      - value: Grek
+        label: "Greek"
+      - value: Tibt
+        label: "Tibetan"
+      - value: Cans
+        label: "Canadian Aboriginal Syllabics"
+      - value: Cher
+        label: "Cherokee"
+      - value: Other
+        label: "A different writing system not listed here"
+    required: true
+    next:
+      - condition: "value == 'Arab' or value == 'Hebr'"
+        goto: writing_direction
+      - condition: "value == 'Latn' or value == 'Cyrl' or value == 'Grek' or value == 'Geor' or value == 'Armn'"
+        goto: layout_family
+      - default: layout_family
+
+  # Shown only for Arabic and Hebrew; Latin auto-sets LTR without asking.
+  - id: writing_direction
+    prompt: "Does your text run right-to-left or left-to-right?"
+    help_text: >
+      Arabic and Hebrew are usually written right-to-left, but some communities
+      use a left-to-right style for certain contexts. Choose the direction your
+      community uses most.
+    type: radio
+    options:
+      - value: rtl
+        label: "Right to left (the usual direction for Arabic and Hebrew)"
+      - value: ltr
+        label: "Left to right"
+    required: true
+    next: layout_family
+
+  # -- Keyboard layout family (routing group) ----------------------------------
+
+  - id: layout_family
+    prompt: "Which keyboard layout is this based on?"
+    help_text: >
+      Most keyboards in the world follow one of a small number of standard
+      layouts. Pick the one that best matches the physical keyboard your
+      community uses. If you are creating a keyboard from scratch with no
+      existing layout in mind, choose "Start from a blank layout."
+    type: radio
+    options:
+      - value: qwerty
+        label: "QWERTY (used in most English-speaking countries, and many others)"
+      - value: qwertz
+        label: "QWERTZ (used in Germany, Austria, Switzerland, and neighboring countries)"
+      - value: azerty
+        label: "AZERTY (used in France, Belgium, and parts of Africa)"
+      - value: non-roman
+        label: "A layout designed for a non-Roman script (e.g. Devanagari, Arabic, Thai)"
+      - value: blank
+        label: "Start from a blank layout -- I will define all key positions myself"
+    required: true
+    next:
+      - condition: "value == 'non-roman'"
+        goto: script_family
+      - default: author_display_name
+
+  # Shown only when layout_family == 'non-roman'
+  - id: script_family
+    prompt: "What type of non-Roman script does your keyboard use?"
+    help_text: >
+      Different script families need different internal structures. Choose
+      the group that best describes your writing system. If you are unsure,
+      pick "Other" and the studio will ask follow-up questions later.
+    type: radio
+    options:
+      - value: indic
+        label: "Indic (scripts from South Asia such as Devanagari, Bengali, Tamil)"
+      - value: sea
+        label: "Southeast Asian (Thai, Khmer, Myanmar, Lao, and similar scripts)"
+      - value: rtl
+        label: "Right-to-left (Arabic, Hebrew, and similar scripts)"
+      - value: syllabic
+        label: "Syllabic (each glyph represents a syllable or syllable unit, e.g. Cherokee, Canadian Aboriginal Syllabics, Ethiopic / Ge'ez)"
+      - value: other
+        label: "Other or I am not sure"
+    required: true
+    next: author_display_name
+
+  # -- Author identity ---------------------------------------------------------
+
+  - id: author_display_name
+    prompt: "Who should be listed as the author of this keyboard?"
+    help_text: >
+      This name will appear in the keyboard package and in the public
+      keyboard repository. You can use a person's name, an organization
+      name, or a committee name, for example: Bafut Language Committee.
+    type: text
+    required: true
+    next: author_contact_email
+
+  - id: author_contact_email
+    prompt: "What email address can people use to contact the keyboard author?"
+    help_text: >
+      This address goes into the keyboard package so that users or
+      maintainers can reach the right person if they have questions.
+      Use an address that will remain active.
+    type: text
+    required: true
+    next: provenance_opt_in
+
+  # -- Optional provenance section gate ----------------------------------------
+
+  - id: provenance_opt_in
+    prompt: "Would you like to provide additional background about your language community?"
+    help_text: >
+      This optional section collects context about who is requesting the
+      keyboard and the language community it serves. None of it is required,
+      and none of it affects how the keyboard is built. It helps reviewers
+      understand the project.
+    type: bool
+    required: false
+    next:
+      - condition: "value == 'true'"
+        goto: provenance_requester_name
+      - default: null
+
+# -- Provenance questions (all required: false) --------------------------------
+#
+# These map to KeyboardProvenance fields in packages/contracts/src/provenance.ts.
+# The studio presents them as a clearly-labelled optional section.
+# None of these gate phase exit or the submit button (spec §8 step 3).
+
+provenance_questions:
+
+  - id: provenance_requester_name
+    prompt: "Your full name (the person filling in this form)"
+    help_text: >
+      This is used for contact purposes only, not as the keyboard author credit.
+    type: text
+    required: false
+    next: provenance_requester_contact
+
+  - id: provenance_requester_contact
+    prompt: "Your email or other contact information"
+    help_text: >
+      An email address where reviewers can reach you if they have questions
+      about this request.
+    type: text
+    required: false
+    next: provenance_requester_affiliation
+
+  - id: provenance_requester_affiliation
+    prompt: "Your organization or affiliation (if any)"
+    help_text: >
+      For example: SIL International, a university, or a language committee.
+    type: text
+    required: false
+    next: provenance_requester_relation
+
+  - id: provenance_requester_relation
+    prompt: "What is your relationship to the language community?"
+    help_text: >
+      For example: mother-tongue speaker, linguist working with the community,
+      language committee member.
+    type: text
+    required: false
+    next: provenance_community_rep_name
+
+  - id: provenance_community_rep_name
+    prompt: "Name of a language community representative (if known)"
+    help_text: >
+      Someone from the language community who can confirm that this keyboard
+      meets the community's needs. Leave blank if not applicable.
+    type: text
+    required: false
+    next: provenance_community_rep_role
+
+  - id: provenance_community_rep_role
+    prompt: "That person's role in the community"
+    help_text: >
+      For example: language committee chair, village elder, literacy teacher.
+    type: text
+    required: false
+    next: provenance_community_rep_email
+
+  - id: provenance_community_rep_email
+    prompt: "That person's email address"
+    help_text: >
+      So reviewers can follow up directly with the community if needed.
+    type: text
+    required: false
+    next: provenance_speaker_count
+
+  - id: provenance_speaker_count
+    prompt: "Approximately how many people speak this language?"
+    help_text: >
+      A rough number is fine, for example: "about 65,000" or "fewer than 500."
+      This helps reviewers understand the scale of the community.
+    type: text
+    required: false
+    next: provenance_regions
+
+  - id: provenance_regions
+    prompt: "Where is the language mainly spoken?"
+    help_text: >
+      Describe the geographic area -- a country, a region, a district, or
+      several places. For example: Northwest Region of Cameroon, Mezam Division.
+    type: text
+    required: false
+    next: provenance_language_status
+
+  - id: provenance_language_status
+    prompt: "How actively is the language used today?"
+    help_text: >
+      Describe the vitality of the language in plain terms, for example:
+      "Spoken daily by all generations" (EGIDS 6a vigorous), "Used by older
+      adults but children prefer the national language" (EGIDS 7 shifting),
+      or "Endangered, fewer than 100 speakers remain" (EGIDS 8b). An
+      approximate description is fine.
+    type: text
+    required: false
+    next: provenance_existing_tools
+
+  - id: provenance_existing_tools
+    prompt: "Are there existing tools that speakers already use to type this language?"
+    help_text: >
+      For example: a font-based keyboard from the 1990s, a custom input method
+      someone made locally, or a phone keyboard that only partly covers the
+      characters. If there are none, leave this blank.
+    type: text
+    required: false
+    next: provenance_orthography_url
+
+  - id: provenance_orthography_url
+    prompt: "Is there a published description of how this language is written?"
+    help_text: >
+      If there is a published alphabet guide, orthography document, or
+      writing-system description online, paste its web address here.
+      This helps the studio find the right characters for Phase B.
+    type: text
+    required: false
+    next: provenance_community_involvement
+
+  - id: provenance_community_involvement
+    prompt: "How should the language community be involved in testing this keyboard?"
+    help_text: >
+      For example: the language committee will review a draft before release,
+      or a group of teachers will test-type sample texts. Leave blank if
+      community testing is not planned.
+    type: text
+    required: false
+    next: provenance_casing_notes
+
+  - id: provenance_casing_notes
+    prompt: "Are there any special rules about capital and lowercase letters?"
+    help_text: >
+      Most languages follow the same upper/lower pattern as English. Mention
+      here if your language has unusual capitalization rules, or if certain
+      characters should never be uppercased.
+    type: text
+    required: false
+    next: provenance_additional_notes
+
+  - id: provenance_additional_notes
+    prompt: "Is there anything else the keyboard reviewer should know?"
+    help_text: >
+      Any other context, concerns, or requirements that did not fit the
+      previous questions.
+    type: text
+    required: false
+    next: null

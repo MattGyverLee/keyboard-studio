@@ -1,6 +1,7 @@
 // see spec.md section 8 - data flow (Phases A..G; "C-prime" is the reorder phase)
 
 import type { DiscoveryAxisVector } from "./axes";
+import type { KeyboardIdentity } from "./keyboardIdentity";
 
 /**
  * Survey phase identifiers per spec §8.
@@ -23,6 +24,8 @@ export interface SurveyAnswer {
 export interface SurveyPhaseResult {
   phase: SurveyPhase;
   answers: SurveyAnswer[];
+  /** Typed identity fields resolved from Phase A; undefined for phases B..G. */
+  identity?: KeyboardIdentity;
   /** Axes resolved at this phase; merged across phases to build the full vector. */
   computedAxes?: Partial<DiscoveryAxisVector>;
   /** Pattern IDs selected from the gallery during this phase. */
