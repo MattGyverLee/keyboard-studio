@@ -6,6 +6,10 @@
 # Anchored from: sil_euro_latin, sil_cameroon_qwerty, sil_pan_africa_mnemonic,
 #                vietnamese_telex, el_pasifika, sil_yoruba8 (scan corpus)
 #
+# CLDR integration: entries here correspond to combining marks that appear in
+# CLDR exemplarCharacters decompositions. The Phase B seeder (spec §8 step 4,
+# kbgen #130) uses this atlas as a fallback when CLDR coverage is incomplete.
+#
 # Each entry: codepoint, plain_name, combining_form, example_languages,
 #             group_visibility, common_base_letters, strategy_hint
 
@@ -56,6 +60,19 @@ entries:
     group_visibility: all
     common_base_letters: "aeiouAEIOUcghjswyCGHJSWY"
     strategy_hint: "S-02 (deadkey)"
+    common_diacritic_combos:
+      - "â + grave → ầ (U+1EA7)"
+      - "â + acute → ấ (U+1EA5)"
+      - "â + tilde → ẫ (U+1EAB)"
+      - "â + hook-above → ẩ (U+1EA9)"
+      - "ê + grave → ề (U+1EC1)"
+      - "ê + acute → ế (U+1EBF)"
+      - "ê + tilde → ễ (U+1EC5)"
+      - "ê + hook-above → ể (U+1EC3)"
+      - "ô + grave → ồ (U+1ED3)"
+      - "ô + acute → ố (U+1ED1)"
+      - "ô + tilde → ỗ (U+1ED7)"
+      - "ô + hook-above → ổ (U+1ED5)"
 
   # ── Tilde ─────────────────────────────────────────────────────────────────
   - codepoint: U+0303
@@ -108,6 +125,16 @@ entries:
     group_visibility: all
     common_base_letters: "bcdefgmnoprstzBCDEFGMNOPRSTZ"
     strategy_hint: "S-02 (deadkey)"
+
+  # ── Hook above ───────────────────────────────────────────────────────────
+  - codepoint: U+0309
+    plain_name: "Hook above (hỏi tone: ả ẻ ỉ ỏ ủ)"
+    example_languages:
+      - "Vietnamese (hỏi — falling-rising tone, the third tone)"
+      - "Vietnamese with circumflex bases (ẩ ể ổ) and horn bases (ở ử)"
+    group_visibility: all
+    common_base_letters: "aeiouAEIOU"
+    strategy_hint: "S-02 (deadkey); in Vietnamese Telex entered as 'r' after vowel"
 
   # ── Diaeresis / Umlaut ────────────────────────────────────────────────────
   - codepoint: U+0308

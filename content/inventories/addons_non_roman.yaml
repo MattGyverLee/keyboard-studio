@@ -6,6 +6,11 @@
 # Anchored from: sil_devanagari_phonetic, itrans_devanagari_hindi, basic_kbdkni,
 #                khmer_angkor, pak_urdu_phonetic, fv_plains_cree (scan corpus)
 #
+# CLDR integration: structural marks and diacritics here appear in CLDR
+# exemplarCharacters for the listed script families. The Phase B seeder
+# (spec §8 step 4, kbgen #130) uses this atlas as the non-Roman fallback
+# when CLDR coverage is incomplete; script_family drives picker grouping.
+#
 # Each entry: codepoint, plain_name, script_family, category,
 #             example_languages, group_visibility, strategy_hint
 

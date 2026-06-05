@@ -6,6 +6,10 @@
 # Anchored from: sil_cameroon_azerty, sil_cameroon_qwerty, sil_pan_africa_mnemonic,
 #                clavbur9 (Burkina Faso), sil_akebu (scan corpus)
 #
+# CLDR integration: entries map to CLDR exemplarCharacters for Francophone African
+# languages. The Phase B seeder (spec §8 step 4, kbgen #130) uses this atlas when
+# CLDR coverage is incomplete; the azerty_notes field guides placement decisions.
+#
 # AZERTY position notes:
 #   - Digits require Shift on standard French AZERTY (e.g. Shift+1 = 1, unshifted = &)
 #   - Q and A are swapped vs QWERTY

@@ -6,6 +6,10 @@
 # Anchored from: akan, sil_euro_latin, sil_pan_africa_mnemonic,
 #                sil_cameroon_qwerty, sil_ipa, armenian_mnemonic_r (scan corpus)
 #
+# CLDR integration: entries map to characters that appear in CLDR exemplarCharacters
+# for the listed languages. The Phase B seeder (spec §8 step 4, kbgen #130) uses
+# this atlas when CLDR coverage is incomplete for a given script/language group.
+#
 # Each entry: codepoint, plain_name, category, example_languages,
 #             group_visibility, typical_key, strategy_hint
 
