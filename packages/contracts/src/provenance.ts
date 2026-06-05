@@ -61,9 +61,9 @@ export interface RequesterInfo {
  *
  * `localizedName` is the one field here that MAY influence build artifacts: it
  * can seed the language autonym shown in `.kps` / `welcome.htm`. It lives on
- * provenance (rather than a Phase A identity type) only because Phase A
- * identity is currently modeled as untyped {@link SurveyAnswer}s — there is no
- * typed identity object to attach it to. Treat it as build-relevant even so.
+ * provenance rather than {@link KeyboardIdentity} per the Phase A acceptance
+ * criteria, which explicitly type the autonym as
+ * {@link KeyboardProvenance.localizedName}. Treat it as build-relevant even so.
  *
  * @see spec.md §8 step 3 (Phase A intake)
  * @see spec.md §12 (output — PR body + package metadata)
