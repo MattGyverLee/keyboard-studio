@@ -158,8 +158,8 @@ The triage is scheduled, not PR-triggered. To avoid re-reviewing the same code o
 
 Procedure:
 
-1. Look up the **most recent** audit-log entry in `.tech-lead-inbox/audit-log.jsonl` whose `pr` field matches this PR number. Take its `head_sha` value as `last_audited_sha`.
-2. If no prior entry exists, set `last_audited_sha = null` — this is the first sweep on this PR.
+1. Look up the **most recent** audit-log entry in `.tech-lead-inbox/audit-log.jsonl` whose `pr` field matches this PR number AND whose `action_taken` is a *substantive review action*: one of `approve_park`, `auto_fix_only`, `mention_only`, `fix_and_mention`, `escalate`, or `auto_fix_attempt_failed`. Take its `head_sha` value as `last_audited_sha`. Non-review entries (`skipped`, `auth_failed`) do **not** define a review boundary — the crew never actually saw the code on those runs, so they're ignored when computing the incremental range.
+2. If no prior substantive-review entry exists, set `last_audited_sha = null` — this is the first real review of this PR (even if earlier sweeps skipped it).
 3. If `last_audited_sha` is set, verify it still exists in git history:
    ```bash
    git fetch origin <head_ref>
