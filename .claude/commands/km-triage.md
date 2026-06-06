@@ -150,9 +150,30 @@ As of **2026-06-06**, the observed claude.ai/code (web) users on `MattGyverLee/k
 
 ## Phase 4 — Dispatch the crew
 
-Spawn the relevant specialists **in parallel** (one message with multiple Agent tool calls).
+Spawn the relevant specialists **in parallel** (one message with multiple Agent tool calls). Two pre-filter steps run first — they determine **what** the crew reviews (Pre-filter A) and **who** is on the crew (Pre-filter B).
 
-### Pre-filter: skip already-signed-off specialists
+### Pre-filter A: compute incremental review range
+
+The triage is scheduled, not PR-triggered. To avoid re-reviewing the same code on every sweep, the crew sees only what is new since the last sweep saw this PR.
+
+Procedure:
+
+1. Look up the **most recent** audit-log entry in `.tech-lead-inbox/audit-log.jsonl` whose `pr` field matches this PR number. Take its `head_sha` value as `last_audited_sha`.
+2. If no prior entry exists, set `last_audited_sha = null` — this is the first sweep on this PR.
+3. If `last_audited_sha` is set, verify it still exists in git history:
+   ```bash
+   git fetch origin <head_ref>
+   git cat-file -e <last_audited_sha>  # exit 0 = exists, non-zero = unreachable (force-pushed)
+   ```
+   If unreachable, treat the PR as if it were force-pushed: set `last_audited_sha = null`, log a one-line note to INBOX.md ("PR #N was force-pushed since last triage at <old sha>; this sweep reviews the full PR"), and continue.
+4. Compute `review_range`:
+   - `last_audited_sha == null` → `review_range = "full"`. The crew reviews the entire PR diff (`gh pr diff <NUM>`).
+   - otherwise → `review_range = "incremental"` from `last_audited_sha` to the current head. The crew reviews only `git diff <last_audited_sha>..<current_head>` (or equivalently `gh api repos/MattGyverLee/keyboard-studio/compare/<last_audited_sha>...<current_head>`).
+5. If `review_range == "incremental"` AND the incremental diff is empty (no actual file changes, e.g. only merge commits with no content), skip this PR with reason `no_content_changes_since_last_review`. This is a secondary idempotency gate beyond Phase 2's head-sha check, catching cases where new commits don't actually change reviewable content.
+
+The crew's briefing in the next sub-section uses `review_range` and `last_audited_sha` to tell each specialist exactly what to read.
+
+### Pre-filter B: skip already-signed-off specialists
 
 Before composing the crew, check whether `/km-lead` already signed off on any specialists during the development cycle that produced this PR. The mechanism: `km-archivist` writes a `KM-Reviewed:` trailer into commit messages at cycle close (see `.claude/agents/km-archivist.md`).
 
@@ -192,12 +213,27 @@ PR title: <TITLE>
 PR author: <LOGIN>
 Base branch: <BASE>
 Head branch: <HEAD>
+Current HEAD sha: <CURRENT_HEAD_SHA>
 Team label: <engine|content|shared|MISSING>
 Area hints: <comma-separated area labels, or "none">
 
-To read the diff, run:
-  gh pr diff <NUM>
-To list files:
+Review range: <RANGE_DESCRIPTION>
+  - If FULL ("first sweep on this PR" or "branch was force-pushed since last sweep"):
+    review the entire PR diff. Read it with:
+      gh pr diff <NUM>
+  - If INCREMENTAL from <LAST_AUDITED_SHA>:
+    you are reviewing ONLY the new code since the last triage sweep. Read it with:
+      git fetch origin <HEAD>
+      git diff <LAST_AUDITED_SHA>..<CURRENT_HEAD_SHA>
+    Or via GitHub:
+      gh api repos/MattGyverLee/keyboard-studio/compare/<LAST_AUDITED_SHA>...<CURRENT_HEAD_SHA> --jq .files
+    Do NOT re-review code outside this range — earlier sweeps already
+    reviewed it. Focus your findings on what changed between these
+    two SHAs. If a file in the incremental diff references context from
+    outside the range that you need to read in full, fetch it with
+    `git show <CURRENT_HEAD_SHA>:<path>`.
+
+To list files at current head:
   gh pr view <NUM> --json files
 
 Your output will be machine-parsed by the triage agent. Do NOT comment
@@ -469,14 +505,16 @@ gh api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels
 After every PR action (including skips), append exactly one JSON line to `.tech-lead-inbox/audit-log.jsonl`:
 
 ```json
-{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA before triage>","signed_off_skipped":["km-qc","..."],"verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|auto_fix_only|mention_only|fix_and_mention|escalate|auto_fix_attempt_failed|skipped|auth_failed","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>","auto_fix":{"applied":<int>,"escalated":<int>,"commit_sha":"<sha or null>"},"mention_comment_url":"<url or null>"}
+{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA before triage>","last_audited_sha":"<previous audit's head_sha or null>","review_range":"full|incremental","signed_off_skipped":["km-qc","..."],"verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|auto_fix_only|mention_only|fix_and_mention|escalate|auto_fix_attempt_failed|skipped|auth_failed","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>","auto_fix":{"applied":<int>,"escalated":<int>,"commit_sha":"<sha or null>"},"mention_comment_url":"<url or null>"}
 ```
 
 Field notes:
 - `author` is `pr.author.login` (who opened the PR — kept for completeness; mostly redundant with `directed_by` on the `web` channel).
 - `directed_by` + `channel` come from Phase 3.5 — the directing human and which Claude Code surface they used.
-- `head_sha` is the PR's last commit SHA **before** the triage ran (powers the Phase-2 idempotency gate). When Phase-6 auto-fix pushes a new commit, that new SHA goes in `auto_fix.commit_sha`, not in `head_sha` — the idempotency check should still see the *original* head as "what triage saw."
-- `signed_off_skipped` lists the specialists the Phase-4 pre-filter skipped because they appeared in the last commit's `KM-Reviewed:` trailer. Empty array `[]` means either no trailer was present or the trailer named only specialists in the always-run set (which never get skipped). This list is *informational* — it does not appear in `verdicts` since those specialists didn't run this sweep, but it lets a later audit reconstruct why the crew was smaller than the classification suggests.
+- `head_sha` is the PR's last commit SHA **before** the triage ran (powers the Phase-2 idempotency gate and the Pre-filter-A incremental-range lookup). When Phase-6 auto-fix pushes a new commit, that new SHA goes in `auto_fix.commit_sha`, not in `head_sha` — the idempotency check should still see the *original* head as "what triage saw."
+- `last_audited_sha` is the `head_sha` of the previous audit-log entry for this PR (the SHA the last sweep saw), or `null` for first-sweep PRs and PRs that were force-pushed since the last sweep. Paired with `head_sha`, this defines the range `last_audited_sha..head_sha` — the diff this sweep actually reviewed.
+- `review_range` is `"full"` (full PR diff was reviewed: first sweep, or post-force-push) or `"incremental"` (only the `last_audited_sha..head_sha` range was reviewed).
+- `signed_off_skipped` lists the specialists the Pre-filter-B step skipped because they appeared in the last commit's `KM-Reviewed:` trailer. Empty array `[]` means either no trailer was present or the trailer named only specialists in the always-run set (which never get skipped). This list is *informational* — it does not appear in `verdicts` since those specialists didn't run this sweep, but it lets a later audit reconstruct why the crew was smaller than the classification suggests.
 - `auto_fix.applied` counts findings that landed mechanically. `auto_fix.escalated` counts findings that were `fixability=auto` in the verdict but couldn't be applied (e.g. km-programmer hit a failing check and rolled back).
 - `mention_comment_url` is the comment URL when the triage @-mentioned the lead (MENTION_ONLY or FIX_AND_MENTION action). `null` otherwise.
 
