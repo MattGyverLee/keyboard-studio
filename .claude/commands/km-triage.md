@@ -104,6 +104,32 @@ Decision precedence (first match wins):
 
 **Area labels** (`validator`, `compiler`, `scaffolder`, `patterns`, `lint`, `tooling`, `ui`, `flows`, `inventories`, `output`, `contracts`, `base-browser`, `process`, `simulator`, `integration`, `scan-report`, `criteria`, `gap`, `spec`, `housekeeping`) refine the briefing each specialist receives but do **not** change which crew fires. Pass them into the prompt under "PR area hints" so e.g. km-keyman knows the PR is `patterns`-flavored.
 
+## Phase 3.5 — Attribute the directing human
+
+For audit purposes only. This step does not change crew selection or any PR action. The goal is to record which human was driving Claude when this PR happened, so the audit log answers "who decided to ship this?" rather than just "Claude wrote it."
+
+The team uses two channels for Claude Code, and they have different attribution shapes:
+
+| Channel | What it looks like in the commit | How to recover the directing human |
+|---|---|---|
+| **Desktop** (local Claude Code CLI on the developer's machine) | Primary commit author is the developer's own email (their `git config user.email`); `Claude <noreply@anthropic.com>` appears in a `Co-Authored-By` trailer. | Read `commits[].authors[].email`; take the first entry that is not `noreply@anthropic.com`. |
+| **Web** (claude.ai/code session in the cloud sandbox) | Primary (and only) commit author is `Claude <noreply@anthropic.com>`. The commit body usually contains a `https://claude.ai/code/session_<id>` link. | The cloud sandbox runs under the GitHub identity that authorized Claude Code web for this repo, so `pull_request.user.login` (i.e. `pr.author.login`) is the directing human. |
+
+### Procedure
+
+1. From the Phase-2 JSON for this PR, collect the union of `commits[].authors[].email` values across all commits.
+2. Compute `human_emails = that set with "noreply@anthropic.com" (case-insensitive) removed`.
+3. Decide:
+   - If `human_emails` is non-empty → `directed_by = <first entry, deterministic order>`, `channel = desktop`.
+   - If `human_emails` is empty (every commit's only author is Claude) → `directed_by = pr.author.login`, `channel = web`.
+   - If `pr.author.login` is itself missing (it should not be, but defensive) → `directed_by = "unknown"`, `channel = "unknown"`.
+
+These two fields go into the Phase-7 audit-log entry. They are not used to skip or route — only to record.
+
+### Historical context (informational, not a gate)
+
+As of **2026-06-06**, the observed claude.ai/code (web) users on `MattGyverLee/keyboard-studio` are **`MattGyverLee`** and **`dhigby`**. All other team members have only used the desktop CLI so far (Grace Bolton's commits land via desktop, primary author = `grace_bolton@taylor.edu`). This sentence is historical truth at the time of writing — do **not** treat it as an allowlist. If a new claude.ai/code user appears tomorrow, the procedure above records them correctly without any code change. Update this paragraph the next time someone reads the file and notices it's stale.
+
 ## Phase 4 — Dispatch the crew
 
 Spawn the relevant specialists **in parallel** (one message with multiple Agent tool calls).
@@ -271,10 +297,15 @@ gh pr edit <NUM> --add-label tech-lead-review-needed
 After every PR action (including skips), append exactly one JSON line to `.tech-lead-inbox/audit-log.jsonl`:
 
 ```json
-{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA>","verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|request_changes|escalate|skipped|auth_failed","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>"}
+{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA>","verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|request_changes|escalate|skipped|auth_failed","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>"}
 ```
 
-One line per PR per run, no exceptions. This is the source of truth when we later decide to graduate selected lanes to auto-merge. `head_sha` is what powers the Phase-2 idempotency gate.
+Field notes:
+- `author` is `pr.author.login` (who opened the PR — kept for completeness; mostly redundant with `directed_by` on the `web` channel).
+- `directed_by` + `channel` come from Phase 3.5 — the directing human and which Claude Code surface they used.
+- `head_sha` is what powers the Phase-2 idempotency gate.
+
+One line per PR per run, no exceptions. This is the source of truth when we later decide to graduate selected lanes to auto-merge.
 
 ## Phase 8 — Run summary
 
