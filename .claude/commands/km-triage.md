@@ -38,7 +38,15 @@ Never, under any circumstance, run:
 
 You are an advisor, a router, and a mechanical fixer — but never a merger and never a rebaser. The human flips the final switch on every PR and resolves every merge conflict.
 
-**The CONFLICTING auto-fix gate:** when a PR's `mergeable` field is `CONFLICTING`, the triage will not push any auto-fix commits onto its head branch. Every fixable finding for that PR is rerouted onto the `MENTION_ONLY` path (per Phase 5.5 step 3) so the lead sees the situation and can decide whether to rebase first, take the fix proposals as guidance for manual edits, or close the PR. Pushing a fresh commit onto a branch that the author hasn't yet reconciled with `main` would entangle the merge resolution with our fixes — that's exactly the kind of "make it go away" shortcut the policy forbids.
+**The auto-fix gates** (cumulative — all must be satisfied before any push):
+
+- **In-repo only.** Phase 2 skips PRs with `isCrossRepository: true` entirely. The triage only auto-handles PRs whose head branch lives in `MattGyverLee/keyboard-studio` itself (the team's working branches). External / fork PRs are out of scope: no review, no comments, no labels.
+- **Head not protected.** When the auto-fix path is reached, the head branch must not be in `{main, master, develop, release, production}`. If it is (typically an accidental head/base swap), the auto-fix is rerouted to MENTION_ONLY with reason `head_is_protected_branch`. The triage NEVER pushes to a protected branch under any circumstance.
+- **Head SHA unchanged since Phase 2.** Before push, re-fetch the current head SHA and assert it equals the snapshot from Phase 2. If the author force-pushed (or another sweep raced this one) during the review window, abort with reason `head_moved_during_fix`. Pushing fixes computed against code that's no longer at HEAD would silently bypass review.
+- **Still mergeable.** Re-fetch `mergeable_state` immediately before push; if `dirty` (CONFLICTING), reroute to MENTION_ONLY with reason `became_conflicting_during_review`. Phase 2's earlier CONFLICTING gate may pass a PR whose mergeability degrades during the review window — this re-check catches it.
+- **Worktree-isolated execution.** km-programmer applies auto-fixes inside a fresh `git worktree add` under `.tech-lead-inbox/worktrees/` and pushes from there. It NEVER `git checkout`s in the triage's main working tree, because doing so would swap the in-tree definitions of `.claude/agents/`, `.claude/commands/`, fixtures, etc. and contaminate every subsequent PR in the same sweep. The triage asserts the main working tree's HEAD is unchanged after km-programmer returns.
+
+Pushing a fresh commit that violates any of the above is exactly the kind of "make it go away" shortcut the policy forbids — when in doubt, MENTION_ONLY and let the lead decide.
 
 **Auto-fix km-programmer constraints.** When dispatched in fix mode, km-programmer:
 - only edits files that appear in a fix-proposal `file` field — no opportunistic cleanup;
@@ -73,12 +81,13 @@ test -f .tech-lead-inbox/audit-log.jsonl || : > .tech-lead-inbox/audit-log.jsonl
 ```bash
 gh pr list \
   --state open \
-  --json number,title,author,headRefName,baseRefName,labels,files,isDraft,mergeable,mergeStateStatus,statusCheckRollup,reviewDecision,commits \
+  --json number,title,author,headRefName,baseRefName,labels,files,isDraft,mergeable,mergeStateStatus,statusCheckRollup,reviewDecision,commits,isCrossRepository,headRepositoryOwner \
   --limit 50
 ```
 
 For each PR, **skip** (with audit-log entry `action_taken: skipped, reason: <X>`) when any of these hold:
 
+- `isCrossRepository: true` → reason `external_pr_not_in_scope`. The triage only auto-handles PRs whose head branch is in `MattGyverLee/keyboard-studio` itself (the team's working branches). External / fork PRs (where `headRepositoryOwner.login != "MattGyverLee"` and `isCrossRepository == true`) are out of scope: no review crew is dispatched, no comments are posted, no labels are added. Optionally append a one-line note to `INBOX.md`: "PR #N is from an external fork (`<repo>:<branch>`); auto-triage is in-repo only — review manually if desired." The tech lead can pull the PR into an internal branch first if they want auto-triage to consider it. This gate also defuses an entire class of edge cases — cross-fork push, fork-branch-name collision, contributor-controlled commit message trailers — by simply not running the auto-handling path on PRs that originate outside the team's branches.
 - `isDraft: true` → reason `draft`.
 - **Solo-tech-lead authorship** — every commit on the PR is single-authored by the tech lead's git identity, with no Co-Authored-By trailers naming anyone else. Reason `solo_tech_lead_author`. Detection:
 
@@ -397,6 +406,21 @@ gh api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels
 
 ### Action: APPROVE-AND-PARK (Phase 5 outcome)
 
+**Re-check before labelling.** Phase-2's `mergeable` and CI snapshots can be minutes old by the time the crew finishes. Before applying `tech-lead-ready-to-merge`, re-fetch the live state:
+
+```bash
+gh api repos/MattGyverLee/keyboard-studio/pulls/<NUM> \
+  --jq '{mergeable_state, mergeable, statusCheckRollup: .head.sha}'
+gh pr checks <NUM> --required
+```
+
+If `mergeable_state` is `dirty` (CONFLICTING) or any required check is not `SUCCESS` / `NEUTRAL`, do **not** label as ready-to-merge. Instead:
+
+- If CONFLICTING: post one @-mention comment (lead + directing human) noting the PR was substantively approved by the crew but went CONFLICTING during the review window — please rebase; next sweep will re-confirm and label. Audit reason: `became_conflicting_during_review`.
+- If CI went red: post one @-mention comment with the failing check names and links. Audit reason: `ci_red_during_review`.
+
+If both gates pass, label and post the approval comment:
+
 ```bash
 gh api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels[]=tech-lead-ready-to-merge"
 gh pr comment <NUM> --body-file <approval-comment.md>
@@ -414,9 +438,19 @@ Comment body:
 Labelled `tech-lead-ready-to-merge`. Awaiting tech lead merge.
 ```
 
+### Auto-fix preconditions (apply to AUTO_FIX_ONLY and FIX_AND_MENTION)
+
+Before dispatching `km-programmer` to apply any auto-fixes, verify all of the following. If **any** check fails, reroute the entire findings list to MENTION_ONLY with the cited reason and skip the push entirely. The triage never pushes when in doubt.
+
+1. **Head is not a protected branch.** If `pr.headRefName` is in the protected set `{main, master, develop, release, production}`, ABORT auto-fix. Reroute to MENTION_ONLY with reason `head_is_protected_branch`. The triage NEVER pushes to a protected branch, even when a PR opens from `main → some-other-base` due to an accidental head/base swap. (Phase-2's `isCrossRepository` gate already excludes external-fork PRs from reaching this step; this is the in-repo accidental-swap defense.)
+2. **Head has not moved since Phase 2 snapshot.** Re-fetch the current head SHA via `gh api repos/MattGyverLee/keyboard-studio/pulls/<NUM> --jq .head.sha` and assert it equals the `head_sha` recorded at Phase 2. If the author force-pushed (or another sweep raced this one) during the review-and-fix window, ABORT auto-fix with reason `head_moved_during_fix`. The fixes were computed against code that's no longer at HEAD; pushing them would silently bypass review.
+3. **PR is still MERGEABLE.** Re-fetch `gh api repos/MattGyverLee/keyboard-studio/pulls/<NUM> --jq .mergeable_state` and confirm it isn't `dirty` (i.e. CONFLICTING). Another PR may have merged into `main` between Phase 2 and now, making this PR conflict. ABORT auto-fix with reason `became_conflicting_during_review` and reroute to MENTION_ONLY (mirroring the Phase-2 CONFLICTING gate).
+
+All three checks together cost one `gh api` call (the same one returns `.head.sha` and `.mergeable_state` and more); run it once and reuse the result across the three gates.
+
 ### Action: AUTO_FIX_ONLY (Phase 5.5 outcome)
 
-Dispatch `km-programmer` once with the consolidated auto-fix list. Briefing template:
+Dispatch `km-programmer` once with the consolidated auto-fix list. **First run the Auto-fix preconditions above; only proceed if all three pass.** Briefing template:
 
 ```
 You are applying auto-fixes from a km-triage sweep against PR #<NUM>.
@@ -434,22 +468,26 @@ Fixes to apply (each scoped to one file:line):
 
 2. ...
 
-Procedure:
-1. git fetch origin <HEAD>
-2. git checkout <HEAD>
-3. Apply each fix by editing the cited file at the cited line.
-4. After applying ALL fixes, run the project's typecheck/lint if a
-   relevant command exists (typically: pnpm --filter @keyboard-studio/contracts typecheck;
-   for content YAML changes there is no compile step).
-5. If any check fails or any fix is ambiguous to you, STOP without
-   committing — return a verdict block of status=ESCALATE with
-   the failure details so the triage can route it back to the lead.
-6. Otherwise commit on <HEAD> with message:
-   triage(auto-fix): apply <N> mechanical fix(es) from review (refs #<NUM>)
-   Body lists each fix with the originating specialist.
-   Include "Co-Authored-By: Claude <noreply@anthropic.com>".
-7. git push origin <HEAD>.
-8. Return a verdict block:
+Procedure (worktree-isolated — NEVER mutates the triage's own working tree):
+
+1. Compute a unique worktree path:
+     WORKTREE=.tech-lead-inbox/worktrees/triage-fix-<NUM>-<HEAD_SHORT_SHA>
+   (`.tech-lead-inbox/` is gitignored, so the worktree is invisible to git status.)
+2. git fetch origin <HEAD>
+3. git worktree add "$WORKTREE" "origin/<HEAD>"
+4. All subsequent commands run from within "$WORKTREE" (use `git -C "$WORKTREE" ...` or `pushd "$WORKTREE"`). DO NOT `git checkout` in the triage's main working tree — that would swap the in-tree definitions of .claude/agents/*, .claude/commands/*, fixtures, etc. to the PR author's version, and the next PR in the same sweep would be reviewed against the swapped definitions.
+5. Apply each fix by editing the cited file at the cited line inside "$WORKTREE".
+6. From "$WORKTREE", run the project's typecheck/lint if a relevant command exists (typically: `pnpm --filter @keyboard-studio/contracts typecheck`; for content YAML changes there is no compile step).
+7. If any check fails or any fix is ambiguous to you, STOP without committing. Run `git worktree remove --force "$WORKTREE"` to clean up. Return a verdict block of status=ESCALATE with the failure details so the triage can route it back to the lead.
+8. Otherwise commit inside "$WORKTREE":
+     git -C "$WORKTREE" commit -m "triage(auto-fix): apply <N> mechanical fix(es) from review (refs #<NUM>)"
+   Body lists each fix with the originating specialist. Include "Co-Authored-By: Claude <noreply@anthropic.com>".
+9. Push from "$WORKTREE":
+     git -C "$WORKTREE" push origin HEAD:<HEAD>
+10. Clean up the worktree:
+     git worktree remove "$WORKTREE"
+11. Post-condition (the triage runs this after km-programmer returns): verify the triage's main working-tree HEAD equals the SHA recorded at sweep start. If it changed, log a critical error to INBOX.md ("PR #<NUM> auto-fix appears to have bypassed worktree isolation — sweep aborted") and stop the entire sweep until investigated.
+12. Return a verdict block:
 
 ```verdict
 status: APPLIED | ESCALATE
@@ -573,7 +611,12 @@ Field notes:
 - `head_sha` is the PR's last commit SHA **before** the triage ran (powers the Phase-2 idempotency gate and the Pre-filter-A incremental-range lookup). When Phase-6 auto-fix pushes a new commit, that new SHA goes in `auto_fix.commit_sha`, not in `head_sha` — the idempotency check should still see the *original* head as "what triage saw."
 - `last_audited_sha` is the `head_sha` of the previous audit-log entry for this PR (the SHA the last sweep saw), or `null` for first-sweep PRs and PRs that were force-pushed since the last sweep. Paired with `head_sha`, this defines the range `last_audited_sha..head_sha` — the diff this sweep actually reviewed.
 - `review_range` is `"full"` (full PR diff was reviewed: first sweep, or post-force-push) or `"incremental"` (only the `last_audited_sha..head_sha` range was reviewed).
-- `signed_off_skipped` lists the specialists the Pre-filter-B step skipped because they appeared in the last commit's `KM-Reviewed:` trailer. Empty array `[]` means either no trailer was present or the trailer named only specialists in the always-run set (which never get skipped). This list is *informational* — it does not appear in `verdicts` since those specialists didn't run this sweep, but it lets a later audit reconstruct why the crew was smaller than the classification suggests.
+- `signed_off_skipped` lists the specialists the Pre-filter-B step skipped because they appeared in the last commit's `KM-Reviewed:` trailer.
+- `reason` carries the per-action explanation when `action_taken` is `skipped` or when an auto-fix or approve-park was rerouted to MENTION_ONLY by a precondition gate. Known values include:
+  - Skip reasons (Phase 2 / Pre-filter A): `external_pr_not_in_scope`, `draft`, `solo_tech_lead_author`, `already_in_lead_queue`, `merge_conflict`, `ci_not_ready`, `no_new_commits_since_last_review`, `no_content_changes_since_last_review`.
+  - Auto-fix abort → MENTION_ONLY reroute (Phase 6 preconditions): `head_is_protected_branch`, `head_moved_during_fix`, `became_conflicting_during_review`.
+  - Approve-park abort → MENTION_ONLY reroute (Phase 6 APPROVE-AND-PARK re-check): `became_conflicting_during_review`, `ci_red_during_review`.
+  - Other: `auth_failed`, `missing_team_label` (informational; doesn't gate). Empty array `[]` means either no trailer was present or the trailer named only specialists in the always-run set (which never get skipped). This list is *informational* — it does not appear in `verdicts` since those specialists didn't run this sweep, but it lets a later audit reconstruct why the crew was smaller than the classification suggests.
 - `auto_fix.applied` counts findings that landed mechanically. `auto_fix.escalated` counts findings that were `fixability=auto` in the verdict but couldn't be applied (e.g. km-programmer hit a failing check and rolled back).
 - `mention_comment_url` is the comment URL when the triage @-mentioned the lead (MENTION_ONLY or FIX_AND_MENTION action). `null` otherwise.
 
