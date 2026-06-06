@@ -152,6 +152,26 @@ As of **2026-06-06**, the observed claude.ai/code (web) users on `MattGyverLee/k
 
 Spawn the relevant specialists **in parallel** (one message with multiple Agent tool calls).
 
+### Pre-filter: skip already-signed-off specialists
+
+Before composing the crew, check whether `/km-lead` already signed off on any specialists during the development cycle that produced this PR. The mechanism: `km-archivist` writes a `KM-Reviewed:` trailer into commit messages at cycle close (see `.claude/agents/km-archivist.md`).
+
+Procedure:
+
+1. Read the **last** commit's message body via the Phase-2 JSON: `pr.commits[-1].messageBody`. Multi-commit PRs use only the last commit — this matches the squash-merge mental model where the last commit's state is what lands in `main`.
+2. Look for a line matching `^KM-Reviewed:\s*(.+)$`. Parse the comma-separated specialist names into a `signed_off` set.
+3. **Always-run set** (these are NEVER skipped, regardless of sign-off): `km-domain`, `km-keyman`, `km-simplify`. These three are context-sensitive enough that a fresh re-review at triage time is cheap insurance — linguistic context can shift, Keyman semantics depend on the surrounding diff, and refactor-fitness opportunities can emerge from the diff as a whole.
+4. Filter the crew composition (from Phase 3's classification) by removing any specialist in `signed_off` that is **not** in the always-run set.
+5. Record `signed_off_skipped: [<names>]` in the audit-log entry so the audit shows which specialists were trusted from prior work.
+
+**Auto-fix commits invalidate sign-off.** If the last commit's subject starts with `triage(auto-fix):` (the prefix km-programmer uses in fix-mode commits — see Phase 6 AUTO_FIX_ONLY), that commit will not carry a `KM-Reviewed:` trailer (km-programmer in fix mode does not synthesize sign-offs). The "last commit wins" rule then yields an empty `signed_off` set, and the full crew runs (subject to the normal Phase-3 classification). This is correct behavior: the diff changed under us, so any prior sign-off is stale.
+
+**Edge cases.**
+- No `KM-Reviewed:` line on the last commit → `signed_off = {}`, full crew runs.
+- Multiple `KM-Reviewed:` lines on one commit → union them.
+- A name in the trailer that is not a recognized km-* specialist → log a warning to INBOX.md ("PR #N trailer names unknown specialist '<X>' — typo?") and skip the unknown name. Continue with the rest.
+- The PR has zero commits accessible (defensive) → assume `signed_off = {}`.
+
 ### Crew compositions
 
 - **ENGINE crew**: `km-verification`, `km-qc`, `km-synthesis` — parallel.
@@ -449,13 +469,14 @@ gh api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels
 After every PR action (including skips), append exactly one JSON line to `.tech-lead-inbox/audit-log.jsonl`:
 
 ```json
-{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA before triage>","verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|auto_fix_only|mention_only|fix_and_mention|escalate|auto_fix_attempt_failed|skipped|auth_failed","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>","auto_fix":{"applied":<int>,"escalated":<int>,"commit_sha":"<sha or null>"},"mention_comment_url":"<url or null>"}
+{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA before triage>","signed_off_skipped":["km-qc","..."],"verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|auto_fix_only|mention_only|fix_and_mention|escalate|auto_fix_attempt_failed|skipped|auth_failed","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>","auto_fix":{"applied":<int>,"escalated":<int>,"commit_sha":"<sha or null>"},"mention_comment_url":"<url or null>"}
 ```
 
 Field notes:
 - `author` is `pr.author.login` (who opened the PR — kept for completeness; mostly redundant with `directed_by` on the `web` channel).
 - `directed_by` + `channel` come from Phase 3.5 — the directing human and which Claude Code surface they used.
 - `head_sha` is the PR's last commit SHA **before** the triage ran (powers the Phase-2 idempotency gate). When Phase-6 auto-fix pushes a new commit, that new SHA goes in `auto_fix.commit_sha`, not in `head_sha` — the idempotency check should still see the *original* head as "what triage saw."
+- `signed_off_skipped` lists the specialists the Phase-4 pre-filter skipped because they appeared in the last commit's `KM-Reviewed:` trailer. Empty array `[]` means either no trailer was present or the trailer named only specialists in the always-run set (which never get skipped). This list is *informational* — it does not appear in `verdicts` since those specialists didn't run this sweep, but it lets a later audit reconstruct why the crew was smaller than the classification suggests.
 - `auto_fix.applied` counts findings that landed mechanically. `auto_fix.escalated` counts findings that were `fixability=auto` in the verdict but couldn't be applied (e.g. km-programmer hit a failing check and rolled back).
 - `mention_comment_url` is the comment URL when the triage @-mentioned the lead (MENTION_ONLY or FIX_AND_MENTION action). `null` otherwise.
 
