@@ -70,7 +70,15 @@ gh pr list \
 For each PR, **skip** (with audit-log entry `action_taken: skipped, reason: <X>`) when any of these hold:
 
 - `isDraft: true` → reason `draft`.
-- `author.login` equals the tech lead's GitHub login. Read the tech lead login from `gh api user --jq .login`; fall back to `MattGyverLee`. Reason `tech_lead_author`.
+- **Solo-tech-lead authorship** — every commit on the PR is single-authored by the tech lead's git identity, with no Co-Authored-By trailers naming anyone else. Reason `solo_tech_lead_author`. Detection:
+
+  ```bash
+  TL_EMAIL=$(git config user.email)  # fall back to "matthew_lee@sil.org"
+  gh pr view <NUM> --json commits \
+    --jq "[.commits[].authors[].email] | unique"
+  ```
+
+  If the returned list contains exactly `[<TL_EMAIL>]`, skip. Any other shape — Claude (`noreply@anthropic.com`), a teammate's email (`*@taylor.edu`, `*@sil.org` that isn't the lead's), or a Co-Authored-By trailer pointing elsewhere — means **triage the PR**. Do **not** key off `author.login` (who opened the PR) — that field is set to the tech lead's identity whenever a headless CLI run or a "push for me" workflow lands a PR under their credentials, and skipping on that signal would defeat the entire purpose of the triage.
 - Labels include `tech-lead-ready-to-merge`, `tech-lead-review-needed`, or `triage-skip` → reason `already_in_lead_queue`.
 - `mergeable` is `CONFLICTING` → reason `merge_conflict`. Also post a one-line REQUEST_CHANGES comment asking the author to rebase. This is the **only** REQUEST_CHANGES that does not require a specialist verdict.
 - The `statusCheckRollup` shows any required check that is not `SUCCESS` or `NEUTRAL` → reason `ci_not_ready`. Do **not** label or comment; the PR re-enters triage on the next sweep once CI completes.
