@@ -31,11 +31,21 @@ Never, under any circumstance, run:
 
 - `gh pr merge` (any flag — including `--admin`, `--squash`, `--auto`)
 - `git push --force` / `--force-with-lease`
-- `git rebase -i` / `git commit --amend` / `git reset --hard`
+- `git rebase` of any flavor — interactive or non-interactive, against `main` or any other base. Even when an auto-fix would resolve the merge conflict, the triage does not rebase. The human rebases.
+- `git commit --amend` / `git reset --hard`
 - Any operation that closes an issue (`gh issue close`, `--closes` in a commit you author)
 - Any operation that mutates `main` directly
 
-You are an advisor and a router, not a merger. The human flips the final switch on every PR. If the loop is ever in a situation where it feels like merging is the right answer — escalate instead and let the human merge.
+You are an advisor, a router, and a mechanical fixer — but never a merger and never a rebaser. The human flips the final switch on every PR and resolves every merge conflict.
+
+**The CONFLICTING auto-fix gate:** when a PR's `mergeable` field is `CONFLICTING`, the triage will not push any auto-fix commits onto its head branch. Every fixable finding for that PR is rerouted onto the `MENTION_ONLY` path (per Phase 5.5 step 3) so the lead sees the situation and can decide whether to rebase first, take the fix proposals as guidance for manual edits, or close the PR. Pushing a fresh commit onto a branch that the author hasn't yet reconciled with `main` would entangle the merge resolution with our fixes — that's exactly the kind of "make it go away" shortcut the policy forbids.
+
+**Auto-fix km-programmer constraints.** When dispatched in fix mode, km-programmer:
+- only edits files that appear in a fix-proposal `file` field — no opportunistic cleanup;
+- only changes the lines the specialist named (or the smallest possible neighborhood);
+- runs the project's available typecheck/lint after applying fixes, and rolls back (does not commit) if anything goes from green to red;
+- never runs the test suite as part of the fix loop (too slow for a triage sweep — CI on the new push handles that);
+- never invokes /sweep-pattern or other broader audits in fix mode (those are for the original implementation cycle, not for triage-time fixes).
 
 If `gh auth status` fails, append `auth-failed at <ISO timestamp>` to `.tech-lead-inbox/INBOX.md`, write a single audit-log line with `action_taken: auth_failed`, and exit non-zero. The scheduler's log will record the failure.
 
@@ -80,9 +90,17 @@ For each PR, **skip** (with audit-log entry `action_taken: skipped, reason: <X>`
 
   If the returned list contains exactly `[<TL_EMAIL>]`, skip. Any other shape — Claude (`noreply@anthropic.com`), a teammate's email (`*@taylor.edu`, `*@sil.org` that isn't the lead's), or a Co-Authored-By trailer pointing elsewhere — means **triage the PR**. Do **not** key off `author.login` (who opened the PR) — that field is set to the tech lead's identity whenever a headless CLI run or a "push for me" workflow lands a PR under their credentials, and skipping on that signal would defeat the entire purpose of the triage.
 - Labels include `tech-lead-ready-to-merge`, `tech-lead-review-needed`, or `triage-skip` → reason `already_in_lead_queue`.
-- `mergeable` is `CONFLICTING` → reason `merge_conflict`. Also post a one-line REQUEST_CHANGES comment asking the author to rebase. This is the **only** REQUEST_CHANGES that does not require a specialist verdict.
+- `mergeable` is `CONFLICTING` → reason `merge_conflict`. The triage will not run the review crew on this PR (the user's directive: "don't try to fix a conflicting branch"). Instead, post **one** @-mention comment tagging both the tech lead and the PR's directing human (computed per the same Phase-3.5 logic the normal path uses — desktop case via commit author email → GitHub login; web case via `pr.author.login`). Body:
+  ```
+  @MattGyverLee @<directed_by-login> — km-triage skipped this PR.
+
+  PR is in CONFLICTING merge state. Triage policy is to not auto-fix or review a branch that needs rebasing.
+
+  Please rebase against `main` first; the next sweep will run the full review crew (engine or content, by team label / paths) and either auto-fix mechanical findings or @-mention you again with any open questions.
+  ```
+  Dedup the two mentions if `directed_by` resolves to the lead's own login. Audit-log entry uses `action_taken: skipped, reason: merge_conflict`. No labels added.
 - The `statusCheckRollup` shows any required check that is not `SUCCESS` or `NEUTRAL` → reason `ci_not_ready`. Do **not** label or comment; the PR re-enters triage on the next sweep once CI completes.
-- The last commit SHA on the PR (`commits[-1].oid`) equals the SHA recorded in the most recent audit-log entry for this PR AND that entry's action was `request_changes` or `escalate` → reason `no_new_commits_since_last_review`. This is the idempotency gate.
+- The last commit SHA on the PR (`commits[-1].oid`) equals the SHA recorded in the most recent audit-log entry for this PR AND that entry's action was one of `mention_only`, `fix_and_mention`, `escalate`, or `auto_fix_attempt_failed` → reason `no_new_commits_since_last_review`. This is the idempotency gate; it keeps the inbox quiet when the author or lead hasn't yet pushed a response. Note: `auto_fix_only` is **not** in this list because the auto-fix push changes the head SHA, so the next sweep naturally sees a new HEAD and re-runs the crew on the now-fixed code.
 
 If `$ARGUMENTS` is a single PR number, fetch just that PR with the same fields and proceed.
 
@@ -180,24 +198,38 @@ comments:
   - file: <path>
     line: <int>
     body: <inline review comment>
+    fixability: auto | needs_human_input
+    fix_proposal: <concrete change — only required when fixability=auto>
 question: <question for tech lead — only when ESCALATE>
 ```
 
 Status semantics:
 - APPROVE: no actionable findings. Ship it.
 - REQUEST_CHANGES: specific, actionable issues. List them under `comments`
-  with exact file:line refs. Each comment must be something the PR author
-  can act on without further guidance.
+  with exact file:line refs.
 - ESCALATE: an ambiguity that ONLY the human tech lead can resolve —
   a design decision, a spec interpretation, missing intent context, a
   change that conflicts with a prior decision. Set `question` to what
-  you want the tech lead to answer. ESCALATE is NOT for "the code is
-  wrong" (that's REQUEST_CHANGES) and NOT for "tests fail" (that's
-  REQUEST_CHANGES with a failing-test comment). ESCALATE means
-  "I cannot grade this without a human input."
+  you want the tech lead to answer. ESCALATE means "I cannot grade
+  this without a human input." Failing tests, broken code, and
+  unbacked schema fields are REQUEST_CHANGES, not ESCALATE.
+
+Per-comment fixability (REQUEST_CHANGES only):
+- fixability=auto: the fix is mechanical — a rename, a removed line,
+  a single codepoint swap, removing an unused field, adding a quote.
+  A single correct answer exists per spec/docs/codebase. Set
+  fix_proposal to a concrete description that km-programmer can apply
+  literally (e.g. "Remove line 50: `begin Unicode > use(main)`",
+  "Change line 81 expectedOutput from `\"िक\"` to `\"कि\"`",
+  "Add `\"S-04\", \"S-05\"` to combinesWith array").
+- fixability=needs_human_input: the fix requires picking between
+  options, interpreting intent, or external knowledge the agents lack
+  (native-speaker validation, design call, spec ambiguity, scope
+  decision). Omit fix_proposal. The triage will @-mention the tech
+  lead with this finding.
 
 If status is REQUEST_CHANGES, `comments` is required (≥1 entry) and
-`question` is omitted.
+`question` is omitted. Every comment MUST have a fixability value.
 If status is ESCALATE, `question` is required and `comments` is omitted.
 If status is APPROVE, both `comments` and `question` are omitted.
 
@@ -211,27 +243,53 @@ Substitute `<NUM>`, `<TITLE>`, `<LOGIN>`, `<BASE>`, `<HEAD>`, the team-label, an
 After all specialists return:
 
 1. Parse the `verdict` block from each report (fenced with three backticks and language `verdict`). If a block is missing or malformed, treat that specialist as `ESCALATE` with question "verdict parse failed — re-run".
-2. Aggregate by precedence:
+2. Aggregate by precedence into a top-level `action`:
    - `action = APPROVE-AND-PARK` iff **every** specialist returned `APPROVE` AND CI is green AND no merge conflict.
-   - `action = ESCALATE` if **any** specialist returned `ESCALATE` (escalation wins over REQUEST_CHANGES; the tech lead's answer may change which other comments matter).
-   - `action = REQUEST-CHANGES` if any specialist returned `REQUEST_CHANGES` and no specialist returned `ESCALATE`.
-3. If action is `ESCALATE` AND `REQUEST_CHANGES` was also present, attach the change-request comments to the inbox entry too — but do **not** post them on the PR yet (the tech lead's answer may invalidate them).
+   - `action = ESCALATE` if **any** specialist returned `ESCALATE`. Escalation wins over REQUEST_CHANGES because the tech lead's answer may change which other comments matter.
+   - `action = REQUEST_CHANGES` if any specialist returned `REQUEST_CHANGES` and no specialist returned `ESCALATE`.
+3. If action is `ESCALATE` AND `REQUEST_CHANGES` was also present, the change-request comments are *held* for the inbox entry — they don't drive any Phase-6 action until the tech lead answers.
+
+## Phase 5.5 — Partition REQUEST_CHANGES findings (auto-fix vs needs-lead-input)
+
+This step only runs when `action = REQUEST_CHANGES` (no ESCALATE present). It decides per-finding whether the triage can fix it on its own or needs the tech lead to weigh in.
+
+1. Collect every `comments` entry across all specialists into a flat list. De-dup by `(file, line, body)`.
+2. Inspect each entry's `fixability` field:
+   - `auto` → goes onto the **auto-fix list** along with its `fix_proposal`.
+   - `needs_human_input` → goes onto the **escalate-to-lead list** with the specialist name and finding body.
+3. Decide the per-PR outcome shape:
+   - **all auto** — every finding is `auto`; non-empty escalate list is empty → action is **AUTO_FIX_ONLY**.
+   - **all needs_human_input** — auto list is empty → action is **MENTION_ONLY**.
+   - **mixed** — both lists non-empty → action is **FIX_AND_MENTION**.
+
+CONFLICTING PRs never reach this phase — Phase 2 catches them and posts a separate @-mention without running the crew. When `action` from Phase 5 is APPROVE-AND-PARK or ESCALATE, Phase 5.5 is a no-op.
 
 ## Phase 6 — Execute the action
 
-Ensure the triage labels exist (idempotent — only need this on first ever run):
+Ensure the triage labels exist (idempotent — only needed on the first ever run; use the REST API path because `gh pr edit --add-label` requires a `read:org` token scope that the typical PAT does not have):
 
 ```bash
-gh label create tech-lead-ready-to-merge --color 0e8a16 --description "Triage approved — awaiting tech lead merge" 2>/dev/null || true
-gh label create tech-lead-review-needed  --color d93f0b --description "Triage escalated — tech lead must answer a question" 2>/dev/null || true
+gh label create tech-lead-ready-to-merge --color 0e8a16 --description "Triage approved - awaiting tech lead merge" 2>/dev/null || true
+gh label create tech-lead-review-needed  --color d93f0b --description "Triage escalated - tech lead must answer a question" 2>/dev/null || true
 gh label create triage-skip              --color cfd3d7 --description "Do not run triage on this PR" 2>/dev/null || true
 ```
 
-### APPROVE-AND-PARK
+Label additions use the REST API:
 
 ```bash
-gh pr edit <NUM> --add-label tech-lead-ready-to-merge
-gh pr comment <NUM> --body "$(cat <<'EOF'
+gh api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels[]=<label>"
+```
+
+### Action: APPROVE-AND-PARK (Phase 5 outcome)
+
+```bash
+gh api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels[]=tech-lead-ready-to-merge"
+gh pr comment <NUM> --body-file <approval-comment.md>
+```
+
+Comment body:
+
+```
 [km-triage] All review specialists approved this PR.
 
 - <specialist-1>: <verdict.summary>
@@ -239,38 +297,132 @@ gh pr comment <NUM> --body "$(cat <<'EOF'
 - ...
 
 Labelled `tech-lead-ready-to-merge`. Awaiting tech lead merge.
-EOF
-)"
 ```
 
-### REQUEST-CHANGES
+### Action: AUTO_FIX_ONLY (Phase 5.5 outcome)
 
-Build the review body from the union of all `comments` entries across all specialists. De-dup identical (file, line, body) triples. Then:
+Dispatch `km-programmer` once with the consolidated auto-fix list. Briefing template:
+
+```
+You are applying auto-fixes from a km-triage sweep against PR #<NUM>.
+Head branch: <HEAD> on MattGyverLee/keyboard-studio.
+
+The triage crew identified the following fixes. Each is marked
+fixability=auto by the specialist that flagged it, meaning the change
+is mechanical and has a single correct answer.
+
+Fixes to apply (each scoped to one file:line):
+
+1. <file>:<line>
+   Issue (from <specialist>): <body>
+   Apply: <fix_proposal>
+
+2. ...
+
+Procedure:
+1. git fetch origin <HEAD>
+2. git checkout <HEAD>
+3. Apply each fix by editing the cited file at the cited line.
+4. After applying ALL fixes, run the project's typecheck/lint if a
+   relevant command exists (typically: pnpm --filter @keyboard-studio/contracts typecheck;
+   for content YAML changes there is no compile step).
+5. If any check fails or any fix is ambiguous to you, STOP without
+   committing — return a verdict block of status=ESCALATE with
+   the failure details so the triage can route it back to the lead.
+6. Otherwise commit on <HEAD> with message:
+   triage(auto-fix): apply <N> mechanical fix(es) from review (refs #<NUM>)
+   Body lists each fix with the originating specialist.
+   Include "Co-Authored-By: Claude <noreply@anthropic.com>".
+7. git push origin <HEAD>.
+8. Return a verdict block:
+
+```verdict
+status: APPLIED | ESCALATE
+commit_sha: <new HEAD sha if APPLIED>
+applied:
+  - file: <path>
+    line: <int>
+    body: <one-line description>
+problem: <only if ESCALATE — what went wrong>
+```
+```
+
+When `km-programmer` returns APPLIED, post a single comment on the PR (no @mention — nothing requires the lead's input):
+
+```
+[km-triage] Auto-fixed <N> mechanical findings — see commit <sha>.
+
+<bulleted list of applied fixes with specialist attribution>
+
+The next triage sweep will re-review the updated PR.
+```
+
+When `km-programmer` returns ESCALATE (a fix failed to apply, or a check broke), treat the PR as if the action were MENTION_ONLY: post an @-mention comment listing the failed-to-apply fixes alongside their original specialist findings, and add a follow-up audit-log entry with `action_taken: auto_fix_attempt_failed`.
+
+### Action: MENTION_ONLY (Phase 5.5 outcome)
+
+No fixes to push. Post one consolidated comment on the PR that @-mentions both the tech lead and the directing human:
+
+```
+@MattGyverLee @<directed_by-login> — km-triage needs your input on PR #<NUM> before fixing.
+
+The crew flagged the following findings as needing human judgment (not mechanical fixes):
+
+1. **<specialist>** at <file>:<line>:
+   <body>
+
+2. ...
+
+Reply on this PR with your decision and the next sweep will continue from there.
+```
+
+If `directed_by` resolves to the tech-lead's own login (i.e. a self-triggered Claude Code Web session), only @-mention the tech lead once (don't double-tag).
+
+If `directed_by` is an email (desktop-Claude case), look up the GitHub username from `pr.commits[].authors[].login` to convert the email to an @-handle — use the login from the entry whose email matches `directed_by`. If the conversion fails, fall back to mentioning only the tech lead and noting "directing human was <email> (couldn't resolve GitHub handle)" in the comment body.
+
+Then label:
 
 ```bash
-gh pr review <NUM> --request-changes --body "$(cat <<'EOF'
-[km-triage] Review specialists found issues that need attention before merge.
-
-<bulleted list, one per finding, formatted as: `path:line — <body>`>
-
-After fixing, push to this branch and the next triage sweep will re-review.
-EOF
-)"
+gh api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels[]=tech-lead-review-needed"
 ```
 
-(GitHub's `gh pr review` does not support inline file:line-anchored comments via CLI in a single call. The comments go in the review body as `path:line — body` lines. That trade-off is acceptable for v1; we can upgrade to the REST `POST /pulls/:n/reviews` later if comment ergonomics are weak.)
+### Action: FIX_AND_MENTION (Phase 5.5 outcome)
 
-### ESCALATE
+Both paths run. First dispatch km-programmer per AUTO_FIX_ONLY above and wait for the result. Then post a single combined comment:
 
-Do **not** comment on the PR. Append to INBOX.md:
+```
+@MattGyverLee @<directed_by-login> — km-triage applied auto-fixes and needs your input on the remaining items.
+
+[OK] Auto-fixed in commit <sha>:
+- <file:line> — <one-line description> (from <specialist>)
+- ...
+
+[?] Need your call:
+
+1. **<specialist>** at <file>:<line>:
+   <body>
+
+2. ...
+
+Reply on this PR with your decision and the next sweep will continue from there.
+```
+
+Apply the same @-mention dedup and email-to-handle conversion rules as MENTION_ONLY. Label `tech-lead-review-needed`.
+
+### Action: ESCALATE (Phase 5 outcome — pure escalation, no REQUEST_CHANGES partition)
+
+Pure ESCALATE means at least one specialist could not grade the PR without lead input. The lead's answer may invalidate every other comment, so REQUEST_CHANGES findings (if any) are held without acting on them.
+
+Do **not** comment on the PR. Append to `.tech-lead-inbox/INBOX.md`:
 
 ```
 ## [<ISO timestamp>] PR #<NUM> — <TITLE>
 
 - Author: @<LOGIN>
+- Directed by: <directed_by> (channel: <channel>)
 - Team: <engine|content|shared|MISSING>
 - Area hints: <list>
-- Branch: <HEAD> → <BASE>
+- Branch: <HEAD> -> <BASE>
 - Open: gh pr view <NUM> --web
 - Diff: gh pr diff <NUM>
 
@@ -281,15 +433,15 @@ Do **not** comment on the PR. Append to INBOX.md:
 
 ### REQUEST_CHANGES findings (held pending your answer)
 
-<bulleted `path:line — body` list, or "none">
+<bulleted `path:line - body` list, or "none">
 
 ---
 ```
 
-Then:
+Then label:
 
 ```bash
-gh pr edit <NUM> --add-label tech-lead-review-needed
+gh api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels[]=tech-lead-review-needed"
 ```
 
 ## Phase 7 — Audit log
@@ -297,13 +449,15 @@ gh pr edit <NUM> --add-label tech-lead-review-needed
 After every PR action (including skips), append exactly one JSON line to `.tech-lead-inbox/audit-log.jsonl`:
 
 ```json
-{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA>","verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|request_changes|escalate|skipped|auth_failed","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>"}
+{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA before triage>","verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|auto_fix_only|mention_only|fix_and_mention|escalate|auto_fix_attempt_failed|skipped|auth_failed","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>","auto_fix":{"applied":<int>,"escalated":<int>,"commit_sha":"<sha or null>"},"mention_comment_url":"<url or null>"}
 ```
 
 Field notes:
 - `author` is `pr.author.login` (who opened the PR — kept for completeness; mostly redundant with `directed_by` on the `web` channel).
 - `directed_by` + `channel` come from Phase 3.5 — the directing human and which Claude Code surface they used.
-- `head_sha` is what powers the Phase-2 idempotency gate.
+- `head_sha` is the PR's last commit SHA **before** the triage ran (powers the Phase-2 idempotency gate). When Phase-6 auto-fix pushes a new commit, that new SHA goes in `auto_fix.commit_sha`, not in `head_sha` — the idempotency check should still see the *original* head as "what triage saw."
+- `auto_fix.applied` counts findings that landed mechanically. `auto_fix.escalated` counts findings that were `fixability=auto` in the verdict but couldn't be applied (e.g. km-programmer hit a failing check and rolled back).
+- `mention_comment_url` is the comment URL when the triage @-mentioned the lead (MENTION_ONLY or FIX_AND_MENTION action). `null` otherwise.
 
 One line per PR per run, no exceptions. This is the source of truth when we later decide to graduate selected lanes to auto-merge.
 
@@ -313,15 +467,18 @@ At the end of the sweep, print a short summary to stdout (it lands in the schedu
 
 ```
 [km-triage] <ISO timestamp> sweep complete
-  PRs seen:        <N>
-  approve-park:    <N>  (#A, #B, #C)
-  request-changes: <N>  (#D, #E)
-  escalated:       <N>  (#F)
-  skipped:         <N>  (reason breakdown)
-  duration:        <Xs>
+  PRs seen:         <N>
+  approve-park:     <N>  (#A, #B, #C)
+  auto-fix only:    <N>  (#D — auto-fixed <K> findings)
+  mention only:     <N>  (#E — @-mentioned for <K> open questions)
+  fix and mention:  <N>  (#F — auto-fixed <K1>, @-mentioned <K2> open)
+  escalated:        <N>  (#G — full ESCALATE, inbox entry)
+  skipped:          <N>  (reason breakdown)
+  auto-fix failed:  <N>  (#H — programmer rolled back, escalated to lead)
+  duration:         <Xs>
 ```
 
-If anything was escalated, the line is preceded by `[km-triage] <N> PRs need your eyes: #X, #Y, #Z` so the scheduler's log highlights it.
+If anything @-mentioned the lead or escalated, the line is preceded by `[km-triage] <N> PRs need your eyes: #X, #Y, #Z` so the scheduler's log highlights it.
 
 ## When to call which specialist (recap)
 
