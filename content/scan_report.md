@@ -128,7 +128,7 @@ The five keyboards below are documented as negative fixtures for `@keymanapp/key
 
 ## Pattern catalog
 
-The table below lists the 16 pattern YAML files currently in `content/patterns/`, grouped by category, with their associated strategy from the spec §7.3 catalog. This is 16 of a planned larger set; further pattern files (S-06 chained deadkeys, S-07 diacritic cycle, S-11 stateful toggle) are still pending.
+The table below lists the 17 pattern YAML files currently in `content/patterns/`, grouped by category, with their associated strategy from the spec §7.3 catalog. This is 17 of a planned larger set; further pattern files (S-06 chained deadkeys, S-07 diacritic cycle, S-11 stateful toggle) are still pending.
 
 | Pattern | Category | Strategy |
 |---|---|---|
@@ -154,7 +154,7 @@ The table below lists the 16 pattern YAML files currently in `content/patterns/`
 
 ## Open questions for future work
 
-- **Pattern-library completeness.** 16 pattern YAMLs exist. Files for S-06 (chained deadkeys), S-07 (diacritic cycle), and S-11 (stateful toggle) are still pending. The S-04 building block is intentionally omitted as a standalone pattern per spec §7.3.
+- **Pattern-library completeness.** 17 pattern YAMLs exist. Files for S-06 (chained deadkeys), S-07 (diacritic cycle), and S-11 (stateful toggle) are still pending. The S-04 building block is intentionally omitted as a standalone pattern per spec §7.3.
 
 - **Intentional §7.5 self-check gaps.** The EuroLatin and IPA strategy self-check entries in the §7.5 validation table are documented as intentional v1.1 gaps. They were not introduced by this scan and are not actionable until v1.1 planning.
 
