@@ -37,6 +37,19 @@ The following 13 rows were flagged by lex-domain as warranting a second look bef
 - **Section 17, meta-criterion** ("All above checks have passed"): Pure aggregate gate at criteria.md line 207 — not an independent criterion on any artifact. Omitted per the rule: aggregate / cannot meaningfully be a single rule. This row is intentionally unmarked (no color span) in criteria.md.
 - **Legend spans (criteria.md lines 6-8)**: The three colored legend-definition spans (Green, Yellow, Red) in the legend block are not criteria. They are counted in the "136 total colored spans" figure but are not triageable rules and are correctly absent from the JSON. Net criteria spans = 136 - 3 = 133.
 
+## Hook population status (closed by #70)
+
+All four automation-hook fields are now fully populated across every entry:
+
+| Band | Field | Populated / Total |
+|------|-------|-------------------|
+| `layer-c-enforce` | `lintRuleId` | 65 / 65 |
+| `scaffolder-bake` | `scaffolderRule` | 38 / 38 |
+| `yellow-survey` | `surveyQuestionId` | 36 / 36 |
+| `red-checklist` | `preSubmitChecklistText` | 6 / 6 |
+
+`lintRuleId` values follow the `KM_LINT_*` / `KM_WARN_*` naming convention established by the section-18 DISCUS rules. `scaffolderRule` values use kebab-case action slugs. `surveyQuestionId` values use kebab-case descriptors. The rule identifiers are contracts — implementations in the lint engine, scaffolder, and survey surface must register against these IDs.
+
 ## Cross-references
 
 - [spec.md Section 11](../../../spec.md) — example triage table showing band definitions in context.
