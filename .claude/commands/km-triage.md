@@ -29,7 +29,7 @@ That's the whole loop.
 
 Never, under any circumstance, run:
 
-- `gh pr merge` (any flag — including `--admin`, `--squash`, `--auto`)
+- `gh pr merge` (any flag — including `--admin`, `--squash`, `--auto`) **AND** any equivalent via the bot wrapper: `bot-gh.js pr merge`, `node utilities/km-triage-app/bot-gh.js pr merge`, or direct REST calls to `PUT /repos/.../pulls/<n>/merge` from any token (bot or human). The bot's installation deliberately has only `pull_requests: write`, `issues: write`, and `checks: write` — it does **not** have `contents: write` and is **not** in the ruleset's `bypass_actors` list. The bot can review, label, comment, and publish check runs; it cannot push commits or merge PRs. Merging stays a human action (`gh pr merge` from a maintainer's terminal) — and crucially, after the Checks API gate is in place (see Phase 6), `--admin` is no longer needed: the bot's `km-triage/review` check satisfies the merge gate the same way the CI build check does.
 - `git push --force` / `--force-with-lease`
 - `git rebase` of any flavor — interactive or non-interactive, against `main` or any other base. Even when an auto-fix would resolve the merge conflict, the triage does not rebase. The human rebases.
 - `git commit --amend` / `git reset --hard`
@@ -717,12 +717,47 @@ Then label:
 node utilities/km-triage-app/bot-gh.js api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels[]=tech-lead-review-needed"
 ```
 
+### Publish `km-triage/review` check run (always, after the per-action steps)
+
+This is the gating step. The repo's `main: CI + integrity` ruleset (id 17331134) lists `km-triage/review` (integration_id 3984948 = the km-triage App) in `required_status_checks`. The ruleset's `main: PR + review` rule (id 17331095) has `required_approving_review_count: 0`. Net effect: a PR's merge button is grey until a `km-triage/review` check_run with `conclusion: success` is published against the current head SHA. The bot's review activity (APPROVE comments, REQUEST_CHANGES posts, ESCALATE inbox writes) is visible record-of-decision; the **check run** is what actually unblocks the merge.
+
+After any substantive-review action (APPROVE-AND-PARK, AUTO_FIX_ONLY, MENTION_ONLY, FIX_AND_MENTION, ESCALATE), publish one check run on the current head:
+
+```bash
+node utilities/km-triage-app/bot-gh.js api -X POST \
+  repos/MattGyverLee/keyboard-studio/check-runs \
+  -f name='km-triage/review' \
+  -f head_sha='<CURRENT_HEAD_SHA>' \
+  -f status='completed' \
+  -f conclusion='<CONCLUSION_FROM_TABLE_BELOW>' \
+  -f 'output[title]=<one-line summary>' \
+  -f 'output[summary]=<markdown body — typically the same content posted as the FYI / @-mention / inbox-entry text>'
+```
+
+Conclusion mapping by action:
+
+| Action | conclusion | Why |
+|---|---|---|
+| `APPROVE-AND-PARK` | `success` | All specialists APPROVE; nothing actionable. Merge gate opens. |
+| `AUTO_FIX_ONLY` | `action_required` | Auto-fix landed; head SHA moved; next sweep on the new head publishes a fresh check (likely `success` once the fix is verified). The current head needs another pass before merge. |
+| `MENTION_ONLY` | `action_required` | Lead has questions to answer; merge should stay blocked until the next sweep after the lead acts. |
+| `FIX_AND_MENTION` | `action_required` | Both: auto-fixes landed AND lead has questions; gate stays blocked. |
+| `ESCALATE` | `action_required` | Specialist couldn't grade; lead must respond before merge can proceed. |
+
+Skip-action paths (Phase 2 skips like `draft`, `external_pr_not_in_scope`, `merge_conflict`, `ci_not_ready`, `no_new_commits_since_last_review`) do **not** publish a check. A skipped PR keeps whatever check (if any) was previously published on its current head; if none was ever published, the gate stays blocked, which is correct — skipped PRs were never reviewed.
+
+Record the published check's `id` and `conclusion` in the Phase-7 audit log for traceability.
+
+**A note on stale checks**: a check_run is bound to a single SHA. When new commits land on a PR branch, GitHub treats the old check as orphaned (it shows in the rollup but doesn't satisfy the gate for the new head). The triage's incremental review (Pre-filter A) sees the new head and publishes a fresh check_run on the next sweep. This is the same lifecycle as any CI check.
+
+**A note on auth**: every `bot-gh.js api -X POST ... /check-runs` call uses the bot token minted in Phase 1 — the App's `checks: write` permission scopes the call. The `integration_id` on the published check is implicitly the App's ID (3984948), which pins the check identity in the ruleset's required_status_checks list (no other App can spoof a `km-triage/review` check).
+
 ## Phase 7 — Audit log
 
 After every PR action (including skips), append exactly one JSON line to `.tech-lead-inbox/audit-log.jsonl`:
 
 ```json
-{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA before triage>","last_audited_sha":"<previous audit's head_sha or null>","review_range":"full|incremental","signed_off_skipped":["km-qc","..."],"verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|auto_fix_only|mention_only|fix_and_mention|escalate|auto_fix_attempt_failed|skipped|auth_failed","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>","auto_fix":{"applied":<int>,"escalated":<int>,"commit_sha":"<sha or null>"},"mention_comment_url":"<url or null>","mention_resolution":"ok|self_dedup|lookup_failed|n_a"}
+{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA before triage>","last_audited_sha":"<previous audit's head_sha or null>","review_range":"full|incremental","signed_off_skipped":["km-qc","..."],"verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|auto_fix_only|mention_only|fix_and_mention|escalate|auto_fix_attempt_failed|skipped|auth_failed","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>","auto_fix":{"applied":<int>,"escalated":<int>,"commit_sha":"<sha or null>"},"mention_comment_url":"<url or null>","mention_resolution":"ok|self_dedup|lookup_failed|n_a","check_run":{"id":<check_run_id_or_null>,"conclusion":"success|action_required|null"}}
 ```
 
 Field notes:
@@ -744,6 +779,7 @@ Field notes:
   - Other: `auth_failed`, `missing_team_label` (informational; doesn't gate). Empty array `[]` means either no trailer was present or the trailer named only specialists in the always-run set (which never get skipped). This list is *informational* — it does not appear in `verdicts` since those specialists didn't run this sweep, but it lets a later audit reconstruct why the crew was smaller than the classification suggests.
 - `auto_fix.applied` counts findings that landed mechanically. `auto_fix.escalated` counts findings that were `fixability=auto` in the verdict but couldn't be applied (e.g. km-programmer hit a failing check and rolled back).
 - `mention_comment_url` is the comment URL when the triage @-mentioned the lead (MENTION_ONLY or FIX_AND_MENTION action). `null` otherwise.
+- `check_run.id` is the `id` returned by the `POST /check-runs` call that published `km-triage/review` for this sweep's head SHA. `check_run.conclusion` is the conclusion the bot set on that check (`success` for APPROVE-AND-PARK, `action_required` for every other substantive-review action). Both are `null` for skip-action entries since skip paths do not publish a check.
 
 One line per PR per run, no exceptions. This is the source of truth when we later decide to graduate selected lanes to auto-merge.
 
