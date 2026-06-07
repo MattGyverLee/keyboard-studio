@@ -1,0 +1,13 @@
+{
+  "name": "km-triage-app",
+  "private": true,
+  "version": "0.0.0",
+  "description": "One-time setup + installation-token mint for the km-triage GitHub App. Used by .claude/commands/km-triage.md so its reviews are attributed to km-triage[bot] (satisfying the main-branch ruleset's required-review count without colliding with the author self-approval block).",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "setup": "node setup.js",
+    "mint": "node mint-token.js"
+  }
+}

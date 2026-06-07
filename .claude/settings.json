@@ -28,6 +28,7 @@
       "Bash(git status)",
       "Bash(git status *)",
       "Bash(git log *)",
+      "Bash(git pull *)",
       "Bash(git diff *)",
       "Bash(git show *)",
       "Bash(git branch *)",
@@ -116,7 +117,13 @@
       "Bash(pnpm --filter @keyboard-studio/studio build)",
       "Bash(powershell -NoProfile -Command \"\\(Get-Content '.tmp/issue-18-closed-body.md'\\) -replace 'see the linked successor issue for the kept work\\\\.', 'see #183 for the kept work.' | Set-Content '.tmp/issue-18-closed-body.md' -Encoding utf8\")",
       "Bash(pnpm exec *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git rebase *)",
+      "Bash(node utilities/km-triage-app/setup.js)",
+      "Bash(node utilities/km-triage-app/mint-token.js)",
+      "Bash(node utilities/km-triage-app/bot-gh.js *)",
+      "Bash(git pull *)",
+      "PowerShell(Get-ChildItem \"$env:LOCALAPPDATA\\\\km-triage\" -ErrorAction SilentlyContinue | Select-Object Name, Length)"
     ]
   }
 }
