@@ -120,7 +120,7 @@ function applyTouchLayoutCleanup(vfs: VirtualFS, keyboardId: string): void {
 
   delete (data as Record<string, unknown>)["phone"];
 
-  for (const device of ["tablet", "phone"] as const) {
+  for (const device of ["tablet"] as const) {
     const deviceData = data[device] as { layer?: Array<Record<string, unknown>> } | undefined;
     if (deviceData?.layer == null) continue;
     const layers = deviceData.layer;
@@ -162,7 +162,6 @@ function applyTouchLayoutCleanup(vfs: VirtualFS, keyboardId: string): void {
 }
 
 function generateStubs(vfs: VirtualFS, keyboardId: string, displayName: string): void {
-  const year = new Date().getFullYear();
   const now = new Date();
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -204,7 +203,7 @@ function generateStubs(vfs: VirtualFS, keyboardId: string, displayName: string):
     },
     {
       path: `LICENSE.md`,
-      content: `Copyright © ${year} ${displayName}\n\nMIT License\n`,
+      content: `Copyright © ${yyyy} ${displayName}\n\nMIT License\n`,
     },
     {
       path: `HISTORY.md`,

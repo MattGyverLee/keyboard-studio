@@ -455,7 +455,7 @@ export function PreviewShell() {
                 transition: "background 0.15s",
               }}
             >
-              {downloading ? "Downloading..." : "Download .zip"}
+              {downloading ? "Downloading..." : "Download .js"}
             </button>
             <DiagnosticsPanel diagnostics={diagnostics} />
           </>
