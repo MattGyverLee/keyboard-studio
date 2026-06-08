@@ -711,6 +711,44 @@ After all specialists return:
    - `action = REQUEST_CHANGES` if any specialist returned `REQUEST_CHANGES` and no specialist returned `ESCALATE`.
 3. If action is `ESCALATE` AND `REQUEST_CHANGES` was also present, the change-request comments are *held* for the inbox entry — they don't drive any Phase-6 action until the tech lead answers. The held list is exactly the union of `comments` arrays from specialists whose status was `REQUEST_CHANGES`. Specialists whose status was `ESCALATE` contribute only their `question` field (per the verdict-block contract, ESCALATE verdicts omit `comments`). Specialists whose status was `APPROVE` contribute nothing. If the resulting held list is empty (no REQUEST_CHANGES verdicts in this cycle, only ESCALATE), the ESCALATE template renders the held-findings section as "none".
 
+### Observability — Phase 5 emissions and check-run update
+
+Once verdicts are parsed and the top-level action is decided, emit one `verdict` event per specialist plus the `action` event, then PATCH the in-progress check_run with a fresh markdown summary listing all verdicts:
+
+```bash
+# 1. One verdict event per specialist (loop over the parsed verdicts).
+node utilities/km-triage-app/progress-emit.js \
+  phase=verdict pr=<NUM> specialist=<name> status=<APPROVE|REQUEST_CHANGES|ESCALATE> \
+  confidence=<high|medium|low> summary="<verdict.summary>" || true
+
+# 2. The aggregated action chosen for the PR.
+node utilities/km-triage-app/progress-emit.js \
+  phase=action pr=<NUM> action=<APPROVE-AND-PARK|AUTO_FIX_ONLY|MENTION_ONLY|FIX_AND_MENTION|ESCALATE> || true
+
+# 3. Refresh the check_run summary with the verdict-so-far view. The same
+#    body is the canonical "what does the crew think" snapshot the GitHub
+#    PR page shows while Phase 6 is running.
+VERDICT_BODY=.tech-lead-inbox/runs/$KM_TRIAGE_SWEEP_ID-pr<NUM>-verdicts.md
+cat > "$VERDICT_BODY" <<EOF
+**km-triage crew has reported.**
+
+- Aggregated action: <APPROVE-AND-PARK|AUTO_FIX_ONLY|MENTION_ONLY|FIX_AND_MENTION|ESCALATE>
+- Verdicts:
+  - **<specialist-1>** (<confidence>): <status> - <summary>
+  - **<specialist-2>** (<confidence>): <status> - <summary>
+  - ...
+
+Sweep id: \`$KM_TRIAGE_SWEEP_ID\`. This check refreshes once more in Phase 6 with the final conclusion.
+EOF
+node utilities/km-triage-app/check-progress.js \
+  --pr <NUM> --head <CURRENT_HEAD_SHA> \
+  --status in_progress \
+  --title "Reviewing - synthesizing verdicts" \
+  --summary-file "$VERDICT_BODY"
+```
+
+If Phase 5 hit a parse failure for any specialist (treated as ESCALATE per step 1 above), include that synthetic ESCALATE entry in the `verdict` emissions so the dashboard reflects the actual state — don't drop it.
+
 ## Phase 5.5 — Partition REQUEST_CHANGES findings (auto-fix vs needs-lead-input)
 
 This step only runs when `action = REQUEST_CHANGES` (no ESCALATE present). It decides per-finding whether the triage can fix it on its own or needs the tech lead to weigh in.
