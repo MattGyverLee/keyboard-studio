@@ -114,10 +114,13 @@ questions:
 welcome_htm_template:
   description: >
     Template consumed by the scaffolder to produce welcome.htm.
-    {{pf_*}} placeholders match question ids above. Phase A answers
-    are accessed via {{phase_a.<questionId>}}. pf_usage_tips is the
-    ordered array [pf_usage_tip_1..pf_usage_tip_5] with blank entries
-    removed.
+    {{pf_*}} placeholders match question ids above. {{phase_a.*}}
+    placeholders resolve against KeyboardIdentity fields
+    (packages/contracts/src/keyboardIdentity.ts), not raw Phase A
+    question ids — e.g. phase_a.bcp47Tag is the computed BCP47 tag
+    (may include a script subtag such as "bfd-Latn"), not the raw
+    iso_code answer. pf_usage_tips is the ordered array
+    [pf_usage_tip_1..pf_usage_tip_5] with blank entries removed.
   template: |
     <!DOCTYPE html>
     <html lang="{{phase_a.bcp47Tag}}">
