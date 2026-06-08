@@ -44,3 +44,7 @@ export type {
 
 // Issues #46/#47 — output service (zip download + GitHub OAuth fork+PR).
 export { createOutputService, toZip, serializeToZip } from "./output/index.js";
+
+// Issue #19 — scaffolder (template-cleanup pipeline).
+export { createScaffolderService } from "./scaffolder/index.js";
+export type { ScaffolderServiceOptions } from "./scaffolder/index.js";
