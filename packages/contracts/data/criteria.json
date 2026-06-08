@@ -39,7 +39,7 @@
     "section": "1. Repository hygiene",
     "band": "layer-c-enforce",
     "description": "Keyboard ID, folder name, and display name do not contain the word \"keyboard\"",
-    "lintRuleId": "KM_LINT_ID_CONTAINS_KEYWORD"
+    "lintRuleId": "KM_LINT_ID_CONTAINS_KEYBOARD"
   },
   {
     "id": "1.7-no-keyboard-info-file",
@@ -473,7 +473,7 @@
     "section": "7. Keyboard source (`.kpj` → Keyboards tab → `.kmn`)",
     "band": "layer-c-enforce",
     "description": "If both phone and tablet touch layouts are identical, removal of one was requested",
-    "lintRuleId": "KM_WARN_REDUNDANT_TOUCH_LAYOUTS"
+    "lintRuleId": "KM_LINT_REDUNDANT_TOUCH_LAYOUTS"
   },
   {
     "id": "7.20-same-font-phone-tablet",
@@ -669,7 +669,7 @@
     "section": "10. Package metadata (`.kps`)",
     "band": "layer-c-enforce",
     "description": "If the language tag includes numeric regional codes, it is flagged for special review",
-    "lintRuleId": "KM_WARN_KPS_NUMERIC_REGION_TAG"
+    "lintRuleId": "KM_LINT_KPS_NUMERIC_REGION_TAG"
   },
   {
     "id": "10.7-kps-details-files-selected",
