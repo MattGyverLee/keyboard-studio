@@ -153,10 +153,10 @@ export interface TouchLayoutIR {
     rows: Array<{ keys: TouchKeyIR[] }>;
   }>;
   /**
-   * Map from layer-id+key-id to IR node reference.
-   * Not directly JSON-serialisable — use Array<[string, IRNodeRef]> when serialising.
+   * Map from layer-id+key-id to IR node reference, as an entry array for JSON round-trip
+   * compatibility (spec §11).
    */
-  nodeIds: Map<string, IRNodeRef>;
+  nodeIds: Array<[string, IRNodeRef]>;
 }
 
 /** Parsed .kvks file. */
@@ -167,10 +167,10 @@ export interface KvksIR {
   }>;
   usealtgr: boolean;
   /**
-   * Map from shift-state+vkey to IR node reference.
-   * Not directly JSON-serialisable — use Array<[string, IRNodeRef]> when serialising.
+   * Map from shift-state+vkey to IR node reference, as an entry array for JSON round-trip
+   * compatibility (spec §11).
    */
-  nodeIds: Map<string, IRNodeRef>;
+  nodeIds: Array<[string, IRNodeRef]>;
 }
 
 // ---------------------------------------------------------------------------
