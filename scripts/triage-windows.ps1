@@ -28,11 +28,18 @@ for ($i = 1; $i -le $maxIterations; $i++) {
     $stamp = Get-Date -Format "yyyy-MM-dd-HHmm"
     $log   = ".tech-lead-inbox\runs\$stamp-iter$i.log"
 
+    # Tag every progress-emit / check-progress event from this iteration with the
+    # same sweep_id so tools/triage-watch.mjs can group them. Format matches the
+    # iteration log filename for cross-reference.
+    $env:KM_TRIAGE_SWEEP_ID = "$stamp-iter$i"
+
     # claude.exe is on PATH after install; verify with `where.exe claude` if needed.
     try {
         claude -p "/km-triage" --dangerously-skip-permissions --output-format text *> $log
     } catch {
         "[WARN] iteration $i: claude exited with error: $_" | Add-Content $log
+    } finally {
+        Remove-Item Env:\KM_TRIAGE_SWEEP_ID -ErrorAction SilentlyContinue
     }
 
     # Inspect this iteration's audit entries to decide whether to loop again.
