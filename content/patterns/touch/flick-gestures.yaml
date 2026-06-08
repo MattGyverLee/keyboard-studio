@@ -120,7 +120,7 @@ demo:
 
     store(&VERSION) '10.0'
     store(&NAME) 'Flick Gestures Demo'
-    store(&TARGETS) 'phone tablet'
+    store(&TARGETS) 'mobile'
 
     begin Unicode > use(main)
 
@@ -147,6 +147,15 @@ demo:
                       "s": { "id": "U_00E8", "text": "è" }
                     }
                   }
+                ]
+              },
+              {
+                "id": 2,
+                "key": [
+                  { "id": "K_LOPT",  "sp": 1, "width": 100 },
+                  { "id": "K_SPACE", "text": " ", "width": 460 },
+                  { "id": "K_BKSP",  "sp": 1, "width": 100 },
+                  { "id": "K_ENTER", "sp": 1, "width": 100 }
                 ]
               }
             ]
