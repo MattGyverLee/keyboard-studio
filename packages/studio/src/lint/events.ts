@@ -20,20 +20,3 @@ export function dispatchNavigateTo(location: SourceLocation): void {
     }),
   );
 }
-
-/**
- * Dispatch an `applyLintFix` event on `document`.
- * Reserved for future machine-actionable fix flows; currently unused in v1
- * (hints are plain-language only).
- *
- * @internal Reserved for v1.1 machine-actionable fix flow.
- */
-export function dispatchApplyFix(code: LintCode, hint: string | undefined): void {
-  const detail: ApplyLintFixDetail = { code, hint };
-  document.dispatchEvent(
-    new CustomEvent<ApplyLintFixDetail>("applyLintFix", {
-      detail,
-      bubbles: true,
-    }),
-  );
-}

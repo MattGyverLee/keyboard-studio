@@ -1,11 +1,4 @@
-// Vitest unit tests for LintChip and LintSummary.
-// Requires:
-//   @testing-library/react  (NOT yet a dev dep — add before running)
-//   @testing-library/jest-dom  (matchers like .toBeInTheDocument)
-//   jsdom environment — set via vitest config "environment": "jsdom"
-//
-// Until those are installed, running `vitest run` in packages/studio will
-// skip this file with --passWithNoTests (see package.json).
+// Vitest unit tests for LintChip and LintSummary. Requires jsdom environment (see vitest.config.ts).
 
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
@@ -256,10 +249,6 @@ describe("LintSummary — badge order", () => {
 
   it("renders badges in fatal > error > warning > hint > info order", () => {
     render(<LintSummary findings={orderedFindings} />);
-    const header = screen.getByLabelText
-      ? null
-      : null; // aria-label not on header; use text positions instead.
-
     // Grab all badge text nodes from the header area.
     const allText = document.body.textContent ?? "";
     const fatalIdx   = allText.indexOf("fatal");
