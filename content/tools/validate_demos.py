@@ -297,6 +297,11 @@ def validate_all(write_report=False):
                     for line in output.splitlines():
                         print(f"       {line}")
                 any_fail = True
+        elif has_layoutfile and layout_json is None:
+            print(f"[FAIL] {rel}: filled_kmn references &LAYOUTFILE but demo has no touch_layout or touch_layout_fragment")
+            result.kmn_passed = False
+            result.kmn_output = "LAYOUTFILE drift: &LAYOUTFILE referenced but no paired layout JSON in demo"
+            any_fail = True
 
         if layout_json is not None:
             t_passed, t_output = validate_touch_layout(pattern_id, kmn_text, layout_json)

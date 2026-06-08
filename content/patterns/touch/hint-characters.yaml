@@ -139,7 +139,7 @@ demo:
                 "id": 2,
                 "key": [
                   { "id": "K_LOPT",  "sp": 1, "width": 100 },
-                  { "id": "K_SPACE", "text": " ", "width": 460 },
+                  { "id": "K_SPACE", "text": " ", "width": 700 },
                   { "id": "K_BKSP",  "sp": 1, "width": 100 },
                   { "id": "K_ENTER", "sp": 1, "width": 100 }
                 ]
