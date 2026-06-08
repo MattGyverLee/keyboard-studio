@@ -283,6 +283,14 @@ For each PR, **skip** (with audit-log entry `action_taken: skipped, reason: <X>`
 
 If `$ARGUMENTS` is a single valid PR number, fetch just that PR with the same fields and proceed.
 
+**For every PR that hits a Phase-2 skip** above, emit a `pr-skip` progress event before writing its audit-log line:
+
+```bash
+node utilities/km-triage-app/progress-emit.js phase=pr-skip pr=<NUM> reason=<skip_reason> || true
+```
+
+The `reason` value is the same one that goes into the audit log — `external_pr_not_in_scope`, `draft`, `solo_tech_lead_author`, `already_in_lead_queue`, `merge_conflict`, `ci_not_ready`, `mergeability_unknown`, or `no_new_commits_since_last_review`. Skip-action paths do not create a check_run (see Observability lifecycle table), so the GitHub merge gate stays at "Expected — waiting" for skipped PRs.
+
 ## Phase 3 — Classify each surviving PR
 
 Decision precedence (first match wins):
@@ -478,6 +486,42 @@ Procedure:
 
 `km-author` (upstream parity) and `security-review` are deliberately not in scope here — they fire only when the tech lead manually invokes them. Triage is fast-path review.
 
+### Observability — Phase 4 emissions and check-run create
+
+Before composing the Agent calls, emit two progress events and create the `km-triage/review` check_run as `in_progress`. These three calls together signal "the crew is starting work on this PR" to both the local viewer and the GitHub PR page.
+
+```bash
+# 1. Mark the PR as entered (title + crew + team-label context).
+node utilities/km-triage-app/progress-emit.js \
+  phase=pr-start pr=<NUM> title="<TITLE>" crew=<engine|content|both> team=<engine|content|shared|MISSING> || true
+
+# 2. Announce the specialist roster about to fire (post-Pre-filter-B filtering).
+node utilities/km-triage-app/progress-emit.js \
+  phase=dispatch pr=<NUM> "specialists=[<comma-separated names>]" || true
+
+# 3. Create the in_progress check_run on the PR's current head SHA. Use a
+#    short markdown body in a temp file so the GitHub PR page shows what's
+#    being reviewed (the same body is PATCHed later, in Phase 5 and Phase 6).
+DISPATCH_BODY=.tech-lead-inbox/runs/$KM_TRIAGE_SWEEP_ID-pr<NUM>-dispatch.md
+mkdir -p "$(dirname "$DISPATCH_BODY")"
+cat > "$DISPATCH_BODY" <<EOF
+**km-triage is reviewing this PR.**
+
+- Crew: <engine|content|both>
+- Specialists dispatched: <comma-separated names>
+- Sweep id: \`$KM_TRIAGE_SWEEP_ID\`
+
+This check will refresh as the crew progresses through verdicts and the final action.
+EOF
+node utilities/km-triage-app/check-progress.js \
+  --pr <NUM> --head <CURRENT_HEAD_SHA> \
+  --status in_progress \
+  --title "Reviewing - dispatching crew" \
+  --summary-file "$DISPATCH_BODY"
+```
+
+The check_run id is now stored in `.tech-lead-inbox/runs/<sweep_id>-checks.json`; subsequent `check-progress.js` calls within the same sweep PATCH the same check rather than creating a new one.
+
 ### Self-contained briefing template
 
 Build each Agent prompt by filling this template. Keep the briefing under 800 words per agent; specialists do their own reading from the diff and the cited files.
@@ -667,6 +711,44 @@ After all specialists return:
    - `action = REQUEST_CHANGES` if any specialist returned `REQUEST_CHANGES` and no specialist returned `ESCALATE`.
 3. If action is `ESCALATE` AND `REQUEST_CHANGES` was also present, the change-request comments are *held* for the inbox entry — they don't drive any Phase-6 action until the tech lead answers. The held list is exactly the union of `comments` arrays from specialists whose status was `REQUEST_CHANGES`. Specialists whose status was `ESCALATE` contribute only their `question` field (per the verdict-block contract, ESCALATE verdicts omit `comments`). Specialists whose status was `APPROVE` contribute nothing. If the resulting held list is empty (no REQUEST_CHANGES verdicts in this cycle, only ESCALATE), the ESCALATE template renders the held-findings section as "none".
 
+### Observability — Phase 5 emissions and check-run update
+
+Once verdicts are parsed and the top-level action is decided, emit one `verdict` event per specialist plus the `action` event, then PATCH the in-progress check_run with a fresh markdown summary listing all verdicts:
+
+```bash
+# 1. One verdict event per specialist (loop over the parsed verdicts).
+node utilities/km-triage-app/progress-emit.js \
+  phase=verdict pr=<NUM> specialist=<name> status=<APPROVE|REQUEST_CHANGES|ESCALATE> \
+  confidence=<high|medium|low> summary="<verdict.summary>" || true
+
+# 2. The aggregated action chosen for the PR.
+node utilities/km-triage-app/progress-emit.js \
+  phase=action pr=<NUM> action=<APPROVE-AND-PARK|AUTO_FIX_ONLY|MENTION_ONLY|FIX_AND_MENTION|ESCALATE> || true
+
+# 3. Refresh the check_run summary with the verdict-so-far view. The same
+#    body is the canonical "what does the crew think" snapshot the GitHub
+#    PR page shows while Phase 6 is running.
+VERDICT_BODY=.tech-lead-inbox/runs/$KM_TRIAGE_SWEEP_ID-pr<NUM>-verdicts.md
+cat > "$VERDICT_BODY" <<EOF
+**km-triage crew has reported.**
+
+- Aggregated action: <APPROVE-AND-PARK|AUTO_FIX_ONLY|MENTION_ONLY|FIX_AND_MENTION|ESCALATE>
+- Verdicts:
+  - **<specialist-1>** (<confidence>): <status> - <summary>
+  - **<specialist-2>** (<confidence>): <status> - <summary>
+  - ...
+
+Sweep id: \`$KM_TRIAGE_SWEEP_ID\`. This check refreshes once more in Phase 6 with the final conclusion.
+EOF
+node utilities/km-triage-app/check-progress.js \
+  --pr <NUM> --head <CURRENT_HEAD_SHA> \
+  --status in_progress \
+  --title "Reviewing - synthesizing verdicts" \
+  --summary-file "$VERDICT_BODY"
+```
+
+If Phase 5 hit a parse failure for any specialist (treated as ESCALATE per step 1 above), include that synthetic ESCALATE entry in the `verdict` emissions so the dashboard reflects the actual state — don't drop it.
+
 ## Phase 5.5 — Partition REQUEST_CHANGES findings (auto-fix vs needs-lead-input)
 
 This step only runs when `action = REQUEST_CHANGES` (no ESCALATE present). It decides per-finding whether the triage can fix it on its own or needs the tech lead to weigh in.
@@ -811,6 +893,13 @@ Body:
 The next triage sweep will re-review the updated PR.
 ```
 
+Then emit an `auto-fix` progress event so the dashboard records the push:
+
+```bash
+node utilities/km-triage-app/progress-emit.js \
+  phase=auto-fix pr=<NUM> applied=<N> commit_sha=<new-head-sha> || true
+```
+
 When `km-programmer` returns ESCALATE (a fix failed to apply, or a check broke), treat the PR as if the action were MENTION_ONLY: post an @-mention comment listing the failed-to-apply fixes alongside their original specialist findings (use the same `node utilities/km-triage-app/bot-gh.js pr comment` pattern as MENTION_ONLY below), and add a follow-up audit-log entry with `action_taken: auto_fix_attempt_failed`.
 
 ### Action: MENTION_ONLY (Phase 5.5 outcome)
@@ -846,6 +935,13 @@ Then label:
 node utilities/km-triage-app/bot-gh.js api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels[]=tech-lead-review-needed"
 ```
 
+Then emit a `mention` progress event so the dashboard records the @-mention (use the same `directed_by` / `channel` values computed in Phase 3.5):
+
+```bash
+node utilities/km-triage-app/progress-emit.js \
+  phase=mention pr=<NUM> comment_url=<comment_url> directed_by=<directed_by> channel=<desktop|web|unknown> || true
+```
+
 ### Action: FIX_AND_MENTION (Phase 5.5 outcome)
 
 Both paths run. First dispatch km-programmer per AUTO_FIX_ONLY above and wait for the result. Then post a single combined comment (same `node utilities/km-triage-app/bot-gh.js pr comment <NUM> --body-file <combined-body.md>` pattern as MENTION_ONLY):
@@ -868,6 +964,15 @@ Reply on this PR with your decision and the next sweep will continue from there.
 ```
 
 Apply the same @-mention dedup and email-to-handle conversion rules as MENTION_ONLY. Label `tech-lead-review-needed`.
+
+Then emit both an `auto-fix` event (for the commit km-programmer landed) and a `mention` event (for the @-mention comment), in that order:
+
+```bash
+node utilities/km-triage-app/progress-emit.js \
+  phase=auto-fix pr=<NUM> applied=<N> commit_sha=<new-head-sha> || true
+node utilities/km-triage-app/progress-emit.js \
+  phase=mention pr=<NUM> comment_url=<comment_url> directed_by=<directed_by> channel=<desktop|web|unknown> || true
+```
 
 ### Action: ESCALATE (Phase 5 outcome — pure escalation, no REQUEST_CHANGES partition)
 
@@ -950,21 +1055,33 @@ node utilities/km-triage-app/progress-emit.js \
   channel=<channel>
 ```
 
-### Publish `km-triage/review` check run (always, after the per-action steps)
+### Complete the `km-triage/review` check run (after the per-action steps)
 
 This is the gating step. The repo's `main: CI + integrity` ruleset (id 17331134) lists `km-triage/review` (integration_id 3984948 = the km-triage App) in `required_status_checks`. The ruleset's `main: PR + review` rule (id 17331095) has `required_approving_review_count: 0`. Net effect: a PR's merge button is grey until a `km-triage/review` check_run with `conclusion: success` is published against the current head SHA. The bot's review activity (APPROVE comments, REQUEST_CHANGES posts, ESCALATE inbox writes) is visible record-of-decision; the **check run** is what actually unblocks the merge.
 
-After any substantive-review action (APPROVE-AND-PARK, AUTO_FIX_ONLY, MENTION_ONLY, FIX_AND_MENTION, ESCALATE), publish one check run on the current head:
+After any substantive-review action (APPROVE-AND-PARK, AUTO_FIX_ONLY, MENTION_ONLY, FIX_AND_MENTION, ESCALATE), **PATCH the in-progress check_run created in Phase 4** to `completed` with the appropriate conclusion and a final summary body. Use `check-progress.js`, which looks up the existing check_id from the per-sweep sidecar and PATCHes it (rather than POSTing a fresh check):
 
 ```bash
-node utilities/km-triage-app/bot-gh.js api -X POST \
-  repos/MattGyverLee/keyboard-studio/check-runs \
-  -f name='km-triage/review' \
-  -f head_sha='<CURRENT_HEAD_SHA>' \
-  -f status='completed' \
-  -f conclusion='<CONCLUSION_FROM_TABLE_BELOW>' \
-  -f 'output[title]=<one-line summary>' \
-  -f 'output[summary]=<markdown body — typically the same content posted as the FYI / @-mention / inbox-entry text>'
+FINAL_BODY=.tech-lead-inbox/runs/$KM_TRIAGE_SWEEP_ID-pr<NUM>-final.md
+cat > "$FINAL_BODY" <<EOF
+**km-triage completed.**
+
+Action: <APPROVE-AND-PARK|AUTO_FIX_ONLY|MENTION_ONLY|FIX_AND_MENTION|ESCALATE>
+
+<bulleted verdict list, same shape as Phase 5's summary>
+
+<one-paragraph human-facing description of what landed — auto-fix commit
+sha, comment URL, inbox-entry reference, etc. — same content as posted
+in the per-action comment or INBOX entry>
+
+Sweep id: \`$KM_TRIAGE_SWEEP_ID\`
+EOF
+node utilities/km-triage-app/check-progress.js \
+  --pr <NUM> --head <CURRENT_HEAD_SHA> \
+  --status completed \
+  --conclusion <CONCLUSION_FROM_TABLE_BELOW> \
+  --title "<one-line summary>" \
+  --summary-file "$FINAL_BODY"
 ```
 
 Conclusion mapping by action:
@@ -978,13 +1095,22 @@ Conclusion mapping by action:
 | `FIX_AND_MENTION` | `action_required` | Both: auto-fixes landed AND lead has questions; gate stays blocked. |
 | `ESCALATE` | `action_required` | Specialist couldn't grade; lead must respond before merge can proceed. |
 
-Skip-action paths (Phase 2 skips like `draft`, `external_pr_not_in_scope`, `merge_conflict`, `ci_not_ready`, `no_new_commits_since_last_review`) do **not** publish a check. A skipped PR keeps whatever check (if any) was previously published on its current head; if none was ever published, the gate stays blocked, which is correct — skipped PRs were never reviewed.
+Then emit a `check-published` progress event so the dashboard records the conclusion (read the check_id back from the sidecar — `check-progress.js` writes it to `.tech-lead-inbox/runs/<sweep_id>-checks.json`):
 
-Record the published check's `id` and `conclusion` in the Phase-7 audit log for traceability.
+```bash
+node utilities/km-triage-app/progress-emit.js \
+  phase=check-published pr=<NUM> conclusion=<success|action_required> check_id=<id-from-sidecar> || true
+```
 
-**A note on stale checks**: a check_run is bound to a single SHA. When new commits land on a PR branch, GitHub treats the old check as orphaned (it shows in the rollup but doesn't satisfy the gate for the new head). The triage's incremental review (Pre-filter A) sees the new head and publishes a fresh check_run on the next sweep. This is the same lifecycle as any CI check.
+Skip-action paths (Phase 2 skips like `draft`, `external_pr_not_in_scope`, `merge_conflict`, `ci_not_ready`, `no_new_commits_since_last_review`) do **not** create or complete a check. A skipped PR keeps whatever check (if any) was previously published on its current head; if none was ever published, the gate stays blocked, which is correct — skipped PRs were never reviewed.
 
-**A note on auth**: every `bot-gh.js api -X POST ... /check-runs` call uses the bot token minted in Phase 1 — the App's `checks: write` permission scopes the call. The `integration_id` on the published check is implicitly the App's ID (3984948), which pins the check identity in the ruleset's required_status_checks list (no other App can spoof a `km-triage/review` check).
+Record the completed check's `id` and `conclusion` in the Phase-7 audit log for traceability.
+
+**A note on stale checks**: a check_run is bound to a single SHA. When new commits land on a PR branch (e.g. via auto-fix push in AUTO_FIX_ONLY / FIX_AND_MENTION), GitHub treats the old check as orphaned (it shows in the rollup but doesn't satisfy the gate for the new head). The triage's incremental review (Pre-filter A) sees the new head and the next sweep creates a fresh in-progress check via Phase 4's `check-progress.js` call. This is the same lifecycle as any CI check.
+
+**A note on Phase-4 / Phase-6 symmetry**: `check-progress.js` is idempotent within a sweep — Phase 4 creates the check (sidecar entry written), Phase 5 PATCHes it (sidecar entry reused), Phase 6 PATCHes it again with `--status completed --conclusion <X>`. If Phase 4's create call failed silently and the sidecar entry is missing, Phase 6 will fall back to a fresh POST (no patching to do), so the gate still gets unblocked — but the check will lack the in-progress history. Treat that as a soft warning condition; an `INBOX.md` note is appropriate but the sweep should not abort.
+
+**A note on auth**: every `check-progress.js` call goes through [utilities/km-triage-app/bot-gh.js](utilities/km-triage-app/bot-gh.js), which mints the bot token in-process. The App's `checks: write` permission scopes the call. The `integration_id` on the published check is implicitly the App's ID (3984948), which pins the check identity in the ruleset's required_status_checks list (no other App can spoof a `km-triage/review` check).
 
 ## Phase 7 — Audit log
 
@@ -1024,6 +1150,15 @@ Field notes:
 
 One line per PR per run, no exceptions. This is the source of truth when we later decide to graduate selected lanes to auto-merge.
 
+After writing the audit-log line, emit a `pr-end` progress event so the dashboard closes out this PR's row with the final action and head SHA:
+
+```bash
+node utilities/km-triage-app/progress-emit.js \
+  phase=pr-end pr=<NUM> action_taken=<approve_park|auto_fix_only|mention_only|fix_and_mention|escalate|auto_fix_attempt_failed|bypass|skipped> head_sha=<head_sha> || true
+```
+
+For Phase-2 skipped PRs, `pr-skip` already covered the "skipped" signal — emit `pr-end action_taken=skipped` here as well so the per-PR lifecycle has a consistent close (skip → pr-skip → audit → pr-end). The dashboard treats `pr-end` as the canonical "this PR is finished this sweep" event.
+
 ## Phase 8 — Run summary
 
 At the end of the sweep, print a short summary to stdout (it lands in the scheduler's log file):
@@ -1042,6 +1177,17 @@ At the end of the sweep, print a short summary to stdout (it lands in the schedu
 ```
 
 If anything @-mentioned the lead or escalated, the line is preceded by `[km-triage] <N> PRs need your eyes: #X, #Y, #Z` so the scheduler's log highlights it.
+
+Then emit the final `sweep-end` progress event with the same counts (so the dashboard shows the sweep is done and the count breakdown matches the stdout summary):
+
+```bash
+node utilities/km-triage-app/progress-emit.js \
+  phase=sweep-end \
+  approve_park=<N> auto_fix_only=<N> mention_only=<N> fix_and_mention=<N> \
+  escalate=<N> skipped=<N> auto_fix_failed=<N> bypass=<N> duration_s=<seconds> || true
+```
+
+`triage-watch.mjs` treats the first `sweep-end` event with a given `sweep_id` as the sweep's terminal marker — the status badge flips from `RUNNING` to `DONE` once it appears, and the count row below the PR table populates from these fields.
 
 ## When to call which specialist (recap)
 
