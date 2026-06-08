@@ -34,6 +34,15 @@ const KEY_FILE = path.join(CONFIG_DIR, 'private-key.pem');
 const INSTALL_CACHE = path.join(CONFIG_DIR, 'installation.json');
 const REPO = process.env.KM_TRIAGE_REPO || 'MattGyverLee/keyboard-studio';
 
+// Env-var credential source (for Claude Code web sessions and CI).
+// Set all three to bypass the on-disk config dir entirely:
+//   KM_TRIAGE_APP_ID      — numeric App ID (from config.json ".id")
+//   KM_TRIAGE_PRIVATE_KEY — base64-encoded PEM of private-key.pem
+//   KM_TRIAGE_INSTALL_ID  — numeric installation ID (from installation.json ".installation_id")
+const ENV_APP_ID      = process.env.KM_TRIAGE_APP_ID;
+const ENV_PRIVATE_KEY = process.env.KM_TRIAGE_PRIVATE_KEY;
+const ENV_INSTALL_ID  = process.env.KM_TRIAGE_INSTALL_ID;
+
 function b64url(input) {
   return Buffer.from(input).toString('base64')
     .replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -72,6 +81,7 @@ async function ghApi(apiPath, jwt, init = {}) {
 }
 
 async function getInstallationId(jwt) {
+  if (ENV_INSTALL_ID) return Number(ENV_INSTALL_ID);
   if (fs.existsSync(INSTALL_CACHE)) {
     try {
       const cached = JSON.parse(fs.readFileSync(INSTALL_CACHE, 'utf8'));
@@ -94,18 +104,33 @@ async function getInstallationId(jwt) {
 }
 
 (async () => {
-  if (!fs.existsSync(CONFIG_FILE) || !fs.existsSync(KEY_FILE)) {
-    console.error(`[mint-token] No credentials at ${CONFIG_DIR}. Run \`node utilities/km-triage-app/setup.js\` first.`);
-    process.exit(1);
+  let config, privateKey;
+
+  if (ENV_APP_ID && ENV_PRIVATE_KEY) {
+    // Env-var path: decode the base64-encoded PEM and build a minimal config object.
+    try {
+      privateKey = Buffer.from(ENV_PRIVATE_KEY, 'base64').toString('utf8');
+    } catch (err) {
+      console.error('[mint-token] KM_TRIAGE_PRIVATE_KEY is not valid base64:', err.message);
+      process.exit(1);
+    }
+    config = { id: Number(ENV_APP_ID) };
+  } else {
+    // File path: read from the on-disk config dir (desktop / server installs).
+    if (!fs.existsSync(CONFIG_FILE) || !fs.existsSync(KEY_FILE)) {
+      console.error(`[mint-token] No credentials at ${CONFIG_DIR}. Run \`node utilities/km-triage-app/setup.js\` first.`);
+      console.error('[mint-token] Alternatively, set KM_TRIAGE_APP_ID, KM_TRIAGE_PRIVATE_KEY, and KM_TRIAGE_INSTALL_ID environment variables.');
+      process.exit(1);
+    }
+    try {
+      config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    } catch (err) {
+      console.error('[mint-token] Could not parse config.json:', err.message);
+      process.exit(1);
+    }
+    privateKey = fs.readFileSync(KEY_FILE, 'utf8');
   }
-  let config;
-  try {
-    config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-  } catch (err) {
-    console.error('[mint-token] Could not parse config.json:', err.message);
-    process.exit(1);
-  }
-  const privateKey = fs.readFileSync(KEY_FILE, 'utf8');
+
   let jwt;
   try {
     jwt = makeJwt(config.id, privateKey);
