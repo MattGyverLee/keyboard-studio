@@ -6,7 +6,8 @@
 # small fixed depth so a buggy auto-fix can't drive an infinite loop.
 
 $ErrorActionPreference = "Stop"
-Set-Location "D:\Github\_Projects\_KM\keyboard-studio"
+Set-StrictMode -Version Latest
+Set-Location (Split-Path -Parent $PSScriptRoot)
 
 # Refresh main so the command sees the latest crew and command defs.
 git fetch origin main --quiet
@@ -28,7 +29,11 @@ for ($i = 1; $i -le $maxIterations; $i++) {
     $log   = ".tech-lead-inbox\runs\$stamp-iter$i.log"
 
     # claude.exe is on PATH after install; verify with `where.exe claude` if needed.
-    claude -p "/km-triage" --dangerously-skip-permissions --output-format text *> $log
+    try {
+        claude -p "/km-triage" --dangerously-skip-permissions --output-format text *> $log
+    } catch {
+        "[WARN] iteration $i: claude exited with error: $_" | Add-Content $log
+    }
 
     # Inspect this iteration's audit entries to decide whether to loop again.
     if (-not (Test-Path $auditLog)) { break }
