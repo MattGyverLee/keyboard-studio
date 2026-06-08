@@ -50,7 +50,7 @@ export function LintChip({ finding }: LintChipProps) {
 
   return (
     <div
-      style={{ opacity: isUpstream ? 0.5 : 1 }}
+      style={{ opacity: isUpstream ? 0.5 : undefined }}
     >
       {/* Chip row */}
       <div

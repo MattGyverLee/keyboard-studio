@@ -235,9 +235,9 @@ describe("LintSummary — severity badge row", () => {
 
   it("does NOT render badges for absent severities", () => {
     render(<LintSummary findings={mixedFindings} />);
-    expect(screen.queryByText(/fatal/)).toBeNull();
-    expect(screen.queryByText(/hint/)).toBeNull();
-    expect(screen.queryByText(/info/)).toBeNull();
+    expect(screen.queryByText(/\d fatals?/)).toBeNull();
+    expect(screen.queryByText(/\d hints?/)).toBeNull();
+    expect(screen.queryByText(/\d infos?/)).toBeNull();
   });
 });
 
