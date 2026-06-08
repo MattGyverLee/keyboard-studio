@@ -253,7 +253,7 @@ As of **2026-06-06**, the observed claude.ai/code (web) users on `MattGyverLee/k
 
 ## Phase 4 — Dispatch the crew
 
-Spawn the relevant specialists **in parallel** (one message with multiple Agent tool calls). Two pre-filter steps run first — they determine **what** the crew reviews (Pre-filter A) and **who** is on the crew (Pre-filter B).
+Spawn the relevant specialists **in parallel** (one message with multiple Agent tool calls). Three pre-filter steps run first — in firing order: Pre-filter A (compute incremental review range), Pre-filter D (process-only bypass), and Pre-filter B (skip already-signed-off specialists). Together they determine **what** the crew reviews and **who** is on the crew, and whether substantive review is bypassed entirely.
 
 ### Pre-filter A: compute incremental review range
 
@@ -290,6 +290,80 @@ Procedure:
    The briefing template passes `<DIFF_PATH>` and `<FILES_PATH>` to each specialist (replacing the per-specialist `gh pr diff` / `git diff` instructions). Specialists read the cached files; if they need the current state of an individual file at HEAD, they still use `git show <CURRENT_HEAD_SHA>:<path>` (the cached diff doesn't snapshot file contents). Cached diffs are sweep-scoped and get garbage-collected by `.tech-lead-inbox/` cleanup; never relied on across sweeps.
 
 The crew's briefing in the next sub-section uses `review_range`, `last_audited_sha`, and the cached `<DIFF_PATH>` / `<FILES_PATH>` to tell each specialist exactly what to read.
+
+### Pre-filter D: process-only bypass (title prefix OR triage-bypass label)
+
+(Letter D, not C, because C is reserved for a future filter.)
+
+Before composing and dispatching the crew, check whether this PR qualifies for an immediate lead-approved bypass. Two independent trigger conditions are tested; either is sufficient.
+
+**Trigger 1 — process title prefix.** The PR title matches the regex `^(feat|fix|docs|chore|maint|refactor|auto)\(process\):`. The prefix vocabulary mirrors the commit style in CLAUDE.md (§ "Commit and issue title style") exactly — do not add or remove prefix tokens.
+
+**Trigger 2 — `triage-bypass` label.** The PR's label list (from the Phase-2 JSON) includes a label whose `name` is `"triage-bypass"`. If this label is present, additionally attempt to identify who applied it:
+
+```bash
+gh api repos/MattGyverLee/keyboard-studio/issues/<NUM>/timeline \
+  --jq '[.[] | select(.event=="labeled" and .label.name=="triage-bypass")
+         | {actor: .actor.login, created_at: .created_at}] | last'
+```
+
+If the timeline API returns a result, record the actor login as `label_applied_by`. If the call fails or returns null (GitHub rate-limits timeline on some plans), record `label_applied_by: null` and continue.
+
+**Action when either trigger fires:**
+
+1. Skip ALL substantive review: do not compose a crew, do not run Pre-filter B logic for crew dispatch, do not run the empty-crew guard.
+
+2. Append an INBOX.md entry:
+
+   For a `triage_bypass_label` trigger:
+   ```
+   ## [<ISO timestamp>] PR #<NUM> bypassed -- <TITLE>
+
+   Pre-filter D fired. No specialist review was run.
+   Trigger: triage_bypass_label
+   Label applied by: <login or "unknown">
+   ```
+
+   For a `process_title_prefix` trigger:
+   ```
+   ## [<ISO timestamp>] PR #<NUM> bypassed -- <TITLE>
+
+   Pre-filter D fired. No specialist review was run.
+   Trigger: process_title_prefix
+   Title prefix: <matched prefix>
+   Label applied by: N/A
+   ```
+
+   The `label_applied_by` field is the actor login when the trigger is `triage_bypass_label`; it is the literal string `N/A` when the trigger is `process_title_prefix` (no label was applied).
+
+3. Publish the `km-triage/review` check_run as `success` immediately:
+
+   ```bash
+   node utilities/km-triage-app/check-progress.js \
+     --pr <NUM> --head <CURRENT_HEAD_SHA> \
+     --status completed --conclusion success
+   ```
+
+   This unblocks the PR's merge gate without requiring a full crew cycle.
+
+4. Emit a `bypass` progress event:
+
+   ```bash
+   node utilities/km-triage-app/progress-emit.js \
+     phase=bypass \
+     pr=<NUM> \
+     trigger=<process_title_prefix|triage_bypass_label> \
+     label_applied_by=<login|null> \
+     title_prefix=<matched-prefix|null>
+   ```
+
+5. Write the Phase-7 audit-log entry with `action_taken: bypass`, `reason: <process_title_prefix | triage_bypass_label>`, and `bypass_trigger: <process_title_prefix | triage_bypass_label>`. Do not populate the `verdicts` array (leave it as `[]`). Set `check_run.conclusion: "success"`.
+
+6. Move to the next PR. Do not execute any further phases for this PR.
+
+**Action when neither trigger fires:** fall through to Pre-filter B and crew dispatch — compose the crew, apply Pre-filter B filtering, and run the normal substantive review path.
+
+**Ordering note.** Pre-filter D runs second, after A and before B's signed-off filtering and empty-crew guard. If a PR matches a D trigger, Pre-filter B and the empty-crew guard are never evaluated for it. If the PR does not match, Pre-filter B and the empty-crew guard apply as normal. Section is lettered D (not C) because C is reserved for a future filter; section letters reflect insertion order, not firing order, which is documented inline at each section.
 
 ### Pre-filter B: skip already-signed-off specialists
 
@@ -768,6 +842,7 @@ Conclusion mapping by action:
 | Action | conclusion | Why |
 |---|---|---|
 | `APPROVE-AND-PARK` | `success` | All specialists APPROVE; nothing actionable. Merge gate opens. |
+| `bypass` | `success` | Pre-filter D fired (process title prefix or triage-bypass label); lead has pre-approved this class of PR. Merge gate opens immediately without specialist review. |
 | `AUTO_FIX_ONLY` | `action_required` | Auto-fix landed; head SHA moved; next sweep on the new head publishes a fresh check (likely `success` once the fix is verified). The current head needs another pass before merge. |
 | `MENTION_ONLY` | `action_required` | Lead has questions to answer; merge should stay blocked until the next sweep after the lead acts. |
 | `FIX_AND_MENTION` | `action_required` | Both: auto-fixes landed AND lead has questions; gate stays blocked. |
@@ -786,7 +861,7 @@ Record the published check's `id` and `conclusion` in the Phase-7 audit log for 
 After every PR action (including skips), append exactly one JSON line to `.tech-lead-inbox/audit-log.jsonl`:
 
 ```json
-{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA before triage>","last_audited_sha":"<previous audit's head_sha or null>","review_range":"full|incremental","signed_off_skipped":["km-qc","..."],"trigger":"schedule|comment|manual_arg","triggering_comment_id":<comment_id_or_null>,"verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|auto_fix_only|mention_only|fix_and_mention|escalate|auto_fix_attempt_failed|skipped|auth_failed","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>","auto_fix":{"applied":<int>,"escalated":<int>,"commit_sha":"<sha or null>"},"mention_comment_url":"<url or null>","mention_resolution":"ok|self_dedup|lookup_failed|n_a","check_run":{"id":<check_run_id_or_null>,"conclusion":"success|action_required|null"}}
+{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA before triage>","last_audited_sha":"<previous audit's head_sha or null>","review_range":"full|incremental","signed_off_skipped":["km-qc","..."],"trigger":"schedule|comment|manual_arg","triggering_comment_id":<comment_id_or_null>,"verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|auto_fix_only|mention_only|fix_and_mention|escalate|auto_fix_attempt_failed|skipped|auth_failed|bypass","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>","bypass_trigger":"process_title_prefix|triage_bypass_label|null","auto_fix":{"applied":<int>,"escalated":<int>,"commit_sha":"<sha or null>"},"mention_comment_url":"<url or null>","mention_resolution":"ok|self_dedup|lookup_failed|n_a","check_run":{"id":<check_run_id_or_null>,"conclusion":"success|action_required|null"}}
 ```
 
 Field notes:
@@ -801,14 +876,16 @@ Field notes:
   - `self_dedup` — directing human resolved to the tech lead's own login; comment tags the lead once.
   - `lookup_failed` — desktop-channel case where commit-author email didn't map to a known GitHub login; comment tagged only the lead and the body noted the directing-human's email verbatim.
   - `n_a` — this entry didn't post a mention (e.g. action was APPROVE-AND-PARK or skipped).
-- `reason` carries the per-action explanation when `action_taken` is `skipped` or when an auto-fix or approve-park was rerouted to MENTION_ONLY by a precondition gate. Known values include:
+- `bypass_trigger` names the Pre-filter D path that fired when `action_taken` is `bypass`. Two values: `process_title_prefix` (the PR title matched `^(feat|fix|docs|chore|maint|refactor|auto)\(process\):`), or `triage_bypass_label` (the PR carried the `triage-bypass` label). `null` for all other action_taken values — this field is always present in the JSON, but non-null only on bypass entries.
+- `reason` carries the per-action explanation when `action_taken` is `skipped` or `bypass`, or when an auto-fix or approve-park was rerouted to MENTION_ONLY by a precondition gate. Known values include:
+  - Bypass reasons (Pre-filter D): `process_title_prefix`, `triage_bypass_label`. These match `bypass_trigger` exactly; both fields carry the same value on bypass entries.
   - Skip reasons (Phase 2 / Pre-filter A): `external_pr_not_in_scope`, `draft`, `solo_tech_lead_author`, `already_in_lead_queue`, `merge_conflict`, `ci_not_ready`, `no_new_commits_since_last_review`, `no_content_changes_since_last_review`.
   - Auto-fix abort → MENTION_ONLY reroute (Phase 6 preconditions): `head_is_protected_branch`, `head_moved_during_fix`, `became_conflicting_during_review`.
   - Approve-park abort → MENTION_ONLY reroute (Phase 6 APPROVE-AND-PARK re-check): `became_conflicting_during_review`, `ci_red_during_review`.
   - Other: `auth_failed`, `missing_team_label` (informational; doesn't gate). Empty array `[]` means either no trailer was present or the trailer named only specialists in the always-run set (which never get skipped). This list is *informational* — it does not appear in `verdicts` since those specialists didn't run this sweep, but it lets a later audit reconstruct why the crew was smaller than the classification suggests.
 - `auto_fix.applied` counts findings that landed mechanically. `auto_fix.escalated` counts findings that were `fixability=auto` in the verdict but couldn't be applied (e.g. km-programmer hit a failing check and rolled back).
 - `mention_comment_url` is the comment URL when the triage @-mentioned the lead (MENTION_ONLY or FIX_AND_MENTION action). `null` otherwise.
-- `check_run.id` is the `id` returned by the `POST /check-runs` call that published `km-triage/review` for this sweep's head SHA. `check_run.conclusion` is the conclusion the bot set on that check (`success` for APPROVE-AND-PARK, `action_required` for every other substantive-review action). Both are `null` for skip-action entries since skip paths do not publish a check.
+- `check_run.id` is the `id` returned by the `POST /check-runs` call that published `km-triage/review` for this sweep's head SHA. `check_run.conclusion` is the conclusion the bot set on that check (`success` for APPROVE-AND-PARK and `bypass`, `action_required` for every other substantive-review action). Both are `null` for skip-action entries since skip paths do not publish a check.
 - `trigger` records what caused this sweep to run on this PR. Values:
   - `schedule` — scheduled sweep (cron / systemd timer / Task Scheduler) found new commits since the last audit and processed the PR.
   - `comment` — a lead-trigger comment overrode the head-SHA idempotency gate (see Phase 2). Used when the lead replied to a bot mention by posting a comment containing `@km-triage`, even with HEAD unchanged.
