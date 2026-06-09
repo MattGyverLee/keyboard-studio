@@ -149,6 +149,12 @@ provenance:
       shape appears in itrans_devanagari_hindi, itrans_bengali, itrans_gujarati,
       itrans_devanagari_sanskrit_vedic, and masaram_gondi; it is the standard ITRANS
       family mechanism for Indic consonant-cluster + vowel composition.
+      This remains S-03 rather than S-09 because the trigger store acts as a
+      set-based sequence terminator (the rule is phonetic-sequence-driven, mapping
+      a buffered Latin transliteration sequence to Indic output) rather than a
+      script-position dependency — S-09 applies when the output form depends on
+      rendering context such as Arabic positional variants or Indic conjunct
+      formation in a native-script IME.
   - keyboard: "release/gautami/gautami_inditran/source/gautami_inditran.kmn"
     line: 114
     rule: "'k' 'h' +[K_HYPHEN] > context(1) U+035f context(2)"
