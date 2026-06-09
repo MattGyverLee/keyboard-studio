@@ -92,29 +92,63 @@ notes: >
   the same KMN group. There is no explicit reordering rule in the KMN source;
   the reordering is inherent to how the Unicode text is rendered.
 
+  Malayalam caveat: this pattern handles single-codepoint pre-base vowels only.
+  U+0D3F (i), U+0D46 (e), U+0D47 (ee), and U+0D48 (ai) are each a single Unicode
+  scalar and are in scope. The vowels U+0D4A (o), U+0D4B (oo), and U+0D4C (au)
+  decompose canonically to base vowel sign + U+0D3E or U+0D57 — two codepoints.
+  Do not add U+0D4A, U+0D4B, or U+0D4C to the preBaseVowels store; they require
+  a separate two-component cluster-formation pattern.
+
 # Post-resolution audit fix: the tests block was outside the conflict markers
 # but still asserted V+C storage order, which would contradict the C+V kmnFragment
 # now in place. Corrected to canonical C+V order so the descriptions match what
 # the rule actually emits.
 tests:
-  - input: ["K_K", "U+093F"]
+  - input: ["U_0915", "U_093F"]
     expectedOutput: "कि"
     description: >
-      Devanagari: type ka (क U+0915) then i-matra (ि U+093F) — stored as
+      Devanagari: U_0915 (ka क) then U_093F (i-matra ि) — stored as
       consonant THEN i-matra (U+0915 U+093F, canonical Unicode order); the
       rendering engine positions the i-matra visually to the left.
-  - input: ["K_K", "U+0BBF"]
+  - input: ["U_0B95", "U_0BBF"]
     expectedOutput: "கி"
     description: >
-      Tamil: type ka (க U+0B95) then i-matra (ி U+0BBF) — stored as
+      Tamil: U_0B95 (ka க) then U_0BBF (i-matra ி) — stored as
       consonant THEN i-matra (U+0B95 U+0BBF, canonical Unicode order).
-  - input: ["K_K", "U+09BF"]
+  - input: ["U_0995", "U_09BF"]
     expectedOutput: "কি"
     description: >
-      Bengali: type ka (ক U+0995) then i-matra (ি U+09BF) — stored as
+      Bengali: U_0995 (ka ক) then U_09BF (i-matra ি) — stored as
       consonant THEN i-matra (U+0995 U+09BF, canonical Unicode order).
+  - input: ["U_0C95", "U_0CBF"]
+    expectedOutput: "ಕಿ"
+    description: >
+      Kannada: U_0C95 (ka ಕ) then U_0CBF (i-matra ಿ) — stored as
+      consonant THEN i-matra (U+0C95 U+0CBF, canonical Unicode order).
+  - input: ["U_0D15", "U_0D3F"]
+    expectedOutput: "കി"
+    description: >
+      Malayalam: U_0D15 (ka ക) then U_0D3F (i-matra ി) — stored as
+      consonant THEN i-matra (U+0D15 U+0D3F, canonical Unicode order).
+      Note: only single-codepoint pre-base vowels (U+0D3F, U+0D46–U+0D48)
+      are in scope; see notes field for two-codepoint vowel caveat.
+  - input: ["U_0B15", "U_0B3F"]
+    expectedOutput: "କି"
+    description: >
+      Odia: U_0B15 (ka କ) then U_0B3F (i-matra ି) — stored as
+      consonant THEN i-matra (U+0B15 U+0B3F, canonical Unicode order).
+  - input: ["U_0A95", "U_0ABF"]
+    expectedOutput: "કિ"
+    description: >
+      Gujarati: U_0A95 (ka ક) then U_0ABF (i-matra િ) — stored as
+      consonant THEN i-matra (U+0A95 U+0ABF, canonical Unicode order).
+  - input: ["U_0A15", "U_0A3F"]
+    expectedOutput: "ਕਿ"
+    description: >
+      Gurmukhi: U_0A15 (ka ਕ) then U_0A3F (i-matra ਿ) — stored as
+      consonant THEN i-matra (U+0A15 U+0A3F, canonical Unicode order).
 
-validatedForFamilies: ["Deva", "Taml", "Beng"]
+validatedForFamilies: ["Deva", "Taml", "Beng", "Knda", "Mlym", "Orya", "Gujr", "Guru"]
 sourceKeyboards:
   - "release/sil/sil_devanagari_phonetic"
   - "release/tamil/tamil99"

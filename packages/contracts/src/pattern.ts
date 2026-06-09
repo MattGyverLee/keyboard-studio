@@ -45,7 +45,12 @@ export interface PatternQuestion {
 }
 
 export interface TestVector {
-  /** Key sequence to simulate, as an array of virtual-key strings. */
+  /**
+   * Key sequence to simulate. Each element must be a Keyman virtual-key string:
+   *   K_XXXX  — named virtual key (e.g. "K_A", "K_QUOTE")
+   *   U_XXXX  — Unicode virtual key (hex codepoint, uppercase, 4-6 digits; e.g. "U_0915")
+   * U+XXXX (Unicode codepoint literal syntax) is NOT valid here; use U_XXXX instead.
+   */
   input: string[];
   /** Expected Unicode output string after processing. */
   expectedOutput: string;

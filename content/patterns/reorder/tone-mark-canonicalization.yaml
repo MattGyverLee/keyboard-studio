@@ -129,18 +129,18 @@ reorderRules: |
 touchLayoutFragment: null
 
 tests:
-  - input: ["U+0EB3", "U+0EC9"]
+  - input: ["U_0EB3", "U_0EC9"]
     expectedOutput: "ໃ້"
     description: >
       Lao: sala-am (U+0EB3) already in buffer, then type tone 3 (U+0EC9 via ToneKey).
       Rule on line 72 fires: U+0EB3 + ToneKey → index(Tone,2) context
       = tone mark stored before sala-am: U+0EC9 U+0EB3. Renders tone above sala-am.
-  - input: ["U+0EC9", "U+0EC9"]
+  - input: ["U_0EC9", "U_0EC9"]
     expectedOutput: "[beep — double tone blocked]"
     description: >
       Lao: tone + tone → beep and suppress (constraint rule line 76).
       any(Tone) + any(ToneKey) → context beep.
-  - input: ["U+0E81", "U+0EC9"]
+  - input: ["U_0E81", "U_0EC9"]
     expectedOutput: "ກ້"
     description: >
       Lao: consonant ko (U+0E81) + tone 3 (U+0EC9) → stored as U+0E81 U+0EC9.
