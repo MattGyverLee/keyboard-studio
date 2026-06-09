@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import type { LintFinding } from "@keyboard-studio/contracts";
 import { runAllChecks } from "@keyboard-studio/engine";
-import { useDebounce } from "./useDebounce.ts";
+import { useDebounce, DEBOUNCE_MS } from "./useDebounce.ts";
 
 export interface ValidatorResult {
   findings: LintFinding[];
@@ -12,18 +12,19 @@ export function useValidator(kmnSource: string | null): ValidatorResult {
   const [findings, setFindings] = useState<LintFinding[]>([]);
   const [running, setRunning] = useState(false);
 
-  const debouncedSource = useDebounce(kmnSource, 300);
+  const debouncedSource = useDebounce(kmnSource, DEBOUNCE_MS);
 
   useEffect(() => {
-    setRunning(true);
     if (debouncedSource === null) {
       setFindings([]);
       setRunning(false);
       return;
     }
+    setRunning(true);
     try {
       setFindings(runAllChecks(debouncedSource));
-    } catch {
+    } catch (err: unknown) {
+      console.error('[useValidator] runAllChecks threw:', err);
       setFindings([]);
     } finally {
       setRunning(false);
