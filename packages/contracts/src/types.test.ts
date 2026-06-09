@@ -357,7 +357,7 @@ describe("criteria.json schema conformance", () => {
     expect(unique.size).toBe(ids.length);
   });
 
-  it("matches the expected per-band counts (45/65/36/6 after section-18 DISCUS)", () => {
+  it("matches the expected per-band counts (38/65/36/6 after section-18 DISCUS)", () => {
     const counts = records.reduce<Record<string, number>>((acc, c) => {
       acc[c.band] = (acc[c.band] ?? 0) + 1;
       return acc;
@@ -369,6 +369,10 @@ describe("criteria.json schema conformance", () => {
     // 133 original repo-hygiene criteria + 12 section-18 DISCUS design
     // heuristics (7 layer-c-enforce + 3 yellow-survey + 2 red-checklist).
     expect(records.length).toBe(145);
+    expect(counts["scaffolder-bake"]).toBe(38);
+    expect(counts["layer-c-enforce"]).toBe(65);
+    expect(counts["yellow-survey"]).toBe(36);
+    expect(counts["red-checklist"]).toBe(6);
   });
 
   it("section-18 DISCUS rows are present, tagged with a valid principle, and banded correctly", () => {
