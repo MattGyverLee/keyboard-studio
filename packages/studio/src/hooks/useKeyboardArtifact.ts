@@ -198,6 +198,8 @@ export function useKeyboardArtifact(
 
   const retry = useCallback(() => {
     if (baseKeyboard !== null) {
+      engineLoadAttempted.current = false;
+      engineRef.current = null;
       const thisRunId = ++runId.current;
       void run(baseKeyboard, thisRunId);
     }
