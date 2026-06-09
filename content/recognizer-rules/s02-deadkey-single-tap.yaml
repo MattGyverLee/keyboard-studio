@@ -218,5 +218,4 @@ notes:
       Each family has its own distinct deadkey id (DK) and its own trigger key. The
       recognizer should lift each family as a separate Pattern instance.
     - >
-      If the fan-out rule uses index() with offset != 2, this is an unusual pattern
-      that should not be silently lifted — surface as an unrecognized cluster.
+      If index().offset does not equal the 1-indexed position of the any() element in the fan-out rule's context, this is an unusual pattern that should not be silently lifted — do not assume offset is always 2.
