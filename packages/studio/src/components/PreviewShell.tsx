@@ -104,7 +104,7 @@ function DiagnosticsPanel({ diagnostics }: { diagnostics: CompilerDiagnostic[] }
       >
         {diagnostics.map((d, i) => (
           <li
-            key={i}
+            key={`${d.severity}:${d.code ?? i}`}
             style={{
               display: "flex",
               alignItems: "flex-start",
