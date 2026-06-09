@@ -1,6 +1,7 @@
 import type {
   ScaffolderService,
   ScaffoldOptions,
+  ScaffoldResult,
   RoutingGroup,
 } from "@keyboard-studio/contracts";
 import type { BaseKeyboard, VirtualFS } from "@keyboard-studio/contracts";
@@ -240,7 +241,7 @@ export function createScaffolderService(opts?: ScaffolderServiceOptions): Scaffo
       keyboardId: string,
       displayName: string,
       scaffoldOpts?: ScaffoldOptions
-    ): Promise<VirtualFS> {
+    ): Promise<ScaffoldResult> {
       const idError = contractsValidateKeyboardId(keyboardId);
       if (idError !== null) {
         return Promise.reject(new Error(`invalid keyboardId: ${idError}`));
@@ -277,7 +278,7 @@ export function createScaffolderService(opts?: ScaffolderServiceOptions): Scaffo
       applyTouchLayoutCleanup(vfs, keyboardId);
       generateStubs(vfs, keyboardId, displayName);
 
-      return vfs;
+      return { vfs, warnings: [] };
     },
 
     async listTemplates(): Promise<string[]> {

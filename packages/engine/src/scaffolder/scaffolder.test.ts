@@ -111,7 +111,7 @@ describe("createScaffolderService", () => {
       });
 
       const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
-      const vfs = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
+      const { vfs } = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
 
       const kmnEntry = vfs.get("source/my_keyboard.kmn");
       expect(kmnEntry).toBeDefined();
@@ -129,7 +129,7 @@ describe("createScaffolderService", () => {
       });
 
       const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
-      const vfs = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
+      const { vfs } = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
 
       const kmnEntry = vfs.get("source/my_keyboard.kmn");
       const content = kmnEntry!.content as string;
@@ -147,7 +147,7 @@ describe("createScaffolderService", () => {
       });
 
       const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
-      const vfs = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
+      const { vfs } = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
 
       const requiredPaths = [
         "source/my_keyboard.kmn",
@@ -176,7 +176,7 @@ describe("createScaffolderService", () => {
       });
 
       const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
-      const vfs = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
+      const { vfs } = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
 
       const kmnEntry = vfs.get("source/my_keyboard.kmn");
       const content = kmnEntry!.content as string;
@@ -195,7 +195,7 @@ describe("createScaffolderService", () => {
       const mockFetch = vi.fn().mockResolvedValue(makeNotFoundResponse());
       const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
 
-      const vfs = await service.scaffold(baseKeyboard, "new_keyboard", "New Keyboard");
+      const { vfs } = await service.scaffold(baseKeyboard, "new_keyboard", "New Keyboard");
 
       expect(vfs.get("source/new_keyboard.kmn")).toBeDefined();
       expect(vfs.get("LICENSE.md")).toBeDefined();
@@ -209,7 +209,7 @@ describe("createScaffolderService", () => {
       });
 
       const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
-      const vfs = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard", {
+      const { vfs } = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard", {
         group: "azerty",
       });
 
@@ -226,7 +226,7 @@ describe("createScaffolderService", () => {
       });
 
       const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
-      const vfs = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard", {
+      const { vfs } = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard", {
         group: "non-roman",
       });
 
@@ -249,7 +249,7 @@ describe("scaffold — additional coverage", () => {
       return Promise.resolve(makeNotFoundResponse());
     });
     const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
-    const vfs = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
+    const { vfs } = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
     expect(vfs.get("source/base_keyboard.kmn")).toBeUndefined();
     expect(vfs.get("source/my_keyboard.kmn")).toBeDefined();
   });
@@ -258,7 +258,7 @@ describe("scaffold — additional coverage", () => {
     const kmnWithExisting = BASE_KMN + "store(&CasedKeys) [K_A]..[K_Z]\n";
     const mockFetch = vi.fn().mockResolvedValue(makeTextResponse(kmnWithExisting));
     const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
-    const vfs = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
+    const { vfs } = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
     const content = vfs.get("source/my_keyboard.kmn")!.content as string;
     const count = (content.match(/store\(&CasedKeys\)/g) ?? []).length;
     expect(count).toBe(1);
@@ -271,7 +271,7 @@ describe("scaffold — additional coverage", () => {
       return Promise.resolve(makeNotFoundResponse());
     });
     const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
-    const vfs = await service.scaffold(nonLatnBase, "my_keyboard", "My Keyboard");
+    const { vfs } = await service.scaffold(nonLatnBase, "my_keyboard", "My Keyboard");
     const content = vfs.get("source/my_keyboard.kmn")!.content as string;
     expect(content).not.toContain("store(&CasedKeys)");
   });
@@ -301,7 +301,7 @@ group(main) using keys
       return Promise.resolve(makeNotFoundResponse());
     });
     const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
-    const vfs = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
+    const { vfs } = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
 
     const entry = vfs.get("source/my_keyboard.keyman-touch-layout");
     expect(entry).toBeDefined();
