@@ -221,7 +221,7 @@ describe("SurveyPhaseResult interface", () => {
   });
 
   it("answers accepts SurveyAnswer[]", () => {
-    const a: SurveyAnswer = { questionId: "triggerKey", value: "K_QUOTE" };
+    const a: SurveyAnswer = { questionId: "triggerKey", answerType: "key-name", value: "K_QUOTE" };
     const r: SurveyPhaseResult = { phase: "B", answers: [a] };
     expect(r.answers).toHaveLength(1);
     expect(r.answers[0]?.questionId).toBe("triggerKey");

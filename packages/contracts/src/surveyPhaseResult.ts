@@ -16,10 +16,14 @@ import type { KeyboardIdentity } from "./keyboardIdentity";
  */
 export type SurveyPhase = "A" | "B" | "C" | "C-prime" | "D" | "E" | "F" | "G";
 
-export interface SurveyAnswer {
-  questionId: string;
-  value: string;
-}
+export type SurveyAnswer =
+  | { questionId: string; answerType: "char-list";     value: string[]  }
+  | { questionId: string; answerType: "char-single";   value: string    }
+  | { questionId: string; answerType: "key-name";      value: string    }
+  | { questionId: string; answerType: "store-content"; value: string    }
+  | { questionId: string; answerType: "boolean";       value: boolean   }
+  | { questionId: string; answerType: "select";        value: string    }
+  | { questionId: string; answerType: "text";          value: string    };
 
 export interface SurveyPhaseResult {
   phase: SurveyPhase;
