@@ -232,6 +232,7 @@ describe("makePattern — origin and ownedNodes", () => {
     });
     expect(p.origin).toBe("recognized");
     expect(p.ownedNodes).toEqual([{ kind: "rule", nodeId: "r1" }]);
+    expect(JSON.parse(JSON.stringify(p))).toEqual(p);
   });
 
   it("omits origin and ownedNodes when not provided", () => {
