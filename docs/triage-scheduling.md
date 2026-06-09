@@ -161,7 +161,7 @@ To disable: `systemctl --user disable --now km-triage.timer`.
 Once a day (or whenever the inbox dings):
 
 1. Open `.tech-lead-inbox/INBOX.md`. Scan the timestamped entries. Each one is a PR # with a question.
-2. For each escalation: answer the question on the PR itself (`gh pr comment <N>` or in the GitHub UI), then `gh pr edit <N> --remove-label tech-lead-review-needed`. The next triage sweep will re-review with your answer in the comment history.
+2. For each escalation: the submitter (preferred) or the tech lead answers the question on the PR itself (`gh pr comment <N>` or in the GitHub UI), then `gh pr edit <N> --remove-label review-needed`. The next triage sweep will re-review with the answer in the comment history.
 3. Open the GitHub PR list filtered to `label:tech-lead-ready-to-merge`. For each: read the diff if you want, then `gh pr merge <N> --squash --delete-branch`. The triage agent never does this for you.
 4. If a PR is parked but you disagree with the approval, comment your reasoning and `gh pr edit <N> --remove-label tech-lead-ready-to-merge`. Add `triage-skip` if you want the triage to stop touching it.
 
