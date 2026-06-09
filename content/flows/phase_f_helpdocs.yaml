@@ -3,8 +3,7 @@
 # Scope: the user authors the descriptive content for the keyboard's help page.
 #   welcome.htm   -- generated from the template below with the user's answers
 #                    substituted for {{pf_*}} placeholders; the <html> element
-#                    uses lang="en" (page text is in English, matching upstream
-#                    keymanapp/keyboards convention)
+#                    lang attr uses Phase A BCP47 tag per spec §8 template constraint
 #   help/<id>.php -- auto-generated from the same body content as welcome.htm
 #                    (spec §8 step 9 parity guarantee)
 #
@@ -89,7 +88,8 @@ questions:
       List the people, organizations, or committees who worked on the keyboard.
       You can include names, roles, or organizations. For example: "Bafut
       Language Committee, Northwest Region, Cameroon. Keyboard layout by the
-      Bafut Literacy Project, 2024." This appears in the credits section of
+      Bafut Literacy Project." Do not include a copyright symbol or year —
+      those are captured separately. This appears in the credits section of
       the help page.
     type: text
     required: false
@@ -111,6 +111,10 @@ questions:
 # WELCOME.HTM TEMPLATE
 # =============================================================================
 
+# Spec §8: help/<name>.php regenerated from same content as welcome.htm (body+style parity).
+# Engine reads this key to derive help_php from the same template source.
+help_php_parity: welcome_htm_template
+
 welcome_htm_template:
   description: >
     Template consumed by the scaffolder to produce welcome.htm.
@@ -124,7 +128,7 @@ welcome_htm_template:
     array [pf_usage_tip_1..pf_usage_tip_5] with blank entries removed.
   template: |
     <!DOCTYPE html>
-    <html lang="en">
+    <html lang="{{phase_a.bcp47Tag}}">
     <head>
       <meta charset="utf-8">
       <style type="text/css">
@@ -162,4 +166,4 @@ welcome_htm_template:
     - "pf_usage_tips is the ordered array [pf_usage_tip_1..pf_usage_tip_5] with blank entries removed"
     - "LICENSE.md (MIT) and .kps license metadata are populated by the scaffolder automatically — not asked in this flow"
     - "help/<keyboardId>.php is auto-generated from the same content with identical body (spec §8 step 9 parity guarantee)"
-    - "lang=\"en\" on <html> matches upstream keymanapp/keyboards convention (page content is in English)"
+    - "lang attr on <html> uses {{phase_a.bcp47Tag}} per spec §8 template constraint"
