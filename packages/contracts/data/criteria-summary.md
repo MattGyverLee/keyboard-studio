@@ -48,7 +48,7 @@ All four automation-hook fields are now fully populated across every entry:
 | `yellow-survey` | `surveyQuestionId` | 36 / 36 |
 | `red-checklist` | `preSubmitChecklistText` | 6 / 6 |
 
-`lintRuleId` values follow the `KM_LINT_*` / `KM_WARN_*` naming convention established by the section-18 DISCUS rules. `scaffolderRule` values use kebab-case action slugs. `surveyQuestionId` values use kebab-case descriptors. The rule identifiers are contracts — implementations in the lint engine, scaffolder, and survey surface must register against these IDs.
+`lintRuleId` values for sections 1–17 use the `KM_LINT_*` prefix (Layer C hygiene, no upstream kmcmplib equivalent). Section-18 DISCUS heuristics use `KM_WARN_*` to signal warning-grade rather than error-grade severity. `scaffolderRule` values use kebab-case action slugs. `surveyQuestionId` values use kebab-case descriptors. The rule identifiers are contracts — implementations in the lint engine, scaffolder, and survey surface must register against these IDs.
 
 ## Cross-references
 

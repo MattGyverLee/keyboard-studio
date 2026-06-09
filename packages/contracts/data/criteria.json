@@ -382,7 +382,7 @@
     "section": "7. Keyboard source (`.kpj` → Keyboards tab → `.kmn`)",
     "band": "layer-c-enforce",
     "description": "Keyboard compiles with no errors and no warnings",
-    "lintRuleId": "KM_LINT_COMPILE_RESULT"
+    "lintRuleId": "KM_LINT_COMPILE_HAS_WARNINGS"
   },
   {
     "id": "7.7-display-name-no-underscores",
