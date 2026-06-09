@@ -104,48 +104,49 @@ notes: >
 # now in place. Corrected to canonical C+V order so the descriptions match what
 # the rule actually emits.
 tests:
-  - input: ["U_0915", "U_093F"]
+  - input: ["U_0915", "K_I"]
     expectedOutput: "कि"
     description: >
-      Devanagari: U_0915 (ka क) then U_093F (i-matra ि) — stored as
-      consonant THEN i-matra (U+0915 U+093F, canonical Unicode order); the
-      rendering engine positions the i-matra visually to the left.
-  - input: ["U_0B95", "U_0BBF"]
+      Devanagari: U_0915 (ka क) then K_I ('i' key) — rule fires
+      any(baseConsonants) + 'i' > context U+093F; stored as consonant THEN
+      i-matra (U+0915 U+093F, canonical Unicode order); rendering engine
+      positions i-matra visually to the left.
+  - input: ["U_0B95", "K_I"]
     expectedOutput: "கி"
     description: >
-      Tamil: U_0B95 (ka க) then U_0BBF (i-matra ி) — stored as
+      Tamil: U_0B95 (ka க) then K_I ('i' key) — rule fires producing
       consonant THEN i-matra (U+0B95 U+0BBF, canonical Unicode order).
-  - input: ["U_0995", "U_09BF"]
+  - input: ["U_0995", "K_I"]
     expectedOutput: "কি"
     description: >
-      Bengali: U_0995 (ka ক) then U_09BF (i-matra ি) — stored as
+      Bengali: U_0995 (ka ক) then K_I ('i' key) — rule fires producing
       consonant THEN i-matra (U+0995 U+09BF, canonical Unicode order).
-  - input: ["U_0C95", "U_0CBF"]
+  - input: ["U_0C95", "K_I"]
     expectedOutput: "ಕಿ"
     description: >
-      Kannada: U_0C95 (ka ಕ) then U_0CBF (i-matra ಿ) — stored as
+      Kannada: U_0C95 (ka ಕ) then K_I ('i' key) — rule fires producing
       consonant THEN i-matra (U+0C95 U+0CBF, canonical Unicode order).
-  - input: ["U_0D15", "U_0D3F"]
+  - input: ["U_0D15", "K_I"]
     expectedOutput: "കി"
     description: >
-      Malayalam: U_0D15 (ka ക) then U_0D3F (i-matra ി) — stored as
+      Malayalam: U_0D15 (ka ക) then K_I ('i' key) — rule fires producing
       consonant THEN i-matra (U+0D15 U+0D3F, canonical Unicode order).
       Note: only single-codepoint pre-base vowels (U+0D3F, U+0D46–U+0D48)
       are in scope; see notes field for two-codepoint vowel caveat.
-  - input: ["U_0B15", "U_0B3F"]
+  - input: ["U_0B15", "K_I"]
     expectedOutput: "କି"
     description: >
-      Odia: U_0B15 (ka କ) then U_0B3F (i-matra ି) — stored as
+      Odia: U_0B15 (ka କ) then K_I ('i' key) — rule fires producing
       consonant THEN i-matra (U+0B15 U+0B3F, canonical Unicode order).
-  - input: ["U_0A95", "U_0ABF"]
+  - input: ["U_0A95", "K_I"]
     expectedOutput: "કિ"
     description: >
-      Gujarati: U_0A95 (ka ક) then U_0ABF (i-matra િ) — stored as
+      Gujarati: U_0A95 (ka ક) then K_I ('i' key) — rule fires producing
       consonant THEN i-matra (U+0A95 U+0ABF, canonical Unicode order).
-  - input: ["U_0A15", "U_0A3F"]
+  - input: ["U_0A15", "K_I"]
     expectedOutput: "ਕਿ"
     description: >
-      Gurmukhi: U_0A15 (ka ਕ) then U_0A3F (i-matra ਿ) — stored as
+      Gurmukhi: U_0A15 (ka ਕ) then K_I ('i' key) — rule fires producing
       consonant THEN i-matra (U+0A15 U+0A3F, canonical Unicode order).
 
 validatedForFamilies: ["Deva", "Taml", "Beng", "Knda", "Mlym", "Orya", "Gujr", "Guru"]
@@ -153,7 +154,11 @@ sourceKeyboards:
   - "release/sil/sil_devanagari_phonetic"
   - "release/tamil/tamil99"
   - "release/sil/sil_bengali_national_jatiya"
+  - "release/nlci/nlci_kannada_winscript"
+  - "release/m/mozhi_malayalam"
   - "release/itrans/itrans_odia"
+  - "release/itrans/itrans_gujarati"
+  - "release/itrans/itrans_gurmukhi"
 reviewedBy: "keyboard-studio-content-team"
 reviewDate: "2026-06-05"
 
