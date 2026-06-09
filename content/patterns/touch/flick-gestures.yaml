@@ -120,7 +120,7 @@ demo:
 
     store(&VERSION) '10.0'
     store(&NAME) 'Flick Gestures Demo'
-    store(&TARGETS) 'mobile'
+    store(&TARGETS) 'phone tablet'
 
     begin Unicode > use(main)
 
