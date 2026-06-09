@@ -60,8 +60,8 @@ answers:
 # combined with Phase A identity data (phase_a_bafut.yaml):
 #
 #   welcome.htm
-#     <html lang="bfd">  (BCP47 tag derived from Phase A iso_code "bfd")
-#     heading: "Fa' (Bafut) Keyboard"
+#     <html lang="en">
+#     heading: "Fa' (Bafut) Keyboard"  (autonym from KeyboardProvenance.localizedName present)
 #     body paragraph: pf_welcome_paragraph value above
 #     usage tips list: pf_usage_tip_1, pf_usage_tip_2, pf_usage_tip_3
 #       (pf_usage_tip_4 and pf_usage_tip_5 are blank -> omitted from list)

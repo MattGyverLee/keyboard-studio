@@ -2,9 +2,9 @@
 #
 # Scope: the user authors the descriptive content for the keyboard's help page.
 #   welcome.htm   -- generated from the template below with the user's answers
-#                    substituted for {{pf_*}} placeholders; the BCP47 lang
-#                    attribute on the <html> element comes from the Phase A
-#                    KeyboardIdentity answer (never asked again here)
+#                    substituted for {{pf_*}} placeholders; the <html> element
+#                    uses lang="en" (page text is in English, matching upstream
+#                    keymanapp/keyboards convention)
 #   help/<id>.php -- auto-generated from the same body content as welcome.htm
 #                    (spec §8 step 9 parity guarantee)
 #
@@ -92,7 +92,7 @@ questions:
       Bafut Literacy Project, 2024." This appears in the credits section of
       the help page.
     type: text
-    required: true
+    required: false
     next: pf_contact_info
 
   # -- Contact information -----------------------------------------------------
@@ -116,14 +116,15 @@ welcome_htm_template:
     Template consumed by the scaffolder to produce welcome.htm.
     {{pf_*}} placeholders match question ids above. {{phase_a.*}}
     placeholders resolve against KeyboardIdentity fields
-    (packages/contracts/src/keyboardIdentity.ts), not raw Phase A
-    question ids — e.g. phase_a.bcp47Tag is the computed BCP47 tag
-    (may include a script subtag such as "bfd-Latn"), not the raw
-    iso_code answer. pf_usage_tips is the ordered array
-    [pf_usage_tip_1..pf_usage_tip_5] with blank entries removed.
+    (packages/contracts/src/keyboardIdentity.ts) AND KeyboardProvenance
+    fields (packages/contracts/src/provenance.ts) — e.g.
+    phase_a.languageName is from KeyboardIdentity; phase_a.localizedName
+    is the autonym from KeyboardProvenance.localizedName (optional — use
+    {{#if phase_a.localizedName}} guards). pf_usage_tips is the ordered
+    array [pf_usage_tip_1..pf_usage_tip_5] with blank entries removed.
   template: |
     <!DOCTYPE html>
-    <html lang="{{phase_a.bcp47Tag}}">
+    <html lang="en">
     <head>
       <meta charset="utf-8">
       <style type="text/css">
@@ -134,7 +135,11 @@ welcome_htm_template:
       <title>Start Using {{phase_a.languageName}}</title>
     </head>
     <body>
-      <h1>{{phase_a.language_name_autonym}} ({{phase_a.language_name_english}}) Keyboard</h1>
+      {{#if phase_a.localizedName}}
+      <h1>{{phase_a.localizedName}} ({{phase_a.languageName}}) Keyboard</h1>
+      {{else}}
+      <h1>{{phase_a.languageName}} Keyboard</h1>
+      {{/if}}
       <p>{{pf_welcome_paragraph}}</p>
 
       <h2>How to use this keyboard</h2>
@@ -157,4 +162,4 @@ welcome_htm_template:
     - "pf_usage_tips is the ordered array [pf_usage_tip_1..pf_usage_tip_5] with blank entries removed"
     - "LICENSE.md (MIT) and .kps license metadata are populated by the scaffolder automatically — not asked in this flow"
     - "help/<keyboardId>.php is auto-generated from the same content with identical body (spec §8 step 9 parity guarantee)"
-    - "BCP47 lang attr ({{phase_a.bcp47Tag}}) is derived from Phase A KeyboardIdentity, never asked again"
+    - "lang=\"en\" on <html> matches upstream keymanapp/keyboards convention (page content is in English)"
