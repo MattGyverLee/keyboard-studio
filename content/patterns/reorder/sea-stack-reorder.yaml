@@ -102,7 +102,7 @@ tests:
   - input: ["U_1784", "U_17D2", "U_1793", "U_17B7"]
     expectedOutput: "ង្និ"
     description: >
-      Khmer: Type ga (U+1784) + coeng (U+17D2) + na (U+1793) + i-vowel (U+17B7).
+      Khmer: Type ngo (U+1784) + coeng (U+17D2) + na (U+1793) + i-vowel (U+17B7).
       Demonstrates subscript with a different consonant and vowel combination.
 
 validatedForFamilies: ["Khmr"]
