@@ -20,7 +20,7 @@ Move the tech lead out of the critical path of every PR. For each open PR:
 3. Take **one** of three actions per PR:
    - **APPROVE-AND-PARK** — label `tech-lead-ready-to-merge`, post an approval comment. **Do not merge.**
    - **REQUEST-CHANGES** — post a review with the consolidated change requests via `gh pr review --request-changes`.
-   - **ESCALATE** — label `tech-lead-review-needed`, append the question to `.tech-lead-inbox/INBOX.md`.
+   - **ESCALATE** — label `review-needed`, append the question to `.tech-lead-inbox/INBOX.md`.
 4. Write one JSONL line per PR to `.tech-lead-inbox/audit-log.jsonl`.
 
 That's the whole loop.
@@ -159,7 +159,7 @@ The canonical event vocabulary (consumed by triage-watch.mjs; new event types ar
 | `action`              | `pr`, `action`                           | End of Phase 5 / 5.5 after the per-PR action is determined        |
 | `auto-fix`            | `pr`, `applied`, `commit_sha`            | Phase 6 after km-programmer returns APPLIED                       |
 | `mention`             | `pr`, `comment_url`                      | Phase 6 after the @-mention comment posts (MENTION_ONLY / FIX_AND_MENTION) |
-| `escalate`            | `pr`, `comment_url`, `directed_by`, `channel` | Phase 6 after ESCALATE action posts question to PR and adds tech-lead-review-needed label; awaiting lead reply |
+| `escalate`            | `pr`, `comment_url`, `directed_by`, `channel` | Phase 6 after ESCALATE action posts question to PR and adds review-needed label; awaiting submitter or tech-lead reply |
 | `check-published`     | `pr`, `conclusion`, `check_id`           | After `check-progress.js` completes the check                     |
 | `pr-end`              | `pr`, `action_taken`, `head_sha`         | End of Phase 7 (after audit-log entry written)                    |
 | `sweep-end`           | `approve_park`, `auto_fix_only`, `mention_only`, `fix_and_mention`, `escalate`, `skipped`, `auto_fix_failed`, `duration_s` | End of Phase 8 |
@@ -219,7 +219,7 @@ test -f .tech-lead-inbox/audit-log.jsonl || : > .tech-lead-inbox/audit-log.jsonl
 # Triage labels: create once per repo lifetime, guarded by a sentinel file.
 if [ ! -f .tech-lead-inbox/.labels-created ]; then
   gh label create tech-lead-ready-to-merge --color 0e8a16 --description "Triage approved - awaiting tech lead merge" 2>/dev/null || true
-  gh label create tech-lead-review-needed  --color d93f0b --description "Triage escalated - tech lead must answer a question" 2>/dev/null || true
+  gh label create review-needed            --color d93f0b --description "Triage escalated - awaiting submitter or tech-lead response" 2>/dev/null || true
   gh label create triage-skip              --color cfd3d7 --description "Do not run triage on this PR" 2>/dev/null || true
   touch .tech-lead-inbox/.labels-created
 fi
@@ -259,7 +259,7 @@ For each PR, **skip** (with audit-log entry `action_taken: skipped, reason: <X>`
   ```
 
   Any other shape — Claude (`noreply@anthropic.com`), a teammate's email (`*@taylor.edu`, `*@sil.org` that isn't the lead's), or a Co-Authored-By trailer pointing elsewhere — means **triage the PR**. Do **not** key off `author.login` (who opened the PR) — that field is set to the tech lead's identity whenever a headless CLI run or a "push for me" workflow lands a PR under their credentials, and skipping on that signal would defeat the entire purpose of the triage.
-- Labels include `tech-lead-ready-to-merge`, `tech-lead-review-needed`, or `triage-skip` → reason `already_in_lead_queue`.
+- Labels include `tech-lead-ready-to-merge`, `review-needed`, or `triage-skip` → reason `already_in_lead_queue`.
 - `mergeable` is `CONFLICTING` → reason `merge_conflict`. The triage will not run the review crew on this PR (the user's directive: "don't try to fix a conflicting branch"). Instead, post **one** @-mention comment (via `node utilities/km-triage-app/bot-gh.js pr comment <NUM> --body-file <conflict-body.md>`) tagging both the tech lead and the PR's directing human (computed per the same Phase-3.5 logic the normal path uses — desktop case via commit author email → GitHub login; web case via `pr.author.login`). Body:
   ```
   @MattGyverLee @<directed_by-login> — km-triage skipped this PR.
@@ -766,7 +766,7 @@ CONFLICTING PRs never reach this phase — Phase 2 catches them and posts a sepa
 
 ## Phase 6 — Execute the action
 
-The triage labels (`tech-lead-ready-to-merge`, `tech-lead-review-needed`, `triage-skip`) are created once in Phase 1 (guarded by the `.tech-lead-inbox/.labels-created` sentinel) — no further label-create calls run here.
+The triage labels (`tech-lead-ready-to-merge`, `review-needed`, `triage-skip`) are created once in Phase 1 (guarded by the `.tech-lead-inbox/.labels-created` sentinel) — no further label-create calls run here.
 
 **Every PR-mutating gh call in this Phase MUST go through `node utilities/km-triage-app/bot-gh.js`** per the Bot identity contract above. The code blocks below show the wrapper invocation explicitly. Falling back to direct `gh` attributes the action to the human PAT, which (a) breaks the identity-separation contract and (b) causes `gh pr review --approve` to be rejected by GitHub as author-self-approval on owner-authored PRs.
 
@@ -932,7 +932,7 @@ If `directed_by` is an email (desktop-Claude case), look up the GitHub username 
 Then label:
 
 ```bash
-node utilities/km-triage-app/bot-gh.js api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels[]=tech-lead-review-needed"
+node utilities/km-triage-app/bot-gh.js api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels[]=review-needed"
 ```
 
 Then emit a `mention` progress event so the dashboard records the @-mention (use the same `directed_by` / `channel` values computed in Phase 3.5):
@@ -963,7 +963,7 @@ Both paths run. First dispatch km-programmer per AUTO_FIX_ONLY above and wait fo
 Reply on this PR with your decision and the next sweep will continue from there.
 ```
 
-Apply the same @-mention dedup and email-to-handle conversion rules as MENTION_ONLY. Label `tech-lead-review-needed`.
+Apply the same @-mention dedup and email-to-handle conversion rules as MENTION_ONLY. Label `review-needed`.
 
 Then emit both an `auto-fix` event (for the commit km-programmer landed) and a `mention` event (for the @-mention comment), in that order:
 
@@ -1041,7 +1041,7 @@ Note: `{directed_by}` is computed by Phase 3.5 — do not re-derive it here.
 Then label:
 
 ```bash
-node utilities/km-triage-app/bot-gh.js api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels[]=tech-lead-review-needed"
+node utilities/km-triage-app/bot-gh.js api repos/MattGyverLee/keyboard-studio/issues/<NUM>/labels -X POST -f "labels[]=review-needed"
 ```
 
 Then emit an `escalate` progress event (using `directed_by` and `channel` computed by Phase 3.5 — do not re-derive them here):
