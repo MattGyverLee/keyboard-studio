@@ -221,7 +221,7 @@ describe("SurveyPhaseResult interface", () => {
   });
 
   it("answers accepts SurveyAnswer[]", () => {
-    const a: SurveyAnswer = { questionId: "triggerKey", value: "K_QUOTE" };
+    const a: SurveyAnswer = { questionId: "triggerKey", answerType: "key-name", value: "K_QUOTE" };
     const r: SurveyPhaseResult = { phase: "B", answers: [a] };
     expect(r.answers).toHaveLength(1);
     expect(r.answers[0]?.questionId).toBe("triggerKey");
@@ -231,6 +231,108 @@ describe("SurveyPhaseResult interface", () => {
     const r: SurveyPhaseResult = { phase: "G", answers: [] };
     expect("computedAxes" in r).toBe(false);
     expect("selectedPatternIds" in r).toBe(false);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// SurveyAnswer discriminated union (#85)
+// -----------------------------------------------------------------------------
+
+describe("SurveyAnswer discriminated union", () => {
+  it("char-list variant constructs with value: string[]", () => {
+    const a: SurveyAnswer = { questionId: "baseChars", answerType: "char-list", value: ["a", "b", "c"] };
+    expect(a.answerType).toBe("char-list");
+    expect(Array.isArray(a.value)).toBe(true);
+    expect(a.value).toEqual(["a", "b", "c"]);
+  });
+
+  it("char-single variant constructs with value: string", () => {
+    const a: SurveyAnswer = { questionId: "deadkeyTrigger", answerType: "char-single", value: "´" };
+    expect(a.answerType).toBe("char-single");
+    expect(typeof a.value).toBe("string");
+  });
+
+  it("key-name variant constructs with value: string", () => {
+    const a: SurveyAnswer = { questionId: "triggerKey", answerType: "key-name", value: "K_QUOTE" };
+    expect(a.answerType).toBe("key-name");
+    expect(typeof a.value).toBe("string");
+  });
+
+  it("store-content variant constructs with value: string", () => {
+    const a: SurveyAnswer = { questionId: "vowelStore", answerType: "store-content", value: "aeiouAEIOU" };
+    expect(a.answerType).toBe("store-content");
+    expect(typeof a.value).toBe("string");
+  });
+
+  it("boolean variant constructs with value: boolean (not string)", () => {
+    const aTrue: SurveyAnswer = { questionId: "hasDeadkeys", answerType: "boolean", value: true };
+    const aFalse: SurveyAnswer = { questionId: "hasDeadkeys", answerType: "boolean", value: false };
+    expect(typeof aTrue.value).toBe("boolean");
+    expect(aTrue.value).toBe(true);
+    expect(aFalse.value).toBe(false);
+    expect(typeof aTrue.value === "string").toBe(false);
+  });
+
+  it("select variant constructs with value: string", () => {
+    const a: SurveyAnswer = { questionId: "scriptClass", answerType: "select", value: "alphabetic" };
+    expect(a.answerType).toBe("select");
+    expect(typeof a.value).toBe("string");
+  });
+
+  it("text variant constructs with value: string", () => {
+    const a: SurveyAnswer = { questionId: "keyboardName", answerType: "text", value: "My Latin Keyboard" };
+    expect(a.answerType).toBe("text");
+    expect(typeof a.value).toBe("string");
+  });
+
+  it("char-list value is string[], not a plain string", () => {
+    const a: SurveyAnswer = { questionId: "extraChars", answerType: "char-list", value: ["ñ", "ü", "ö"] };
+    expect(Array.isArray(a.value)).toBe(true);
+    expect(typeof a.value === "string").toBe(false);
+  });
+
+  it("boolean value is boolean, not a string", () => {
+    const a: SurveyAnswer = { questionId: "supportsNFD", answerType: "boolean", value: false };
+    expect(typeof a.value).toBe("boolean");
+    expect(typeof a.value === "string").toBe(false);
+  });
+
+  it("SurveyPhaseResult.answers holds a mixed array of all 7 answerType variants", () => {
+    const answers: SurveyAnswer[] = [
+      { questionId: "baseChars",   answerType: "char-list",     value: ["a", "e", "i"] },
+      { questionId: "triggerKey",  answerType: "key-name",      value: "K_QUOTE"       },
+      { questionId: "hasDeadkeys", answerType: "boolean",       value: true            },
+      { questionId: "scriptClass", answerType: "select",        value: "alphabetic"    },
+      { questionId: "vowelStore",  answerType: "store-content", value: "aeiou"         },
+      { questionId: "deadChar",    answerType: "char-single",   value: "´"             },
+      { questionId: "kbdName",     answerType: "text",          value: "Test"          },
+    ];
+    const r: SurveyPhaseResult = { phase: "B", answers };
+    expect(r.answers).toHaveLength(7);
+    const types = r.answers.map((a) => a.answerType);
+    (["char-list", "key-name", "boolean", "select", "store-content", "char-single", "text"] as const)
+      .forEach((t) => expect(types).toContain(t));
+  });
+
+  it("type-narrowing: answerType === 'boolean' makes value: boolean visible to TS without a cast", () => {
+    const a: SurveyAnswer = { questionId: "hasDeadkeys", answerType: "boolean", value: true };
+    if (a.answerType === "boolean") {
+      const narrowedValue: boolean = a.value;
+      expect(narrowedValue).toBe(true);
+    } else {
+      expect.fail("answerType guard did not match the constructed variant");
+    }
+  });
+
+  it("type-narrowing: answerType === 'char-list' makes value: string[] visible to TS without a cast", () => {
+    const a: SurveyAnswer = { questionId: "baseChars", answerType: "char-list", value: ["α", "β", "γ"] };
+    if (a.answerType === "char-list") {
+      const narrowedValue: string[] = a.value;
+      expect(narrowedValue).toHaveLength(3);
+      expect(narrowedValue[0]).toBe("α");
+    } else {
+      expect.fail("answerType guard did not match the constructed variant");
+    }
   });
 });
 
