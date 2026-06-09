@@ -1,6 +1,4 @@
 import { parse } from "yaml";
-import { readdir, readFile } from "node:fs/promises";
-import { join, extname } from "node:path";
 import { PatternSchema } from "./patternSchema.js";
 import type { RawPattern } from "./patternSchema.js";
 import { runAllChecks } from "../validator/index.js";
@@ -25,13 +23,19 @@ let _cache: Pattern[] = [];
 export async function loadPatterns(
   contentDir?: string,
 ): Promise<{ patterns: Pattern[]; report: LoadReport }> {
-  const dir = contentDir ?? defaultContentDir();
+  // Dynamic imports keep node:fs/promises and node:path out of the static
+  // module graph so Vite can bundle the engine for the browser without errors.
+  // loadPatterns() is never called in the browser; the SPA uses import.meta.glob.
+  const { readdir, readFile } = await import("node:fs/promises");
+  const { join, extname } = await import("node:path");
+
+  const dir = contentDir ?? join(process.cwd(), "content", "patterns");
   const report: LoadReport = { loaded: 0, skipped: [], flagged: [] };
   const patterns: Pattern[] = [];
 
   let yamlFiles: string[];
   try {
-    yamlFiles = await collectYamlFiles(dir);
+    yamlFiles = await collectYamlFiles(dir, readdir, extname, join);
   } catch (e) {
     console.warn(`[pattern-library] cannot read directory ${dir}: ${String(e)}`);
     _cache = [];
@@ -150,21 +154,27 @@ export function getById(id: string): Pattern | undefined {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function defaultContentDir(): string {
-  return join(process.cwd(), "content", "patterns");
-}
-
 /**
  * Recursively collect all `.yaml` files under `dir`.
  * Uses the `recursive` option introduced in Node 18.17 / Node 20.
+ * Accepts the fs/path helpers as parameters so they can be dynamically
+ * imported at the call site (keeping node built-ins out of the static graph).
  */
-async function collectYamlFiles(dir: string): Promise<string[]> {
+async function collectYamlFiles(
+  dir: string,
+  readdir: (
+    path: string,
+    opts: { withFileTypes: true; recursive: true },
+  ) => Promise<import("node:fs").Dirent[]>,
+  extname: (p: string) => string,
+  join: (...parts: string[]) => string,
+): Promise<string[]> {
   // `recursive: true` was added in Node 18.17 but the TS lib type for
   // `readdir` with `{ withFileTypes: true, recursive: true }` only appeared
   // in @types/node 20+. Cast via `unknown` to keep the type-checker happy on
   // older @types/node versions while still using the runtime feature.
   const entries = await (
-    readdir as (
+    readdir as unknown as (
       path: string,
       opts: { withFileTypes: true; recursive: true },
     ) => Promise<import("node:fs").Dirent[]>
