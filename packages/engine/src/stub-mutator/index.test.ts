@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createVirtualFS } from "@keyboard-studio/contracts";
 import type { VirtualFS } from "@keyboard-studio/contracts";
 import { applyIdentityStubMutation } from "./index.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const KEYBOARDS_ROOT = resolve(__dirname, "../../../../../keyboards");
+const SIBLING_REPO_PRESENT = existsSync(KEYBOARDS_ROOT);
 
 // ---------------------------------------------------------------------------
 // Fixture
@@ -10,9 +17,6 @@ import { applyIdentityStubMutation } from "./index.js";
 // A minimal but realistic keyboard file with all three mutable metadata lines
 // plus two keyboard rule lines, so the round-trip test can confirm rules
 // are untouched.
-//
-// Note: live-repo integration tests against real keyboards (e.g. basic_kbdus)
-// require the sibling keymanapp/keyboards repo to be checked out at ../keyboards.
 const FIXTURE_KMN = [
   "store(&NAME) 'Original Name'",
   "store(&COPYRIGHT) 'Copyright © 2020 Original Author'",
@@ -115,3 +119,58 @@ describe("applyIdentityStubMutation", () => {
     ).toThrow("stub-mutator: keyboard file not found");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Live-keyboard tests (require sibling keymanapp/keyboards repo at ../keyboards)
+// ---------------------------------------------------------------------------
+
+function loadRealKeyboard(id: string): VirtualFS {
+  const kmnPath = resolve(KEYBOARDS_ROOT, `release/basic/${id}/source/${id}.kmn`);
+  const content = readFileSync(kmnPath, "utf8");
+  return createVirtualFS([{ path: `source/${id}.kmn`, content, isBinary: false }]);
+}
+
+describe.skipIf(!SIBLING_REPO_PRESENT)(
+  "applyIdentityStubMutation — live keyboards (sibling repo)",
+  () => {
+    it("basic_kbdus: mutates all three fields and leaves the rest unchanged", () => {
+      const vfs = loadRealKeyboard("basic_kbdus");
+      const original = vfs.get("source/basic_kbdus.kmn")!.content as string;
+      applyIdentityStubMutation(vfs, "basic_kbdus", {
+        name: "Test US",
+        copyright: "Copyright © 2025 Test",
+        version: "9.9",
+      });
+      const updated = vfs.get("source/basic_kbdus.kmn")!.content as string;
+      expect(updated).toContain("store(&NAME) 'Test US'");
+      expect(updated).toContain("store(&COPYRIGHT) 'Copyright © 2025 Test'");
+      expect(updated).toContain("store(&KEYBOARDVERSION) '9.9'");
+      // Round-trip: only the three targeted lines changed
+      const before = original.split("\n");
+      const after = updated.split("\n");
+      expect(after).toHaveLength(before.length);
+      for (let i = 0; i < before.length; i++) {
+        if (!/store\s*\(\s*&(NAME|COPYRIGHT|KEYBOARDVERSION)\s*\)/i.test(before[i])) {
+          expect(after[i]).toBe(before[i]);
+        }
+      }
+    });
+
+    it("basic_kbdgr: mutates display name only, leaves copyright and version unchanged", () => {
+      const vfs = loadRealKeyboard("basic_kbdgr");
+      const original = vfs.get("source/basic_kbdgr.kmn")!.content as string;
+      applyIdentityStubMutation(vfs, "basic_kbdgr", { name: "German Test" });
+      const updated = vfs.get("source/basic_kbdgr.kmn")!.content as string;
+      expect(updated).toContain("store(&NAME) 'German Test'");
+      // Copyright and version lines must be byte-identical to the original
+      const copyrightLine = original.split("\n").find((l) =>
+        /store\s*\(\s*&COPYRIGHT\s*\)/i.test(l)
+      );
+      const versionLine = original.split("\n").find((l) =>
+        /store\s*\(\s*&KEYBOARDVERSION\s*\)/i.test(l)
+      );
+      expect(updated).toContain(copyrightLine!);
+      expect(updated).toContain(versionLine!);
+    });
+  }
+);
