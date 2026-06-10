@@ -457,10 +457,11 @@ describe("criteria.json schema conformance", () => {
       expect(validBands).toContain(k);
     });
     // 133 original repo-hygiene criteria + 12 section-18 DISCUS design
-    // heuristics (7 layer-c-enforce + 3 yellow-survey + 2 red-checklist).
-    expect(records.length).toBe(147);
+    // heuristics (7 layer-c-enforce + 3 yellow-survey + 2 red-checklist) +
+    // 1 section-19 import output criterion.
+    expect(records.length).toBe(146);
     expect(counts["scaffolder-bake"]).toBe(38);
-    expect(counts["layer-c-enforce"]).toBe(67);
+    expect(counts["layer-c-enforce"]).toBe(66);
     expect(counts["yellow-survey"]).toBe(36);
     expect(counts["red-checklist"]).toBe(6);
   });
@@ -547,7 +548,7 @@ describe("criteria.json schema conformance", () => {
 describe("criteriaData loader (#116)", () => {
   it("ALL_CRITERIA is a non-empty readonly Criterion[]", () => {
     expect(Array.isArray(ALL_CRITERIA)).toBe(true);
-    expect(ALL_CRITERIA.length).toBe(147);
+    expect(ALL_CRITERIA.length).toBe(146);
   });
 
   it("CRITERIA_BY_BAND partitions ALL_CRITERIA across the four bands", () => {

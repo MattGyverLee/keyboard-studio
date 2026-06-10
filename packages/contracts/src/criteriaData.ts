@@ -6,12 +6,12 @@ import type { Criterion } from "./criteria";
 import data from "../data/criteria.json" with { type: "json" };
 
 /**
- * The full triaged Criterion catalog — 147 entries derived from the
+ * The full triaged Criterion catalog — 146 entries derived from the
  * `criteria.md` review-process source per the §11 four-band model
  * (Decision 4, §14).
  *
  * Loaded statically from `packages/contracts/data/criteria.json`. Sections 18
- * (DISCUS design heuristics, 12 entries) and 19 (import output, 2 entries)
+ * (DISCUS design heuristics, 12 entries) and 19 (import output, 1 entry)
  * cover criteria enforced outside the lint engine — by the DISCUS survey flow
  * and the output service respectively. The
  * `readonly Criterion[]` cast asserts conformance against the
