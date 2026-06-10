@@ -20,7 +20,7 @@ export function CarveActions({ nodeId, onEdit }: CarveActionsProps) {
       )}
       {onEdit && (
         <button
-          aria-disabled
+          disabled aria-disabled="true"
           title="Pattern editing available in the survey step"
           style={{ opacity: 0.5, cursor: 'not-allowed' }}
         >

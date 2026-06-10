@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BaseKeyboard, VirtualFS } from "@keyboard-studio/contracts";
+import type { BaseKeyboard, VirtualFS, KeyboardIR } from "@keyboard-studio/contracts";
 import type { CompileResult } from "@keyboard-studio/contracts";
 import { createVirtualFS } from "@keyboard-studio/contracts";
 import { LOCAL_PROXY_BASE } from "../lib/services.ts";
@@ -14,8 +14,8 @@ interface EngineModule {
   ) => Promise<{ options?: Record<string, unknown>; filesLoaded?: string[]; warnings?: string[] }>;
   init: () => Promise<void>;
   isReady?: () => boolean;
-  parseKmn?: (text: string, keyboardId: string) => { ir: import('@keyboard-studio/contracts').KeyboardIR; opaqueFeatures: Array<{ feature: string; count: number }> };
-  recognizePatterns?: (ir: import('@keyboard-studio/contracts').KeyboardIR) => { ir: import('@keyboard-studio/contracts').KeyboardIR; recognizedRatio: number };
+  parseKmn?: (text: string, keyboardId: string) => { ir: KeyboardIR; opaqueFeatures: Array<{ feature: string; count: number }> };
+  recognizePatterns?: (ir: KeyboardIR) => { ir: KeyboardIR; recognizedRatio: number };
 }
 
 async function loadEngine(): Promise<EngineModule | null> {
@@ -145,7 +145,7 @@ export function useKeyboardArtifact(
       const [compileResult, parseResult] = await Promise.all([
         engineRef.current!.compile(vfs, kb.id),
         Promise.resolve().then(() => {
-          if (!engineRef.current!.parseKmn || !engineRef.current!.recognizePatterns) return null;
+          if (!engineRef.current!.parseKmn || !engineRef.current!.recognizePatterns || !kmnPath) return null;
           const pr = engineRef.current!.parseKmn(kmnText, kb.id);
           const recognized = engineRef.current!.recognizePatterns(pr.ir);
           return { ...pr, ir: recognized.ir };
