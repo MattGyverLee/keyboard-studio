@@ -93,16 +93,16 @@ reorderRules: |
 touchLayoutFragment: null
 
 tests:
-  - input: ["U+1780", "U+17D2", "U+178F", "U+17B6"]
+  - input: ["U_1780", "U_17D2", "U_178F", "U_17B6"]
     expectedOutput: "ក្តា"
     description: >
       Khmer: Type ka (U+1780) + coeng (U+17D2) + ta (U+178F) + aa-vowel (U+17B6).
       The coeng+ta represents the subscript consonant ta below ka.
       The vowel is stored after the subscript for Unicode canonical order.
-  - input: ["U+1784", "U+17D2", "U+1793", "U+17B7"]
+  - input: ["U_1784", "U_17D2", "U_1793", "U_17B7"]
     expectedOutput: "ង្និ"
     description: >
-      Khmer: Type ga (U+1784) + coeng (U+17D2) + na (U+1793) + i-vowel (U+17B7).
+      Khmer: Type ngo (U+1784) + coeng (U+17D2) + na (U+1793) + i-vowel (U+17B7).
       Demonstrates subscript with a different consonant and vowel combination.
 
 validatedForFamilies: ["Khmr"]
