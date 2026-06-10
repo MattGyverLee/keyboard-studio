@@ -54,6 +54,11 @@ function fmtString(s: string): string {
   return [...s].map(fmtCodepoint).join(" ");
 }
 
+/** Format a deadkey id as dk(XXXX). */
+function fmtDk(id: number): string {
+  return `dk(${id.toString(16).toLowerCase().padStart(4, "0")})`;
+}
+
 // ---------------------------------------------------------------------------
 // Element serializers
 // ---------------------------------------------------------------------------
@@ -64,12 +69,12 @@ function fmtContextElement(el: ContextElement): string {
     case "vkey":    return el.modifiers.length > 0
                       ? `[${el.modifiers.join(" ")} ${el.name}]`
                       : `[${el.name}]`;
-    case "deadkey": return `dk(${el.id.toString(16).toLowerCase().padStart(4, "0")})`;
+    case "deadkey": return fmtDk(el.id);
     case "any":     return `any(${el.storeRef})`;
     case "notany":  return `notany(${el.storeRef})`;
     case "context": return `context(${el.offset})`;
     case "index":   return `index(${el.storeRef}, ${el.offset})`;
-    case "baselayout": return "baselayout";
+    case "baselayout": { if (el.value.includes("'")) throw new Error(`baselayout value must not contain single-quote: ${el.value}`); return el.value ? `baselayout('${el.value}')` : "baselayout"; }
     case "raw":     return el.text;
   }
 }
@@ -77,7 +82,7 @@ function fmtContextElement(el: ContextElement): string {
 function fmtOutputElement(el: OutputElement): string {
   switch (el.kind) {
     case "char":    return fmtCodepoint(el.value);
-    case "deadkey": return `dk(${el.id.toString(16).toLowerCase().padStart(4, "0")})`;
+    case "deadkey": return fmtDk(el.id);
     case "beep":    return "beep";
     case "index":   return `index(${el.storeRef}, ${el.offset})`;
     case "outs":    return `outs(${el.storeRef})`;
@@ -89,7 +94,7 @@ function fmtStoreItem(item: StoreItem): string {
   switch (item.kind) {
     case "char":    return fmtCodepoint(item.value);
     case "vkey":    return `[${item.name}]`;
-    case "deadkey": return `dk(${item.id.toString(16).toLowerCase().padStart(4, "0")})`;
+    case "deadkey": return fmtDk(item.id);
     case "any":     return "any";
     case "raw":     return item.text;
   }
@@ -105,9 +110,7 @@ function emitRule(rule: IRRule): string {
 
   // Emit bare `> output` when context is empty (match/nomatch style);
   // otherwise prefix with `+` (covers both vkey and non-vkey context rules).
-  const line_body = ctx === "" ? `> ${out}` : `+ ${ctx} > ${out}`;
-  let line = line_body;
-
+  let line = ctx === "" ? `> ${out}` : `+ ${ctx} > ${out}`;
   if (rule.trailingComment !== undefined) {
     line = `${line} c ${rule.trailingComment}`;
   }
@@ -183,6 +186,12 @@ function buildCommentMap(comments: IRComment[]): Map<string, IRComment[]> {
   return map;
 }
 
+function pushLeadingComments(nodeId: string, commentMap: Map<string, IRComment[]>, lines: string[]): void {
+  for (const c of (commentMap.get(nodeId) ?? []).filter(c => c.anchor === "leading")) {
+    lines.push(c.text ? `c ${c.text}` : "c");
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main emit function
 // ---------------------------------------------------------------------------
@@ -211,13 +220,7 @@ export function emit(ir: KeyboardIR): string {
   for (const name of SYSTEM_STORE_ORDER) {
     const store = sysMap.get(name);
     if (store) {
-      // Leading comments for this store.
-      const leading = (commentMap.get(store.nodeId) ?? []).filter(
-        c => c.anchor === "leading"
-      );
-      for (const c of leading) {
-        lines.push(c.text ? `c ${c.text}` : "c");
-      }
+      pushLeadingComments(store.nodeId, commentMap, lines);
       lines.push(emitStore(store));
       sysMap.delete(name);
     }
@@ -243,8 +246,8 @@ export function emit(ir: KeyboardIR): string {
     lines.push(groupHeader);
 
     // User stores that belong to this group: heuristic — stores referenced in
-    // this group's rules. We emit all user stores scoped after the begin
-    // directive that are referenced in this group.
+    // this group's rules. Iterated in ir.stores declaration order to preserve
+    // round-trip comment anchoring (I3).
     const referencedStoreNames = new Set<string>();
     for (const rule of group.rules) {
       for (const el of rule.context) {
@@ -258,28 +261,16 @@ export function emit(ir: KeyboardIR): string {
         }
       }
     }
-    const groupUserStores = ir.stores.filter(
-      s => !s.isSystem && referencedStoreNames.has(s.name)
-    );
-    for (const store of groupUserStores) {
-      const leading = (commentMap.get(store.nodeId) ?? []).filter(
-        c => c.anchor === "leading"
-      );
-      for (const c of leading) {
-        lines.push(c.text ? `c ${c.text}` : "c");
+    for (const store of ir.stores) {
+      if (!store.isSystem && referencedStoreNames.has(store.name)) {
+        pushLeadingComments(store.nodeId, commentMap, lines);
+        lines.push(emitStore(store));
       }
-      lines.push(emitStore(store));
     }
 
     // Rules.
     for (const rule of group.rules) {
-      // Leading comments for this rule.
-      const leading = (commentMap.get(rule.nodeId) ?? []).filter(
-        c => c.anchor === "leading"
-      );
-      for (const c of leading) {
-        lines.push(c.text ? `c ${c.text}` : "c");
-      }
+      pushLeadingComments(rule.nodeId, commentMap, lines);
       lines.push(emitRule(rule));
     }
   }

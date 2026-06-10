@@ -1,7 +1,8 @@
 # keyboard-studio — Spec
 
 **Repository:** https://github.com/MattGyverLee/keyboard-studio
-**Date:** 2026-06-02
+**Date:** 2026-06-09
+**Version:** 1.1.1
 **Status:** Draft — pre-Day-1 sync
 
 ---
@@ -320,7 +321,7 @@ export interface Pattern {
 
 *Added 2026-06-08 (v1.1.0 KeyboardIR import). See [docs/spec-amendment-2026-06-08-keyboardir.md](docs/spec-amendment-2026-06-08-keyboardir.md).*
 
-KeyboardIR is the typed, in-memory representation of a single Keyman keyboard — a lossless model of a `.kmn` plus its sibling `.kvks` and `.keyman-touch-layout` files. **Once a project exists in the studio, the IR is the source of truth (decision D9):** the survey, carve gallery, validator, and scaffolder all read and mutate the IR; the emitter renders the final `.kmn` from the IR; no original-source text round-trips through the rest of the pipeline. The original `.kmn` (for imports beyond the US-English fallback) is preserved as a `<id>.kmn.imported` sidecar for reviewer diff — included in the `.zip` and OAuth working tree but **excluded from the PR commit** itself (§12).
+KeyboardIR is the typed, in-memory representation of a single Keyman keyboard — a lossless model of a `.kmn` plus its sibling `.kvks` and `.keyman-touch-layout` files. **Once a project exists in the studio, the IR is the source of truth (decision D9):** the survey, carve gallery, validator, and scaffolder all read and mutate the IR; the emitter renders the final `.kmn` from the IR; no original-source text round-trips through the rest of the pipeline. The `.kmn.imported` sidecar is removed (decision D11); attribution is carried by the HISTORY.md "Adapted from" bullet and the PR-body attribution block (§12, D14).
 
 The IR's schema is locked alongside the Pattern schema at the Day-1 #5 joint session; field renames, type changes, and removals are major version bumps of `packages/contracts` per the policy in §18.
 
@@ -341,7 +342,7 @@ export interface IRHeader {
   copyright: string;
   version: string;
   targets: string[];
-  storeDirectives: StoreItem[];
+  storeDirectives: string[];
 }
 
 export interface IRStore {
@@ -382,14 +383,32 @@ export interface RawKmnFragment {
 }
 
 export interface TouchLayoutIR {
-  layers: Array<{ id: string; rows: Array<{ keys: TouchKeyIR[] }> }>;
-  nodeIds: Map<string, IRNodeRef>;
+  platforms: Array<{
+    id: "phone" | "tablet" | "desktop";
+    font?: string;
+    layers: Array<{
+      id: string;
+      rows: Array<{ keys: TouchKeyIR[] }>;
+    }>;
+  }>;
+  /** Entry-array form rather than `Map` because `Map` is not JSON-serializable; the VirtualFS round-trip (spec §11) requires entry-array form. */
+  nodeIds: Array<[string, IRNodeRef]>;
 }
 
 export interface KvksIR {
-  layers: Array<{ shift: string; keys: Array<{ vkey: string; output: string }> }>;
+  kvksVersion?: string;
+  kbdname?: string;
+  layers: Array<{
+    shift: string;
+    keys: Array<{
+      vkey: string;
+      label: string;
+      chars?: string;
+    }>;
+  }>;
   usealtgr: boolean;
-  nodeIds: Map<string, IRNodeRef>;
+  /** Entry-array form rather than `Map` because `Map` is not JSON-serializable; the VirtualFS round-trip (spec §11) requires entry-array form. */
+  nodeIds: Array<[string, IRNodeRef]>;
 }
 
 export interface KeyboardIR {
@@ -432,6 +451,8 @@ Detailed types — `ContextElement`, `OutputElement`, `KeyChord`, `StoreItem`, `
 4. A user-uploaded `.kmn` (plus optional sibling `.kvks` / `.keyman-touch-layout`).
 
 v1 ships single-source adaptation only — there is no path that combines IRs from two source keyboards. An author adapting Bafut from three overlapping country keyboards picks the closest single one and carves it down.
+
+**Gallery ranking when recognizer and decision tree disagree.** When an imported keyboard's recognizer-lifted Patterns carry `strategyId` values that differ from the decision tree's primary, the gallery ranks recognized Patterns whose `strategyId` matches the tree's primary *first*; recognized Patterns whose `strategyId` differs from the primary are surfaced as secondaries if they appear in the primary's `combinesWith` list, or in a distinct "From your import" section otherwise. The recognizer's `strategyId` claim is a post-hoc attribution; the tree's primary remains the authoritative strategy.
 
 ---
 
@@ -1079,6 +1100,7 @@ Layer A' runs on every codec parse (after import) and on every emit (before outp
 | I3 | **Comment preservation** — every `IRComment` with `anchor: 'leading' \| 'trailing'` is emitted attached to the same anchor node it imported with. | `warning` | On emit |
 | I4 | **Recognized ratio** — `ImportReport.recognizedRatio` is reported informationally; no threshold blocks submission. | `info` | On import |
 | I5 | **Unsupported feature inventory** — every `RawKmnFragment` produces one entry in `ImportReport.opaqueFeatureInventory`. | `info` | On import |
+| I6 | **Ownership consistency** — for every `nodeId` in `Pattern.ownedNodes`, the referenced IR node's `ownedByPattern` field equals that Pattern's `id`. A stale forward pointer after Pattern deletion would orphan IR nodes (permanent carve-gallery suppression of nodes whose Pattern no longer exists). | `error` | On emit |
 
 A failing I2 halts the authoring session: the IR cannot be trusted as the source of truth (D9) if the emit does not round-trip. I1, I3, I4, I5 are informational/warning and do not block authoring. The supportability scanner CLI (§13) runs the same checks in batch over `release/` and aggregates the reports.
 
@@ -1123,9 +1145,6 @@ Source-of-truth for the band assignments is `packages/contracts/data/criteria.js
 release/<letter-or-org>/<id>/
   source/
     <id>.kmn                  -- KMN source with all rules, stores, groups
-    <id>.kmn.imported         -- original .kmn from the import source (D9);
-                                 present only when source != US-English fallback.
-                                 INCLUDED in the .zip; EXCLUDED from the PR commit.
     <id>.kps                  -- package descriptor (XML)
     <id>.kvks                 -- on-screen keyboard source (XML)
     <id>.keyman-touch-layout  -- touch layout JSON
@@ -1135,13 +1154,17 @@ release/<letter-or-org>/<id>/
     help/
       <id>.php                -- online help page (generated from welcome.htm)
   LICENSE.md                  -- "Copyright © <year> <holder>" exact syntax
-  HISTORY.md                  -- single entry "1.0 (<YYYY-MM-DD>)" + bullets
+  HISTORY.md                  -- single entry "1.0 (<YYYY-MM-DD>)" + bullets;
+                                 when origin=imported, scaffolder injects an
+                                 "Adapted from <sourcePath>" bullet under 1.0
   README.md                   -- no version, no copyright; keyman.com + help links
   tests/
     <id>_tests.kmn            -- round-trip test vectors (from pattern test cases)
 ```
 
 Compiled artifacts (`.kmx`, `.kvk`, `.js`) are produced by the in-browser compiler service and included in the `.zip` output; they are not committed to source in the PR (criteria SS1).
+
+**Import attribution in committed artifacts (D14).** When `KeyboardIR.origin === "imported"`, the scaffolder injects an "Adapted from `<sourcePath>`" bullet under the 1.0 entry in `HISTORY.md` (`<sourcePath>` is the source-keyboard path the importer recorded). This is the only carrier that survives in the committed PR tree; the full attribution block also lives in the PR body (via `buildImportAttributionBlock()`). `LICENSE.md` carries import attribution only when the source keyboard's licence requires it (e.g. CC-BY); `README.md` never carries it.
 
 ### Two delivery modes
 
@@ -1238,6 +1261,10 @@ Rationale: The strategy framework (Sec 7) and the seven discovery axes (Sec 7.1)
 Decision: Round-trip is verified by *functional equivalence under `kmcmplib`*, not by byte-identity of the emitted `.kmn`. Two IRs are equivalent when every input in the bounded enumeration corpus (every virtual key x every modifier combination x deadkey paths up to depth 3) produces the same output character sequence under the WASM oracle. Order, whitespace, comment placement, and codepoint formatting differences are not defects.
 Rationale: Byte-identity is unachievable across the corpus (mined `.kmn` files mix `dk()` and `deadkey()`, varying U+XXXX vs. literal forms, and free-form comment placement). Functional equivalence is the property authors and reviewers actually care about; it is mechanically checkable via the existing WASM oracle.
 
+*Runtime justification for d=3 (ratified at #232):* The d=3 ceiling is binding on *runtime*, not combinatorics. At d=3 with a realistic 8-deadkey keyboard, the I2 corpus is ~7,680 inputs; at ~2 ms/input through the WASM oracle that totals ~15 seconds — at the outer edge of acceptable session-start latency. At d=4 the same keyboard balloons to ~61,440 inputs (~2 minutes), which is not tolerable. No real keyboard in `keymanapp/keyboards/release/` uses chains deeper than 2; d=3 gives one level of margin.
+
+*Concurrency model:* I2 runs as an async job triggered on import and on every emit-gate, **outside** the 300 ms debounce cycle of decision D3. The debounce cycle is for keystroke feedback (TS-check + WASM oracle on the active rule); I2's full-corpus round-trip is too expensive to fit and is gated by import or emit, not by editing.
+
 **Decision 8 — Opaque imports for unrecognized features.**
 Decision: KMN features outside the typed IR — `save()`/`set()`/`reset()` option stores, `if()` over option stores, `call()`/`return()`, indexed `context(N)`, `outs()` store composition, SMP 5-digit `U+XXXXX` literals — are imported as `RawKmnFragment` IR nodes with `origin: 'imported'`. They render in the carve gallery as deletable cards; they are not survey-editable in v1. A lower-level raw-KMN editor is a v1.1 candidate.
 Rationale: These features appear in a small fraction of `release/` keyboards and require substantial typed-IR work each. Treating them as opaque preserves round-trip fidelity (the emitter writes the original text back verbatim) and lets v1 import the long tail of `release/` keyboards without blocking on a complete typed model.
@@ -1245,6 +1272,27 @@ Rationale: These features appear in a small fraction of `release/` keyboards and
 **Decision 9 — IR is canonical; original `.kmn` is a sidecar.**
 Decision: Once a session exists, the KeyboardIR is the source of truth. The emitter always renders from the IR. The original `.kmn` (for imports beyond the US-English fallback) is preserved as a `<id>.kmn.imported` sidecar — included in the `.zip` and in the OAuth working tree for reviewer diff — but is **excluded from the PR commit**. This holds even when no edits are made: a no-edit import still emits a freshly-rendered `.kmn`.
 Rationale: A two-source-of-truth model (IR + original text) drifts the moment any edit lands. Picking one canonical representation (the IR) makes the emitter, validator, and round-trip story all deterministic. The sidecar exists strictly for reviewer convenience during the v1 stabilization window and can be removed entirely in v1.1.
+*Amendment (v1.1.1, D11):* The `.kmn.imported` sidecar is removed unconditionally. The PR-body import-attribution block and the HISTORY.md "Adapted from" bullet (D14) supersede it; the brittle path-suffix exclusion in `publishPR` goes away.
+
+**Decision 10 — Recognizer rule format (v1.1).**
+Decision: Pattern recognizer rules are TypeScript predicates owned by the engine. A YAML DSL for rules is deferred to v1.2 (tracked at #273).
+Rationale: A TypeScript-predicate approach can ship within v1.1 without a new rule-compilation pipeline; the YAML DSL is a v1.2 affordance for content-team rule authoring.
+
+**Decision 11 — `.kmn.imported` sidecar removal (v1.1).**
+Decision: The `.kmn.imported` sidecar is removed unconditionally. Attribution is carried by the HISTORY.md "Adapted from `<sourcePath>`" bullet (mandatory) and the PR-body `buildImportAttributionBlock()` block (informational). The brittle path-suffix exclusion in `publishPR` is removed with it.
+Rationale: The sidecar introduced a fragile exclusion rule in the output pipeline and duplicated attribution information already available in the PR body. The HISTORY.md bullet is a lighter, durable carrier; it survives in source control without special handling.
+
+**Decision 12 — I2 bounded-enumeration corpus depth.**
+Decision: Ratified at depth 3. Justified by WASM runtime (see D7 amendment above).
+Rationale: See D7 runtime-justification paragraphs.
+
+**Decision 13 — RawKmnFragment boundary (v1.1).**
+Decision: The ratified v1.1 opaque categories are: `save/set/reset option-store`, `call/return`, `indexed context(n)`, `outs()`, and `SMP 5-digit literal`. Scanner-driven additions land as additive minor bumps (tracked at #237).
+Rationale: These five categories cover the long tail of `release/` keyboards that cannot be fully typed in v1 without disproportionate IR complexity. The scanner (#237) will surface further candidates as data; each addition is additive (no breaking type change).
+
+**Decision 14 — Import provenance attribution.**
+Decision: `HISTORY.md` mandatory ("Adapted from `<sourcePath>`" bullet under the 1.0 entry); PR body informational (full block via `buildImportAttributionBlock()`); `LICENSE.md` only when the source licence requires it (e.g. CC-BY); `README.md` never.
+Rationale: Attribution must survive in the committed source tree independent of the PR body (which is editable post-merge). HISTORY.md is the canonical carrier; the PR body is for reviewer context only. Keeping README.md clean avoids polluting the user-facing package description.
 
 ---
 
@@ -1291,7 +1339,7 @@ Rationale: A two-source-of-truth model (IR + original text) drifts the moment an
 
 **Starting state:** Studio open; user selects `release/c/cm_qwerty` (a hypothetical multilingual Cameroonian QWERTY) from the source-selection browser. The codec parses it; the pattern recognizer lifts the Bafut deadkey family and the Fulfulde sequence-replace rules into recognized Patterns; remaining language families render in the carve gallery as deletable cards. The Layer A' I2 round-trip check passes; I5 reports two `RawKmnFragment` nodes (an `outs()` composition and a `save()` option store) as info-level entries.
 **User actions:** Carve gallery — the user deletes the Fulfulde, Ewondo, and Duala rule families, keeping the Bafut Pattern intact. Phase A — sets `id = bfd_keyboard`, BCP47 = `bfd-Latn`, copyright = the language community organization. Phase B — confirms the Bafut character inventory pre-populated from the surviving rules; adds two characters the import missed. Phases C-G complete with defaults. Clicks "Submit via GitHub OAuth".
-**Expected output:** Draft PR opened on the user's fork. PR body lists the import attribution (`adapted from release/c/cm_qwerty`, round-trip clean, two opaque features deleted as part of carving). The PR commit contains the emitted `<id>.kmn` but NOT `<id>.kmn.imported`. The `.zip` (if also downloaded) contains both.
+**Expected output:** Draft PR opened on the user's fork. PR body lists the import attribution (`adapted from release/c/cm_qwerty`, round-trip clean, two opaque features deleted as part of carving). `HISTORY.md` contains an "Adapted from `release/c/cm_qwerty`" bullet under the 1.0 entry. The PR commit does not contain a `.kmn.imported` sidecar (removed per D11).
 **Pass criteria:** WASM oracle produces no errors. Layer A' I2 passes on every emit during the session. The committed `.kmn` builds with `kmc build` exit code 0. Re-importing the emitted `.kmn` into the studio produces an IR functionally equivalent to the one at submit time.
 
 ---

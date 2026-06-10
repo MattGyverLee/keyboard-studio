@@ -38,7 +38,11 @@ export type ContextElement =
   | { kind: "notany"; storeRef: string }
   | { kind: "context"; offset: number }
   | { kind: "index"; storeRef: string; offset: number }
-  | { kind: "baselayout" }
+  /**
+   * The `value` string is used verbatim as the layout-name argument to `baselayout(...)` in emitted KMN.
+   * It must not contain single-quote characters. Case is preserved here but the Keyman compiler compares case-insensitively.
+   */
+  | { kind: "baselayout"; value: string }
   | { kind: "raw"; text: string };
 
 /** An element in a KMN rule's output (RHS). */
@@ -61,14 +65,31 @@ export interface TouchKeyIR {
   nodeId: string;
   id: string;
   text?: string;
+  /** Small label shown in the key corner to signal a longpress menu exists. */
+  hint?: string;
   output?: string;
   nextlayer?: string;
+  /** Sub-keys (longpress menu). */
   sk?: TouchKeyIR[];
+  /** Directional gesture map (compass directions). */
+  flick?: Partial<Record<"n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw", TouchKeyIR>>;
+  /** Rapid successive taps cycling through characters. */
+  multitap?: TouchKeyIR[];
 }
 
 /** Diff produced by the I2 functional-equivalence round-trip check (decision D7, spec §14). */
 export interface RoundTripDiff {
   corpus: string;
+  /**
+   * Bounded-enumeration parameters used to generate the corpus. Pinned to the diff so
+   * divergence reports are reproducible across package versions even if the depth
+   * constants later move (spec §14 D7, ratified at #232).
+   */
+  corpusSpec: {
+    vkeyCount: number;
+    modifierSets: string[][];
+    deadkeyDepth: number;
+  };
   inputCount: number;
   divergedInputs: Array<{
     input: KeyChord[];
@@ -89,7 +110,8 @@ export interface IRHeader {
   copyright: string;
   version: string;
   targets: string[];
-  storeDirectives: StoreItem[];
+  /** Additional file-level &-store directives beyond the typed fields above, in declaration order. Each entry is the raw KMN store body. */
+  storeDirectives: string[];
 }
 
 /** A single KMN store declaration. */
@@ -146,29 +168,55 @@ export interface RawKmnFragment {
   reason: string;
 }
 
-/** Parsed .keyman-touch-layout file. */
+/**
+ * Parsed .keyman-touch-layout file.
+ * The real file is a JSON object whose top-level keys are platform names; each
+ * platform carries its own independent layer array with different key populations
+ * and row counts. A flat `layers` shape would silently collapse one platform's data
+ * on round-trip — hence the `platforms` wrapper (ratified at #232).
+ */
 export interface TouchLayoutIR {
-  layers: Array<{
-    id: string;
-    rows: Array<{ keys: TouchKeyIR[] }>;
+  platforms: Array<{
+    id: "phone" | "tablet" | "desktop";
+    font?: string;
+    layers: Array<{
+      id: string;
+      rows: Array<{ keys: TouchKeyIR[] }>;
+    }>;
   }>;
   /**
-   * Map from layer-id+key-id to IR node reference, as an entry array for JSON round-trip
-   * compatibility (spec §11).
+   * Map from platform-id+layer-id+key-id to IR node reference, as an entry array
+   * for JSON round-trip compatibility (spec §11).
    */
   nodeIds: Array<[string, IRNodeRef]>;
 }
 
-/** Parsed .kvks file. */
+/**
+ * Parsed .kvks file (visual keyboard XML).
+ * `label` is the display text shown on the on-screen keyboard; `chars` is what the
+ * key actually emits when activated. Real kvks files commonly use distinct values
+ * (e.g. label="ZWNJ" with no emitted chars — the rule fires the codepoint).
+ * Ratified shape at #232.
+ */
 export interface KvksIR {
+  /** Optional KVKS version attribute from the <version> header element. */
+  kvksVersion?: string;
+  /** Optional keyboard display name from the <kbdname> header element. */
+  kbdname?: string;
   layers: Array<{
     shift: string;
-    keys: Array<{ vkey: string; output: string }>;
+    keys: Array<{
+      vkey: string;
+      /** Display label shown on the on-screen keyboard. */
+      label: string;
+      /** Characters emitted when the key is pressed; absent for label-only keys. */
+      chars?: string;
+    }>;
   }>;
   usealtgr: boolean;
   /**
-   * Map from shift-state+vkey to IR node reference, as an entry array for JSON round-trip
-   * compatibility (spec §11).
+   * Map from shift-state+vkey to IR node reference, as an entry array for JSON
+   * round-trip compatibility (spec §11).
    */
   nodeIds: Array<[string, IRNodeRef]>;
 }
@@ -214,7 +262,7 @@ export interface ImportReport {
   keyboardId: string;
   status: ImportStatus;
   parseErrors: string[];
-  /** Per-feature count of opaque fragments (populated by check I4). */
+  /** Per-feature count of opaque fragments (populated by check I5). */
   opaqueFeatureInventory: Array<{ feature: string; count: number }>;
   /** Fraction of IR rules owned by a recognized Pattern (0–1). */
   recognizedRatio: number;

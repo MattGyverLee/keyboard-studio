@@ -66,19 +66,19 @@ describe("parseKvks", () => {
     expect(ir.layers[1]?.shift).toBe("S");
   });
 
-  it("extracts key vkey and output text", () => {
+  it("extracts key vkey and label text", () => {
     const ir = parseKvks(MINIMAL_KVKS);
     const layer0 = ir.layers[0];
-    expect(layer0?.keys[0]).toMatchObject({ vkey: "K_A", output: "a" });
-    expect(layer0?.keys[1]).toMatchObject({ vkey: "K_B", output: "b" });
+    expect(layer0?.keys[0]).toMatchObject({ vkey: "K_A", label: "a" });
+    expect(layer0?.keys[1]).toMatchObject({ vkey: "K_B", label: "b" });
   });
 
-  it("unescapes XML entities in key output", () => {
+  it("unescapes XML entities in key label", () => {
     const ir = parseKvks(XML_ENTITIES_KVKS);
     const lt = ir.layers[0]?.keys.find(k => k.vkey === "K_oE2");
     const amp = ir.layers[0]?.keys.find(k => k.vkey === "K_AMPER");
-    expect(lt?.output).toBe("<");
-    expect(amp?.output).toBe("&");
+    expect(lt?.label).toBe("<");
+    expect(amp?.label).toBe("&");
   });
 
   it("populates nodeIds array", () => {

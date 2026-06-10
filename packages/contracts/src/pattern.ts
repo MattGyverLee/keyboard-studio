@@ -131,6 +131,14 @@ export interface Pattern {
    * @see spec.md §5a — IRNodeRef; pending ratification at #232 joint session.
    */
   ownedNodes?: IRNodeRef[];
+  /**
+   * True when the author has manually edited slots on a recognized Pattern.
+   * Distinguishes an untouched recognized pattern (safe to re-derive on re-import)
+   * from one the author has overridden (must be treated as authoritative on re-emit).
+   * Default false / omitted. Only meaningful when origin='recognized'.
+   * @see spec.md §5a — recognized-then-edited semantics; ratified at #232.
+   */
+  authorModified?: boolean;
   /** Survey questions that fill the named slots in kmnFragment. */
   questions: PatternQuestion[];
   /**
@@ -221,6 +229,7 @@ export type PatternInit = {
   combinesWith?: StrategyId[];
   origin?: "survey" | "imported" | "recognized";
   ownedNodes?: IRNodeRef[];
+  authorModified?: boolean;
   questions: PatternQuestion[];
   kmnFragment: string;
   touchLayoutFragment?: string;
@@ -265,6 +274,7 @@ export function makePattern(init: PatternInit): Pattern {
     ...(init.combinesWith !== undefined ? { combinesWith: init.combinesWith } : {}),
     ...(init.origin !== undefined ? { origin: init.origin } : {}),
     ...(init.ownedNodes !== undefined ? { ownedNodes: init.ownedNodes } : {}),
+    ...(init.authorModified !== undefined ? { authorModified: init.authorModified } : {}),
     ...(init.touchLayoutFragment !== undefined
       ? { touchLayoutFragment: init.touchLayoutFragment }
       : {}),
