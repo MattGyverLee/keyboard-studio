@@ -77,8 +77,8 @@ function convertKey(raw: RawKey, minter: NodeIdMinter): TouchKeyIR {
 /**
  * Parse a .keyman-touch-layout JSON string into a TouchLayoutIR.
  *
- * Platform priority: desktop > tablet > phone. Layers are merged with later
- * platforms filling in layer IDs not already present from earlier platforms.
+ * Each platform (desktop, tablet, phone) is preserved as a separate entry in
+ * `platforms`. Layer IDs within a platform are not deduplicated across platforms.
  *
  * @throws SyntaxError if the input is not valid JSON.
  * @throws TypeError  if the JSON structure is clearly wrong (not an object).
@@ -92,9 +92,7 @@ export function parseTouchLayout(json: string): TouchLayoutIR {
   }
   const layout = raw as RawTouchLayout;
 
-  // Gather layers in platform priority order.
-  const seenIds = new Set<string>();
-  const mergedLayers: TouchLayoutIR["layers"] = [];
+  const platforms: TouchLayoutIR["platforms"] = [];
   const nodeIds: Array<[string, IRNodeRef]> = [];
 
   const PLATFORM_ORDER = ["desktop", "tablet", "phone"] as const;
@@ -103,32 +101,32 @@ export function parseTouchLayout(json: string): TouchLayoutIR {
     const p = layout[platform];
     if (!p || !Array.isArray(p.layer)) continue;
 
+    const platformLayers: TouchLayoutIR["platforms"][number]["layers"] = [];
+
     for (const rawLayer of p.layer) {
       const id = rawLayer.id ?? "default";
-      if (seenIds.has(id)) continue; // already added from a higher-priority platform
-      seenIds.add(id);
-
-      const rows: TouchLayoutIR["layers"][number]["rows"] = [];
+      const rows: TouchLayoutIR["platforms"][number]["layers"][number]["rows"] = [];
 
       for (const rawRow of rawLayer.row ?? []) {
         const keys: TouchKeyIR[] = [];
         for (const rawKey of rawRow.key ?? []) {
           const key = convertKey(rawKey, minter);
           keys.push(key);
-          nodeIds.push([`${id}:${key.id}`, { kind: "touchKey", nodeId: key.nodeId }]);
-          // Also record subkeys in nodeIds.
+          nodeIds.push([`${platform}:${id}:${key.id}`, { kind: "touchKey", nodeId: key.nodeId }]);
           if (key.sk) {
             for (const sk of key.sk) {
-              nodeIds.push([`${id}:${key.id}:sk:${sk.id}`, { kind: "touchKey", nodeId: sk.nodeId }]);
+              nodeIds.push([`${platform}:${id}:${key.id}:sk:${sk.id}`, { kind: "touchKey", nodeId: sk.nodeId }]);
             }
           }
         }
         rows.push({ keys });
       }
 
-      mergedLayers.push({ id, rows });
+      platformLayers.push({ id, rows });
     }
+
+    platforms.push({ id: platform, layers: platformLayers });
   }
 
-  return { layers: mergedLayers, nodeIds };
+  return { platforms, nodeIds };
 }

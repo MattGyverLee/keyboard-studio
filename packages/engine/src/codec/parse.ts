@@ -316,9 +316,11 @@ function parseContextElements(
       elements.push({ kind: "index", storeRef: idxCtx.storeRef, offset: idxCtx.offset });
       continue;
     }
-    // baselayout keyword
-    if (tok.toLowerCase() === "baselayout") {
-      elements.push({ kind: "baselayout" });
+    // baselayout keyword — bare or baselayout('en-US') / baselayout()
+    if (/^baselayout(\s*\(|$)/i.test(tok)) {
+      const m = /^baselayout\s*\(\s*'?([^')]*)'?\s*\)/i.exec(tok);
+      const value = m ? (m[1]?.trim() ?? "") : "";
+      elements.push({ kind: "baselayout", value });
       continue;
     }
     // if(...) — opaque
@@ -839,10 +841,9 @@ export function parse(text: string, keyboardId: string): ParseResult {
   const targetsRaw = sysVal("TARGETS");
   const targets = targetsRaw ? targetsRaw.split(/\s+/).filter(Boolean) : [];
 
-  // storeDirectives: all system store items concatenated as a single flat list
-  // (stores with & prefix). This is used by the emitter to reproduce them.
+  // storeDirectives: additional &-store directive bodies beyond the typed header fields.
   // We keep this as an empty array since per-store reconstruction happens from stores[].
-  const storeDirectives: import("@keyboard-studio/contracts").StoreItem[] = [];
+  const storeDirectives: string[] = [];
 
   const header: IRHeader = {
     keyboardId,

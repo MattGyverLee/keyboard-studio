@@ -73,7 +73,7 @@ export function parseKvks(xml: string): KvksIR {
     const layerBody = layerMatch[2] ?? "";
     const shift = attr(layerAttrs, "shift");
 
-    const keys: Array<{ vkey: string; output: string }> = [];
+    const keys: Array<{ vkey: string; label: string; chars?: string }> = [];
 
     // Extract <key vkey="...">TEXT</key> inside this layer.
     const keyRe = /<key\b([^>]*)>([\s\S]*?)<\/key>/gi;
@@ -86,7 +86,7 @@ export function parseKvks(xml: string): KvksIR {
       if (!vkey) continue;
 
       const nodeId = minter.mint("kvksKey");
-      keys.push({ vkey, output: keyText });
+      keys.push({ vkey, label: keyText });
       nodeIds.push([`${shift}:${vkey}`, { kind: "kvksKey", nodeId }]);
     }
 

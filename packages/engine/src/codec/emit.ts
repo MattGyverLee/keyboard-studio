@@ -69,7 +69,7 @@ function fmtContextElement(el: ContextElement): string {
     case "notany":  return `notany(${el.storeRef})`;
     case "context": return `context(${el.offset})`;
     case "index":   return `index(${el.storeRef}, ${el.offset})`;
-    case "baselayout": return "baselayout";
+    case "baselayout": return el.value ? `baselayout('${el.value}')` : "baselayout";
     case "raw":     return el.text;
   }
 }
