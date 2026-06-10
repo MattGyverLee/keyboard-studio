@@ -21,6 +21,10 @@ function escapeQuote(s: string): string {
  * @param keyboardId The keyboard identifier; the file read is `source/<id>.kmn`.
  * @param identity   Fields to update. Omit a field to leave that line unchanged.
  *
+ * Note: any straight single quote (') in a provided string is replaced with
+ * RIGHT SINGLE QUOTATION MARK (U+2019) — KMN single-quoted strings have no
+ * escape sequence; U+2019 is the safe typographic substitute.
+ *
  * @throws if the keyboard source file is not present in `vfs`.
  */
 export function applyIdentityStubMutation(
