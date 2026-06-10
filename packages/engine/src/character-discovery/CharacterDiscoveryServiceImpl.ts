@@ -173,12 +173,15 @@ export function parseLinguistJson(text: string): LinguistInventory {
     Array.isArray(raw["direction_control_chars"])
       ? (raw["direction_control_chars"] as unknown[])
           .filter((v): v is string => typeof v === "string")
-          .map((s) => String.fromCodePoint(parseInt(s.replace("U+", ""), 16)))
+          .map((s) => { const cp = parseInt(s.replace(/^U\+/i, ''), 16); return isNaN(cp) ? null : String.fromCodePoint(cp); })
+          .filter((c): c is string => c !== null)
       : undefined;
 
   const syllabicFinalMarkers =
     Array.isArray(raw["syllabic_final_markers"])
-      ? nfcArr(raw["syllabic_final_markers"] as unknown[])
+      ? (raw["syllabic_final_markers"] as unknown[])
+          .filter((v): v is string => typeof v === "string")
+          .map((s) => { const cp = parseInt(s.replace(/^U\+/i, ''), 16); return isNaN(cp) ? s.normalize("NFC") : String.fromCodePoint(cp); })
       : undefined;
 
   return makeLinguistInventory({
