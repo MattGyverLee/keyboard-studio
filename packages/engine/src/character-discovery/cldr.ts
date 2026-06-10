@@ -1,10 +1,6 @@
-// Port of utilities/kbgen/sources/cldr.js — async, browser-safe, injectable loader.
-// Ported to ESM TypeScript for the character-discovery service (spec §8 step 4).
-
 const CLDR_BASE =
   "https://raw.githubusercontent.com/unicode-org/cldr-json/46.1.0/cldr-json/cldr-misc-full/main";
 
-/** Returns the raw exemplarCharacters string for a locale, or null if unavailable. */
 export type CldrLoader = (locale: string) => Promise<string | null>;
 
 /**
@@ -51,7 +47,6 @@ export interface ParsedUnicodeSet {
   specials: string[];
 }
 
-/** Pure synchronous parser for a CLDR exemplarCharacters unicode set string. */
 export function parseUnicodeSet(str: string): ParsedUnicodeSet {
   const used = new Set<string>();
   const digraphs: string[] = [];
@@ -61,12 +56,12 @@ export function parseUnicodeSet(str: string): ParsedUnicodeSet {
 
   const chars = [...s];
   for (let i = 0; i < chars.length; i++) {
-    // noUncheckedIndexedAccess: i < chars.length guarantees element exists
     const c = chars[i] as string;
     if (c === " ") continue;
 
     if (c === "\\") {
-      const n = chars[++i];
+      i += 1;
+      const n = chars[i];
       if (n !== undefined) used.add(n);
       continue;
     }
@@ -74,16 +69,14 @@ export function parseUnicodeSet(str: string): ParsedUnicodeSet {
     if (c === "{") {
       let g = "";
       while (i + 1 < chars.length && chars[i + 1] !== "}") g += chars[++i];
-      i++; // consume the closing '}'
+      i++;
       digraphs.push(g);
       for (const gc of g) used.add(gc);
       continue;
     }
 
-    // Range: x-y (only when next char is '-' and char after is not a space)
     if (chars[i + 1] === "-" && chars[i + 2] !== undefined && chars[i + 2] !== " ") {
       const start = c.codePointAt(0);
-      // i + 2 bounds already checked above
       const end = (chars[i + 2] as string).codePointAt(0);
       if (start !== undefined && end !== undefined) {
         for (let cp = start; cp <= end; cp++) used.add(String.fromCodePoint(cp));
@@ -95,7 +88,6 @@ export function parseUnicodeSet(str: string): ParsedUnicodeSet {
     used.add(c);
   }
 
-  // specials: non-ASCII letters (Unicode category L)
   const specials = [...used].filter(
     (ch) => (ch.codePointAt(0) ?? 0) > 0x7f && /\p{L}/u.test(ch),
   );
@@ -132,10 +124,7 @@ export async function loadExemplars(
   return { raw, used: parsed.used, digraphs: parsed.digraphs, specials: [...specials] };
 }
 
-// Unicode block ranges for script-to-block enumeration.
-// These are the Unicode 15 assigned ranges — the magic numbers are from
-// https://www.unicode.org/charts/ and kept here as the canonical anchor.
-export const SCRIPT_BLOCKS: Record<string, [number, number][]> = {
+export const SCRIPT_BLOCKS: Record<string, [number, number][]> = { // https://www.unicode.org/charts/
   Latn: [
     [0x0020, 0x007e], // Basic Latin
     [0x00a0, 0x00ff], // Latin-1 Supplement
@@ -153,10 +142,6 @@ export const SCRIPT_BLOCKS: Record<string, [number, number][]> = {
   ],
 };
 
-/**
- * Enumerate every letter (\p{L}) in the Unicode blocks assigned to a script.
- * Returns [] for unknown scripts.
- */
 export function scriptBlockChars(script: string): string[] {
   const ranges = SCRIPT_BLOCKS[script];
   if (ranges === undefined) return [];

@@ -6,10 +6,6 @@ import {
   createFetchCldrLoader,
 } from "./cldr.js";
 
-// ---------------------------------------------------------------------------
-// parseUnicodeSet
-// ---------------------------------------------------------------------------
-
 describe("parseUnicodeSet", () => {
   it("parses basic chars", () => {
     const r = parseUnicodeSet("[a b c]");
@@ -40,6 +36,12 @@ describe("parseUnicodeSet", () => {
     expect(r.used.has("a")).toBe(true);
   });
 
+  it("does not throw on trailing backslash", () => {
+    const r = parseUnicodeSet("[a\\");
+    expect(r.used.has("a")).toBe(true);
+    // trailing backslash consumed by the escape handler — no throw, no garbage
+  });
+
   it("handles combining sequence as individual codepoints", () => {
     // e + combining acute (U+0301) listed as two separate chars
     const r = parseUnicodeSet("[e ́]");
@@ -61,10 +63,6 @@ describe("parseUnicodeSet", () => {
     expect(r.specials).not.toContain("a");
   });
 });
-
-// ---------------------------------------------------------------------------
-// loadExemplars
-// ---------------------------------------------------------------------------
 
 describe("loadExemplars", () => {
   it("returns null when loader returns null", async () => {
@@ -103,10 +101,6 @@ describe("loadExemplars", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// scriptBlockChars
-// ---------------------------------------------------------------------------
-
 describe("scriptBlockChars", () => {
   it("returns array including é and ñ for Latn", () => {
     const chars = scriptBlockChars("Latn");
@@ -131,10 +125,6 @@ describe("scriptBlockChars", () => {
     expect(scriptBlockChars("")).toEqual([]);
   });
 });
-
-// ---------------------------------------------------------------------------
-// createFetchCldrLoader
-// ---------------------------------------------------------------------------
 
 describe("createFetchCldrLoader", () => {
   function makeJsonResponse(payload: unknown): Response {
