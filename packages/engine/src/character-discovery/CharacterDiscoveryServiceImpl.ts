@@ -51,7 +51,6 @@ export class CharacterDiscoveryServiceImpl implements CharacterDiscoveryService 
   ): Promise<InventoryChar[]> {
     let candidates: string[] | null = null;
 
-    // Step 1: try CLDR exemplars when bcp47 is provided
     if (bcp47 !== undefined) {
       const exemplars = await loadExemplars(bcp47, this.loader);
       if (exemplars !== null) {
@@ -59,20 +58,16 @@ export class CharacterDiscoveryServiceImpl implements CharacterDiscoveryService 
       }
     }
 
-    // Step 2: fall back to script block chars
     if (candidates === null) {
       const block = scriptBlockChars(base.script);
       if (block.length === 0) return [];
       candidates = block;
     }
 
-    // Step 3: deduplicate
     const unique = [...new Set(candidates)];
-
-    // Step 4: sort ascending by codepoint
     unique.sort((a, b) => (a.codePointAt(0) ?? 0) - (b.codePointAt(0) ?? 0));
 
-    // Step 5: map to InventoryChar (no count — exactOptionalPropertyTypes is on)
+    // count omitted — exactOptionalPropertyTypes, no corpus for picker candidates
     return unique.map((ch) => ({
       char: ch,
       method: "picker" as const,
