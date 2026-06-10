@@ -1,16 +1,23 @@
 import { describe, it, expect } from "vitest";
-import { createCharacterDiscoveryService } from "./CharacterDiscoveryServiceImpl.js";
+import {
+  createCharacterDiscoveryService,
+  buildLinguistPrompt,
+  parseLinguistJson,
+  cldrCrossCheck,
+} from "./CharacterDiscoveryServiceImpl.js";
 import type { BaseKeyboard } from "@keyboard-studio/contracts";
+
+const noopCompleter = async () => { throw new Error("not called"); };
 
 // A null loader is safe here — harvestFromText never calls the CLDR loader
 const nullLoader = async (_locale: string): Promise<string | null> => null;
-const service = createCharacterDiscoveryService(nullLoader);
+const service = createCharacterDiscoveryService(nullLoader, noopCompleter);
 
 // Happy-path loader: returns French exemplars for "fr", null for everything else
 const frLoader = async (locale: string): Promise<string | null> =>
   locale === "fr" ? "[a b é ñ]" : null;
-const frService = createCharacterDiscoveryService(frLoader);
-const nullService = createCharacterDiscoveryService(nullLoader);
+const frService = createCharacterDiscoveryService(frLoader, noopCompleter);
+const nullService = createCharacterDiscoveryService(nullLoader, noopCompleter);
 
 // Minimal BaseKeyboard fixture (harvestFromText uses only the ASCII proxy, not
 // any field from base, so the exact values here do not matter)
@@ -137,8 +144,8 @@ describe("CharacterDiscoveryServiceImpl.harvestFromText", () => {
   });
 
   it("combining sequence 'é' (e + U+0301) is ONE entry", async () => {
-    // é is e followed by combining acute accent — one grapheme cluster
-    const combining = "é";
+    // é is e followed by combining acute accent — one grapheme cluster
+    const combining = "é";
     const result = await service.harvestFromText(combining, baseKb);
     expect(result).toHaveLength(1);
     expect(result[0]?.char).toBe(combining);
@@ -170,5 +177,148 @@ describe("CharacterDiscoveryServiceImpl.harvestFromText", () => {
       expect(item.count).toBeDefined();
       expect(typeof item.count).toBe("number");
     }
+  });
+});
+
+const MINIMAL_VALID_JSON = JSON.stringify({
+  language: "fr",
+  script: "Latin",
+  alphabet_core: {
+    lowercase: ["a", "b", "c"],
+    uppercase: ["A", "B", "C"],
+  },
+  mandatory_diacritics_and_ligatures: ["é"],
+  language_specific_punctuation: ["«", "»"],
+  numerals: ["0", "1"],
+});
+
+describe("synthesizeInventory helpers + integration", () => {
+  it("buildLinguistPrompt inserts languageName and bcp47, removes placeholders", () => {
+    const result = buildLinguistPrompt("French", "fr");
+    expect(result).toContain("French");
+    expect(result).toContain("fr");
+    expect(result).not.toContain("{{languageName}}");
+    expect(result).not.toContain("{{bcp47}}");
+  });
+
+  it("parseLinguistJson happy path — required fields present, optional absent", () => {
+    const inv = parseLinguistJson(MINIMAL_VALID_JSON);
+    expect(inv.language).toBe("fr");
+    expect(inv.script).toBe("Latin");
+    expect(inv.alphabetCore.lowercase).toEqual(["a", "b", "c"]);
+    expect(inv.alphabetCore.uppercase).toEqual(["A", "B", "C"]);
+    expect(inv.mandatoryDiacriticsAndLigatures).toEqual(["é"]);
+    expect(inv.languageSpecificPunctuation).toEqual(["«", "»"]);
+    expect(inv.numerals).toEqual(["0", "1"]);
+    expect("alphabetAuxiliary" in inv).toBe(false);
+    expect("digraphsAsPhonemeUnits" in inv).toBe(false);
+    expect("flags" in inv).toBe(false);
+  });
+
+  it("parseLinguistJson NFC — decomposed á normalizes to precomposed á", () => {
+    // 'a' + combining acute accent (U+0301) → 'á' (U+00E1)
+    const decomposed = "á";
+    const json = JSON.stringify({
+      language: "es",
+      script: "Latin",
+      alphabet_core: {
+        lowercase: [decomposed],
+        uppercase: ["A"],
+      },
+      mandatory_diacritics_and_ligatures: [],
+      language_specific_punctuation: [],
+      numerals: [],
+    });
+    const inv = parseLinguistJson(json);
+    expect(inv.alphabetCore.lowercase[0]).toBe("á");
+    expect(inv.alphabetCore.lowercase[0]).toBe("á");
+  });
+
+  it("parseLinguistJson direction_control_chars — U+200F converted to actual char", () => {
+    const json = JSON.stringify({
+      language: "ar",
+      script: "Arabic",
+      alphabet_core: {
+        lowercase: [],
+        uppercase: [],
+      },
+      mandatory_diacritics_and_ligatures: [],
+      language_specific_punctuation: [],
+      numerals: [],
+      direction_control_chars: ["U+200F"],
+    });
+    const inv = parseLinguistJson(json);
+    expect(inv.directionControlChars).toBeDefined();
+    expect(inv.directionControlChars![0]).toBe("‏");
+  });
+
+  it("parseLinguistJson throws on invalid JSON", () => {
+    expect(() => parseLinguistJson("not json at all")).toThrow(
+      "linguist: invalid JSON response"
+    );
+  });
+
+  it("parseLinguistJson throws when alphabet_core is missing", () => {
+    const json = JSON.stringify({
+      language: "fr",
+      script: "Latin",
+      mandatory_diacritics_and_ligatures: [],
+      language_specific_punctuation: [],
+      numerals: [],
+    });
+    expect(() => parseLinguistJson(json)).toThrow(
+      "linguist: missing required field: alphabet_core"
+    );
+  });
+
+  it("cldrCrossCheck — é in core, ü extra → ü not-attested; ñ cldr-omitted", async () => {
+    const mockFrLoader = async (locale: string): Promise<string | null> =>
+      locale === "fr" ? "[a b é ñ]" : null;
+
+    const inv = parseLinguistJson(
+      JSON.stringify({
+        language: "fr",
+        script: "Latin",
+        alphabet_core: {
+          lowercase: ["é", "ü"],
+          uppercase: [],
+        },
+        mandatory_diacritics_and_ligatures: [],
+        language_specific_punctuation: [],
+        numerals: [],
+      })
+    );
+
+    const result = await cldrCrossCheck(inv, "fr", mockFrLoader);
+    expect(result.flags).toBeDefined();
+    const flags = result.flags!;
+
+    const notAttested = flags.find((f) => f.char === "ü");
+    expect(notAttested?.issue).toBe("not-attested");
+
+    const cldrOmitted = flags.find((f) => f.char === "ñ");
+    expect(cldrOmitted?.issue).toBe("cldr-omitted");
+  });
+
+  it("cldrCrossCheck — null loader returns inventory unchanged, no flags added", async () => {
+    const inv = parseLinguistJson(MINIMAL_VALID_JSON);
+    const result = await cldrCrossCheck(inv, "fr", nullLoader);
+    expect(result).toBe(inv);
+    expect("flags" in result).toBe(false);
+  });
+
+  it("synthesizeInventory end-to-end — mock completer + null loader → correct inventory", async () => {
+    const mockCompleter = async (_prompt: string): Promise<string> =>
+      MINIMAL_VALID_JSON;
+
+    const svc = createCharacterDiscoveryService(nullLoader, mockCompleter);
+    const inv = await svc.synthesizeInventory("French", "fr");
+
+    expect(inv.language).toBe("fr");
+    expect(inv.script).toBe("Latin");
+    expect(inv.alphabetCore.lowercase).toEqual(["a", "b", "c"]);
+    expect(inv.alphabetCore.uppercase).toEqual(["A", "B", "C"]);
+    expect(inv.mandatoryDiacriticsAndLigatures).toEqual(["é"]);
+    expect("flags" in inv).toBe(false);
   });
 });
