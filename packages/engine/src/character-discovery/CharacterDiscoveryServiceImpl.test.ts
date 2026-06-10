@@ -271,6 +271,33 @@ describe("synthesizeInventory helpers + integration", () => {
     );
   });
 
+  it("parseLinguistJson silently drops non-string entries in alphabet_core arrays", () => {
+    const json = JSON.stringify({
+      language: "fr",
+      script: "Latin",
+      alphabet_core: { lowercase: [1, "b", null], uppercase: ["A"] },
+      mandatory_diacritics_and_ligatures: [],
+      language_specific_punctuation: [],
+      numerals: [],
+    });
+    const inv = parseLinguistJson(json);
+    expect(inv.alphabetCore.lowercase).toEqual(["b"]);
+  });
+
+  it("parseLinguistJson silently drops alphabet_auxiliary when lowercase is not an array", () => {
+    const json = JSON.stringify({
+      language: "fr",
+      script: "Latin",
+      alphabet_core: { lowercase: ["a"], uppercase: ["A"] },
+      alphabet_auxiliary: { lowercase: "abc", uppercase: ["X"] },
+      mandatory_diacritics_and_ligatures: [],
+      language_specific_punctuation: [],
+      numerals: [],
+    });
+    const inv = parseLinguistJson(json);
+    expect(inv.alphabetAuxiliary).toBeUndefined();
+  });
+
   it("cldrCrossCheck — é in core, ü extra → ü not-attested; ñ cldr-omitted", async () => {
     const mockFrLoader = async (locale: string): Promise<string | null> =>
       locale === "fr" ? "[a b é ñ]" : null;

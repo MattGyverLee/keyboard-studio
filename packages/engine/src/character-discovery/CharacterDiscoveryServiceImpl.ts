@@ -93,7 +93,6 @@ export function parseLinguistJson(text: string): LinguistInventory {
 
   const raw = parsed as Record<string, unknown>;
 
-  // Validate required fields
   if (typeof raw["language"] !== "string") {
     throw new Error("linguist: missing required field: language");
   }
@@ -210,9 +209,7 @@ export async function cldrCrossCheck(
 
   const addLettersFrom = (arr: string[]) => {
     for (const ch of arr) {
-      if ((ch.codePointAt(0) ?? 0) > 0x7f) {
-        agentLetters.add(ch);
-      }
+      if (/^\p{L}+$/u.test(ch)) agentLetters.add(ch);
     }
   };
 
@@ -232,37 +229,15 @@ export async function cldrCrossCheck(
   const newFlags: Array<{ char: string; issue: "not-attested" | "cldr-omitted" }> = [];
 
   for (const ch of agentLetters) {
-    if (!cldrLetters.has(ch)) {
-      newFlags.push({ char: ch, issue: "not-attested" as const });
-    }
+    if (!cldrLetters.has(ch)) newFlags.push({ char: ch, issue: "not-attested" });
   }
-
   for (const ch of cldrLetters) {
-    if (!agentLetters.has(ch)) {
-      newFlags.push({ char: ch, issue: "cldr-omitted" as const });
-    }
+    if (!agentLetters.has(ch)) newFlags.push({ char: ch, issue: "cldr-omitted" });
   }
 
   if (newFlags.length === 0 && inv.flags === undefined) return inv;
 
-  const mergedFlags = [...(inv.flags ?? []), ...newFlags];
-
-  return makeLinguistInventory({
-    language: inv.language,
-    script: inv.script,
-    alphabetCore: inv.alphabetCore,
-    ...(inv.alphabetAuxiliary !== undefined ? { alphabetAuxiliary: inv.alphabetAuxiliary } : {}),
-    mandatoryDiacriticsAndLigatures: inv.mandatoryDiacriticsAndLigatures,
-    languageSpecificPunctuation: inv.languageSpecificPunctuation,
-    numerals: inv.numerals,
-    ...(inv.digraphsAsPhonemeUnits !== undefined ? { digraphsAsPhonemeUnits: inv.digraphsAsPhonemeUnits } : {}),
-    ...(inv.nuktaAndBorrowedSoundMarkers !== undefined ? { nuktaAndBorrowedSoundMarkers: inv.nuktaAndBorrowedSoundMarkers } : {}),
-    ...(inv.independentVowels !== undefined ? { independentVowels: inv.independentVowels } : {}),
-    ...(inv.directionControlChars !== undefined ? { directionControlChars: inv.directionControlChars } : {}),
-    ...(inv.syllabicFinalMarkers !== undefined ? { syllabicFinalMarkers: inv.syllabicFinalMarkers } : {}),
-    flags: mergedFlags,
-    ...(inv.sources !== undefined ? { sources: inv.sources } : {}),
-  });
+  return makeLinguistInventory({ ...inv, flags: [...(inv.flags ?? []), ...newFlags] });
 }
 
 export class CharacterDiscoveryServiceImpl implements CharacterDiscoveryService {
