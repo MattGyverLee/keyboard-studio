@@ -213,18 +213,12 @@ questions:
       - value: rtl
         label: "Right-to-left (Arabic, Hebrew, and similar scripts)"
       - value: syllabic
-<<<<<<< HEAD
         label: "Syllabic (each glyph represents a syllable or syllable unit, e.g. Cherokee, Canadian Aboriginal Syllabics, Vai)"
-      - value: alpha-nonlatin
-        label: "Non-Latin alphabet (Cyrillic, Greek, Georgian, Armenian -- letters, not syllables or attached marks)"
-=======
-        label: "Syllabic (each glyph represents a syllable or syllable unit, e.g. Cherokee, Canadian Aboriginal Syllabics, Ethiopic / Ge'ez)"
       - value: logographic
-        label: "Logographic (CJK, Hangul, etc.)"
+        label: "Logographic (CJK characters and similar scripts)"
         note: "v1: renders 'not yet supported' stub (spec §9)"
       - value: alpha-nonlatin
-        label: "Alphabetic non-Latin (Cyrillic, Georgian, Armenian, Ethiopic, etc.)"
->>>>>>> 8cf368a (fix(flows): align phase_a_identity with spec §8 — copyright holder, script detection, mobile notice, ScriptFamily options)
+        label: "Non-Latin alphabet (Cyrillic, Greek, Georgian, Armenian -- letters, not syllables or attached marks)"
       - value: other
         label: "Other or I am not sure"
     required: true

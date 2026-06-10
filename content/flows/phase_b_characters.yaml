@@ -846,9 +846,10 @@ questions:
 #     normalisation and the S-02-vs-direct-key choice, not the A4 axis value.
 #     # TIMING NOTE (A4=replacing-cycling): Phase B emits A4 as one of {none, stacking-combining, multi-family}.
 #     # The value 'replacing-cycling' is resolved only during Phase C pattern selection.
-#     # Consequence: the strategy selector must be invoked a SECOND TIME after Phase C confirms A4,
-#     # or rule 3 (A4=replacing-cycling → S-07) must be treated as a Phase C post-selection step.
-#     # See spec §7.2 rule 3 and §8.7.
+#     # TBD (spec §7.2 rule 3 / §8 open question): the engine will need to either re-run the
+#     # strategy selector after Phase C confirms A4=replacing-cycling, or treat rule 3
+#     # (A4=replacing-cycling → S-07) as a Phase C post-selection step. The §7.2 Mermaid
+#     # diagram does not yet model this two-phase path. See spec §7.2 rule 3 and §8.7.
 #
 #   A7 (spare keys):  (§7.1: "many" | "RAlt-only" | "fully-booked")
 #     A7 is authoritatively computed by the engine from the base-keyboard diff
