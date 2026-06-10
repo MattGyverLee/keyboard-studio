@@ -7,8 +7,10 @@
 //   #preview              — compiled preview (stub; not yet implemented)
 //   #output               — output / delivery (stub; not yet implemented)
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import type { BaseKeyboard } from "@keyboard-studio/contracts";
 import { PreviewShell } from "./components/PreviewShell.tsx";
+import { PhaseASurvey } from "./survey/PhaseASurvey.tsx";
 
 // ---------------------------------------------------------------------------
 // Route types
@@ -141,14 +143,22 @@ function NavBar({ active }: NavBarProps) {
 
 export function StudioShell() {
   const route = useRoute();
+  const [selectedBaseKeyboard, setSelectedBaseKeyboard] =
+    useState<BaseKeyboard | null>(null);
+
+  const handleBaseKeyboardSelected = useCallback((kb: BaseKeyboard) => {
+    setSelectedBaseKeyboard(kb);
+  }, []);
 
   let content: ReactNode;
   switch (route) {
     case "pick-base":
-      content = <PreviewShell />;
+      content = (
+        <PreviewShell onBaseKeyboardSelected={handleBaseKeyboardSelected} />
+      );
       break;
     case "survey":
-      content = <RoutePlaceholder title="Survey" />;
+      content = <PhaseASurvey baseKeyboard={selectedBaseKeyboard} />;
       break;
     case "gallery":
       content = <RoutePlaceholder title="Gallery" />;
