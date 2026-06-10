@@ -38,6 +38,9 @@ questions:
 
   # -- Language identity -------------------------------------------------------
 
+  # displayName: engine derives as "{language_name_autonym} ({language_name_english})" unless overridden — no separate question needed
+
+  # Engine: routes to KeyboardProvenance.localizedName (not KeyboardIdentity) — also feeds welcome.htm and .kps display
   - id: language_name_autonym
     prompt: "What is your language called in your own language?"
     help_text: >
@@ -191,6 +194,7 @@ questions:
 
   # -- Keyboard layout family (routing group) ----------------------------------
 
+  # Engine: pre-populate from BCP47 script subtag + IR structural shape before rendering; present as confirmation, not blank selection
   - id: layout_family
     prompt: "Which physical keyboard layout does your community use?"
     help_text: >
@@ -214,7 +218,7 @@ questions:
     next:
       - condition: "value == 'non-roman'"
         goto: script_family
-      - default: author_display_name
+      - default: pa_primary_target
 
   # Shown only when layout_family == 'non-roman'
   - id: script_family
@@ -238,6 +242,31 @@ questions:
       - value: other
         label: "Other or I am not sure"
     required: true
+    next: pa_primary_target
+
+  # -- Mobile-primary notification (spec §8 step 5, Decision 6) ---------------
+
+  - id: pa_primary_target
+    prompt: "Is this keyboard primarily for mobile (touchscreen) or desktop (physical keyboard) use?"
+    help_text: >
+      Keyboard Studio v1 is anchored to physical-keyboard mental models. You
+      can complete the full authoring flow and a touch layout will be produced,
+      but the survey questions are designed for desktop-first thinking. (See
+      spec Decision 6)
+    type: radio
+    options:
+      - value: desktop
+        label: "Desktop (physical keyboard)"
+      - value: mobile
+        label: "Mobile (touchscreen)"
+        note: >
+          Keyboard Studio v1 is anchored to physical-keyboard mental models.
+          You can complete the full authoring flow and a touch layout will be
+          produced, but the survey questions are designed for desktop-first
+          thinking. (See spec Decision 6)
+      - value: both
+        label: "Both desktop and mobile"
+    required: false
     next: author_display_name
 
   # -- Author identity ---------------------------------------------------------
@@ -259,6 +288,18 @@ questions:
       maintainers can reach the right person if they have questions.
       Use an address that will remain active.
     type: text
+    required: true
+    next: pa_copyright_holder
+
+  # maps_to: KeyboardIdentity.copyrightHolder
+  - id: pa_copyright_holder
+    prompt: "Who holds the copyright for this keyboard?"
+    label: "Copyright holder"
+    help_text: >
+      Name of the person or organization that holds the copyright for this
+      keyboard. This may be you, your employer, or a language organization.
+      Example: 'Bafut Language Committee'
+    type: short_text
     required: true
     next: provenance_opt_in
 
