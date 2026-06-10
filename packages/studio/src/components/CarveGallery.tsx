@@ -11,7 +11,14 @@ export function CarveGallery() {
   const undoDelete = useIRStore((s) => s.undoDelete);
 
   if (!ir) {
-    return <p>Loading keyboard...</p>;
+    return (
+      <div style={{ padding: '1.5rem' }}>
+        <p>Loading keyboard...</p>
+        <p>
+          <a href="#pick-base">Go back to keyboard selection</a>
+        </p>
+      </div>
+    );
   }
 
   const recognizedPatterns = ir.recognizedPatterns.filter((p) => p.origin === 'recognized');
@@ -28,7 +35,7 @@ export function CarveGallery() {
   };
 
   return (
-    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '1.5rem' }}>
+    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '1.5rem', overflowY: 'auto' }}>
       <h1>Review your keyboard</h1>
       <p>
         Remove any parts you don&apos;t need before starting the survey. You can always
@@ -46,7 +53,11 @@ export function CarveGallery() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {recognizedPatterns.map((p) => (
-          <PatternCard key={p.id} pattern={p} />
+          <PatternCard
+            key={p.id}
+            pattern={p}
+            onEdit={() => { window.location.hash = `#survey?patternId=${p.id}`; }}
+          />
         ))}
         {ir.groups.map((g) => (
           <GroupCard key={g.nodeId} group={g} />

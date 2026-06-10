@@ -147,8 +147,8 @@ export function useKeyboardArtifact(
         Promise.resolve().then(() => {
           if (!engineRef.current!.parseKmn || !engineRef.current!.recognizePatterns) return null;
           const pr = engineRef.current!.parseKmn(kmnText, kb.id);
-          engineRef.current!.recognizePatterns(pr.ir);
-          return pr;
+          const recognized = engineRef.current!.recognizePatterns(pr.ir);
+          return { ...pr, ir: recognized.ir };
         }),
       ]);
       result = compileResult;
@@ -197,9 +197,11 @@ export function useKeyboardArtifact(
   useEffect(() => {
     if (baseKeyboard === null) {
       setStage({ kind: "idle" });
+      useIRStore.getState().clearIR();
       return;
     }
 
+    useIRStore.getState().clearIR();
     const thisRunId = ++runId.current;
     void run(baseKeyboard, thisRunId);
   }, [baseKeyboard, run]);
