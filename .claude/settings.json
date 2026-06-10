@@ -122,7 +122,6 @@
       "Bash(node utilities/km-triage-app/setup.js)",
       "Bash(node utilities/km-triage-app/mint-token.js)",
       "Bash(node utilities/km-triage-app/bot-gh.js *)",
-      "Bash(git pull *)",
       "PowerShell(Get-ChildItem \"$env:LOCALAPPDATA\\\\km-triage\" -ErrorAction SilentlyContinue | Select-Object Name, Length)",
       "WebFetch(domain:docs.claude.com)",
       "Bash(node -e \"const s = require\\('fs'\\).readFileSync\\('.claude/settings.json','utf8'\\); const o = JSON.parse\\(s\\); console.log\\('parse: ok'\\); console.log\\('enableWorkflows:', o.enableWorkflows\\); console.log\\('skipWorkflowUsageWarning:', o.skipWorkflowUsageWarning\\); console.log\\('permissions.allow length:', o.permissions.allow.length\\);\")",
@@ -154,10 +153,18 @@
       "Bash(node -e \"const fs=require\\('fs'\\);const s=fs.readFileSync\\('C:/Users/thoua/AppData/Local/Temp/claude/d--Github--Projects--KM-keyboard-studio/2768d6f3-9012-449d-8b78-eca3fc69998a/tasks/wcw39xzs0.output','utf8'\\);const obj=JSON.parse\\(s\\);console.log\\('top keys:',Object.keys\\(obj\\)\\);console.log\\('result keys:',Object.keys\\(obj.result||{}\\)\\);console.log\\('synth keys:',Object.keys\\(obj.result?.synthesis||{}\\)\\);console.log\\(''\\);const r=obj.result;console.log\\('prNumber:',r.prNumber\\);console.log\\('reviewers:',r.reviewers\\);console.log\\('confirmed:',r.confirmed\\);console.log\\('refuted:',r.refuted\\);console.log\\(''\\);console.log\\('verifyEnvelopes per-reviewer:'\\);for\\(const e of r.verifyEnvelopes||[]\\){console.log\\(' '+\\(e.reviewerKey||''\\).padEnd\\(14\\)+' '+\\(e.reviewerVerdict||''\\).padEnd\\(22\\)+' findings='+\\(e.verifiedFindings?.length||0\\)\\);}console.log\\(''\\);console.log\\('synth.verdict:',r.synthesis?.verdict\\);console.log\\('autoFixable count:',r.synthesis?.autoFixable?.length\\);console.log\\('humanDecisionNeeded count:',r.synthesis?.humanDecisionNeeded?.length\\);console.log\\(''\\);console.log\\('=== synth.summary ==='\\);console.log\\(r.synthesis?.summary||'\\(empty\\)'\\);\")",
       "Bash(node -c utilities/km-triage-app/progress-emit.js)",
       "Bash(node -c utilities/km-triage-app/check-progress.js)",
-      "Bash(node --check tools/triage-watch.mjs)"
+      "Bash(node --check tools/triage-watch.mjs)",
+      "Bash(git stash *)",
+      "PowerShell(gh pr view 153 --json mergeCommit,mergedAt --jq '{mergedAt, mergeCommit: .mergeCommit.oid}')",
+      "PowerShell(git branch -D DISCUS-principles)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "PowerShell(Get-Content \"$env:USERPROFILE\\\\.claude\\\\settings.json\" -Raw | ConvertFrom-Json | Select-Object -ExpandProperty permissions | Select-Object -ExpandProperty allow | Select-String '^\\(PowerShell|Bash\\)\\\\\\(gh ')",
+      "Bash(git add *)"
     ],
     "additionalDirectories": [
-      "C:\\Temp"
+      "C:\\Temp",
+      "C:\\Users\\higby\\.claude"
     ]
   },
   "enableWorkflows": true,
