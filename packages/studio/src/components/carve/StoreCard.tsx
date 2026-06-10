@@ -8,9 +8,6 @@ interface StoreCardProps {
 }
 
 export function StoreCard({ store }: StoreCardProps) {
-  // System stores (&NAME, &COPYRIGHT, etc.) are not user-visible content.
-  if (store.isSystem) return null;
-
   const isDeleted = useIRStore((s) => s.isDeleted(store.nodeId));
 
   const sample = storeCharSample(store);
