@@ -199,9 +199,13 @@ export function PhaseASurvey({ baseKeyboard }: PhaseASurveyProps) {
         }}
       >
         <span>No base keyboard selected.</span>
-        <a href="#pick-base" style={{ color: "#6ea8fe", fontSize: 13 }}>
-          Go to Pick Base to choose one
-        </a>
+        <span style={{ fontSize: 13 }}>
+          Go to{" "}
+          <a href="#pick-base" style={{ color: "#6ea8fe" }}>
+            Pick Base
+          </a>{" "}
+          to choose one
+        </span>
       </div>
     );
   }
