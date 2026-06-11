@@ -20,8 +20,6 @@ import { parseFlow } from "./loadFlow.ts";
 import type { SurveyContext } from "./types.ts";
 
 // Vite ?raw import — YAML source as a plain string, no network request.
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — Vite resolves ?raw at build/dev time; not a TS path
 import phaseARaw from "../../../../content/flows/phase_a_identity.yaml?raw";
 
 // ---------------------------------------------------------------------------
@@ -60,6 +58,9 @@ export function extractIdentity(
         ? "non-roman"
         : "qwerty-qwertz";
 
+  // TODO: compose full BCP47 tag (iso_code + ISO 15924 script subtag) once Phase A
+  // collects primary_script as an ISO 15924 code — current script_family values
+  // ("indic", "rtl", etc.) are routing groups, not composable BCP47 subtags.
   const bcp47Tag = isoCode !== "" ? isoCode : "und";
   const displayName =
     langNameAutonym !== ""

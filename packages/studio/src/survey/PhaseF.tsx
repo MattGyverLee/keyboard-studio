@@ -11,8 +11,6 @@ import { parseFlow } from "./loadFlow.ts";
 import type { SurveyContext } from "./types.ts";
 
 // Vite ?raw import
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — Vite resolves ?raw at build/dev time
 import phaseFRaw from "../../../../content/flows/phase_f_helpdocs.yaml?raw";
 
 // ---------------------------------------------------------------------------

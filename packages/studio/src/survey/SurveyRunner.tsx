@@ -268,12 +268,20 @@ export function SurveyRunner({
 
   const canGoBack = stack.length > 1 || onBack !== undefined;
 
+  const value = currentValue ?? currentEntry?.value;
+  const isNotice = displayQ.type === "notice";
+  const canAdvance = isNotice || !displayQ.required || hasValue(value);
+  // Derive the next question id once so that both the button label and handleNext
+  // share the same result — avoids a second advanceThrough call that would cause
+  // a brief button-label flicker when value changes mid-render.
+  const nextIdForCurrent = advanceThrough(currentQ, value, context, index);
+  const isLastQuestion = nextIdForCurrent === null;
+
   function handleNext() {
     if (currentQ === undefined) return;
-    const value = currentValue ?? currentEntry?.value;
 
-    // Build the next question id, resolving engine_resolved nodes silently
-    const nextId = advanceThrough(currentQ, value, context, index);
+    // Use the already-computed nextIdForCurrent to avoid a second advanceThrough call.
+    const nextId = nextIdForCurrent;
 
     if (nextId === null) {
       // End of flow — build the result
@@ -315,14 +323,6 @@ export function SurveyRunner({
     const prevEntry = stack[stack.length - 2];
     setCurrentValue(prevEntry?.value);
   }
-
-  const value = currentValue ?? currentEntry?.value;
-  const isNotice = displayQ.type === "notice";
-  const canAdvance = isNotice || !displayQ.required || hasValue(value);
-  // Compute whether advancing from this question leads to end-of-flow. Using
-  // advanceThrough (not just checking displayQ.next) handles FlowGotoRule[]
-  // arrays that might resolve to null via conditional routing.
-  const isLastQuestion = advanceThrough(currentQ, value, context, index) === null;
 
   return (
     <div

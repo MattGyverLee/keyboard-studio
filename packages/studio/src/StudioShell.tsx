@@ -8,7 +8,7 @@
 //   #output               — output / delivery (stub; not yet implemented)
 
 import { useCallback, useEffect, useRef, useState, type ReactNode, type CSSProperties } from "react";
-import type { BaseKeyboard } from "@keyboard-studio/contracts";
+import type { BaseKeyboard, KeyboardIdentity } from "@keyboard-studio/contracts";
 import { PreviewShell } from "./components/PreviewShell.tsx";
 import { PhaseA, PhaseB, PhaseF } from "./survey/index.ts";
 import type { SurveyContext } from "./survey/types.ts";
@@ -204,7 +204,7 @@ function SurveyView({ baseKeyboard }: SurveyViewProps) {
 
   function handlePhaseAComplete(
     _result: unknown,
-    identity: { languageName: string; routingGroup: string; scriptFamily?: string } | undefined,
+    identity: KeyboardIdentity | undefined,
     _provenance: unknown,
   ) {
     const ctx: SurveyContext = {};
@@ -219,8 +219,14 @@ function SurveyView({ baseKeyboard }: SurveyViewProps) {
     setPhase("B");
   }
 
-  function handlePhaseBComplete(_result: unknown) { setPhase("F"); }
-  function handlePhaseFComplete(_result: unknown) { setPhase("done"); }
+  function handlePhaseBComplete(_result: unknown) {
+    // TODO: persist phase B answers to IR store once #141/#142 land
+    setPhase("F");
+  }
+  function handlePhaseFComplete(_result: unknown) {
+    // TODO: hand off survey results to strategy selector once scaffold-over-IR (#238) lands
+    setPhase("done");
+  }
   function handleStartOver() { setSurveyContext({}); setPhase("A"); }
 
   const questionsPaneStyle: CSSProperties = {

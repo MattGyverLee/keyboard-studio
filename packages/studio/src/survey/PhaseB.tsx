@@ -16,8 +16,6 @@ import { parseFlow } from "./loadFlow.ts";
 import type { SurveyContext, FlowDef } from "./types.ts";
 
 // Vite ?raw import
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — Vite resolves ?raw at build/dev time
 import phaseBRaw from "../../../../content/flows/phase_b_characters.yaml?raw";
 
 // Question id in content/flows/phase_b_characters.yaml that begins the manual
