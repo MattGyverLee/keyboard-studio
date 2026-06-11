@@ -7,12 +7,12 @@ This document records the triage outcome for all criteria drawn from `docs/crite
 | Band | Count | % of total |
 |------|-------|-----------|
 | scaffolder-bake | 38 | 26% |
-| layer-c-enforce | 66 | 45% |
+| layer-c-enforce | 67 | 46% |
 | yellow-survey | 32 | 22% |
 | red-checklist | 10 | 7% |
-| **Total** | **146** | **100%** |
+| **Total** | **147** | **100%** |
 
-Counts recomputed directly from `criteria.json` array length and per-band occurrence counts. 133 of the original 145 are the original repo-hygiene criteria, accounting for all 133 colored criterion spans in `docs/criteria.md` (the 136-span count cited in earlier passes included the 3 legend-definition spans at lines 6-8, which are not criteria; see "Omitted rows" below). The remaining 12 are the **section-18 "Design heuristics (DISCUS)"** rows added to operationalize the keyboard-design principles in [docs/keyboard-design-principles.md](../../../docs/keyboard-design-principles.md) — 7 `layer-c-enforce` (auto-checkable on the first-draft touch layout / output coverage), 3 `yellow-survey` (judgement-dependent), and 2 `red-checklist` (inherently human). The total is now **146** following the issue #120 re-review, which added one new split row (`7.7a-display-name-no-underscores-lint`) and re-banded seven existing rows. See [docs/discus-principles-integration.md](../../../docs/discus-principles-integration.md) for the full DISCUS → programmability mapping.
+Counts recomputed directly from `criteria.json` array length and per-band occurrence counts. 133 of the original 145 are the original repo-hygiene criteria, accounting for all 133 colored criterion spans in `docs/criteria.md` (the 136-span count cited in earlier passes included the 3 legend-definition spans at lines 6-8, which are not criteria; see "Omitted rows" below). The remaining 12 are the **section-18 "Design heuristics (DISCUS)"** rows added to operationalize the keyboard-design principles in [docs/keyboard-design-principles.md](../../../docs/keyboard-design-principles.md) — 7 `layer-c-enforce` (auto-checkable on the first-draft touch layout / output coverage), 3 `yellow-survey` (judgement-dependent), and 2 `red-checklist` (inherently human). The total is now **147** following the issue #120 re-review and the addition of one section-19 import-output criterion, which added one new split row (`7.7a-display-name-no-underscores-lint`) and re-banded seven existing rows. See [docs/discus-principles-integration.md](../../../docs/discus-principles-integration.md) for the full DISCUS → programmability mapping.
 
 ## Re-review outcomes (issue #120)
 
@@ -43,7 +43,7 @@ All four automation-hook fields are now fully populated across every entry:
 
 | Band | Field | Populated / Total |
 |------|-------|-------------------|
-| `layer-c-enforce` | `lintRuleId` | 66 / 66 |
+| `layer-c-enforce` | `lintRuleId` | 67 / 67 |
 | `scaffolder-bake` | `scaffolderRule` | 38 / 38 |
 | `yellow-survey` | `surveyQuestionId` | 32 / 32 |
 | `red-checklist` | `preSubmitChecklistText` | 10 / 10 |
