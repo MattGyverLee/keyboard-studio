@@ -55,6 +55,10 @@ questions:
     prompt: "Which key triggers the first pre-base vowel?"
     answerType: key-name
 
+  - id: preBaseVowel1
+    prompt: "Enter the first pre-base vowel matra character (the one that displays to the left of the consonant)"
+    answerType: char-single
+
 kmnFragment: |
   store(&VERSION) '10.0'
   store(&NAME) '{{keyboardName}}'
