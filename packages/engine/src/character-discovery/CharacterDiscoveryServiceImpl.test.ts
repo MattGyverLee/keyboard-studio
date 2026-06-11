@@ -222,7 +222,8 @@ describe("synthesizeInventory helpers + integration", () => {
     });
     const inv = parseLinguistJson(json);
     expect(inv.alphabetCore.lowercase[0]).toBe("á");
-    expect(inv.alphabetCore.lowercase[0]).toBe("á");
+    // Stored value must be the precomposed form (NFC) and a single code unit
+    expect(inv.alphabetCore.lowercase[0]).toHaveLength(1);
   });
 
   it("parseLinguistJson direction_control_chars — U+200F stored as notation string (not raw char)", () => {
@@ -271,6 +272,69 @@ describe("synthesizeInventory helpers + integration", () => {
     const inv = parseLinguistJson(json);
     expect(inv.directionControlChars).toBeDefined();
     expect(inv.directionControlChars![0]).toBe("U+200F");
+  });
+
+  it("parseLinguistJson direction_control_chars — literal plain letter 'a' is dropped (not stored as notation)", () => {
+    const json = JSON.stringify({
+      language: "en",
+      script: "Latin",
+      alphabet_core: { lowercase: [], uppercase: [] },
+      mandatory_diacritics_and_ligatures: [],
+      language_specific_punctuation: [],
+      numerals: [],
+      direction_control_chars: ["a"],
+    });
+    const inv = parseLinguistJson(json);
+    // "a" is outside bidi-control ranges — should be dropped entirely
+    expect(inv.directionControlChars).toBeUndefined();
+  });
+
+  it("parseLinguistJson direction_control_chars — literal space ' ' is dropped (not stored as notation)", () => {
+    const json = JSON.stringify({
+      language: "en",
+      script: "Latin",
+      alphabet_core: { lowercase: [], uppercase: [] },
+      mandatory_diacritics_and_ligatures: [],
+      language_specific_punctuation: [],
+      numerals: [],
+      direction_control_chars: [" "],
+    });
+    const inv = parseLinguistJson(json);
+    // space (U+0020) is outside bidi-control ranges — should be dropped
+    expect(inv.directionControlChars).toBeUndefined();
+  });
+
+  it("parseLinguistJson direction_control_chars — U+1D173 notation (5-digit hex) preserved exactly, no truncation", () => {
+    const json = JSON.stringify({
+      language: "test",
+      script: "Latin",
+      alphabet_core: { lowercase: [], uppercase: [] },
+      mandatory_diacritics_and_ligatures: [],
+      language_specific_punctuation: [],
+      numerals: [],
+      direction_control_chars: ["U+1D173"],
+    });
+    const inv = parseLinguistJson(json);
+    // Explicit U+ notation is permissive — supplementary plane preserved
+    expect(inv.directionControlChars).toBeDefined();
+    expect(inv.directionControlChars![0]).toBe("U+1D173");
+  });
+
+  it("parseLinguistJson direction_control_chars — literal supplementary-plane char outside bidi ranges is dropped", () => {
+    // U+1D173 (MUSICAL SYMBOL BEGIN BEAM) as a literal character — outside bidi ranges
+    const literalSupplementary = String.fromCodePoint(0x1d173);
+    const json = JSON.stringify({
+      language: "test",
+      script: "Latin",
+      alphabet_core: { lowercase: [], uppercase: [] },
+      mandatory_diacritics_and_ligatures: [],
+      language_specific_punctuation: [],
+      numerals: [],
+      direction_control_chars: [literalSupplementary],
+    });
+    const inv = parseLinguistJson(json);
+    // Literal char not in bidi ranges → dropped
+    expect(inv.directionControlChars).toBeUndefined();
   });
 
   it("parseLinguistJson throws on invalid JSON", () => {

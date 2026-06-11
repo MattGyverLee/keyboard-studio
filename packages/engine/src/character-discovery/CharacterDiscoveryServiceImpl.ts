@@ -83,29 +83,55 @@ function parseUPlusHex(s: string): string | null {
 }
 
 /**
+ * Returns true if `cp` falls within one of the Unicode bidi / format-control
+ * ranges that are valid as literal direction-control characters:
+ *   U+200B–U+200F  (zero-width spaces and directional marks)
+ *   U+202A–U+202E  (directional embedding / override controls)
+ *   U+2066–U+2069  (isolate controls)
+ *   U+061C         (ARABIC LETTER MARK)
+ *   U+FEFF         (ZERO WIDTH NO-BREAK SPACE / BOM)
+ */
+function isBidiControlCodePoint(cp: number): boolean {
+  return (
+    (cp >= 0x200b && cp <= 0x200f) ||
+    (cp >= 0x202a && cp <= 0x202e) ||
+    (cp >= 0x2066 && cp <= 0x2069) ||
+    cp === 0x061c ||
+    cp === 0xfeff
+  );
+}
+
+/**
  * Normalise a single direction-control-char entry to U+XXXX notation.
  *
  * Accepts:
- *   - U+XXXX / u+xxxx notation (normalises to uppercase hex, minimum 4 digits)
- *   - Literal raw control characters (converts via codePointAt)
+ *   - U+XXXX / u+xxxx notation — normalises to uppercase hex, minimum 4
+ *     digits. The notation path is permissive: any codepoint is accepted
+ *     because explicit notation represents explicit author intent.
+ *   - Literal single-codepoint characters, but ONLY when the codepoint falls
+ *     within the known bidi/format-control ranges:
+ *       U+200B–U+200F, U+202A–U+202E, U+2066–U+2069, U+061C, U+FEFF.
+ *     A literal character outside these ranges returns null (dropped silently).
  *
  * Returns null for entries that are neither (e.g. empty string, multi-char
- * literal that is not a control).
+ * literal, or a single char outside the bidi-control ranges).
  *
  * NOTE: conversion from U+XXXX notation back to raw characters happens at
  * .kmn emit time, not here.
  */
 function toDirectionControlNotation(s: string): string | null {
-  // U+XXXX / u+xxxx notation path — normalise to uppercase
+  // U+XXXX / u+xxxx notation path — normalise to uppercase (permissive)
   if (/^[Uu]\+[0-9a-fA-F]+$/.test(s)) {
     const hex = s.slice(2).toUpperCase().padStart(4, "0");
     return `U+${hex}`;
   }
-  // Literal character path — convert via codePointAt
+  // Literal character path — only accepted within bidi-control ranges
   const cp = s.codePointAt(0);
   if (cp === undefined) return null;
   // Only accept if the whole string is exactly one code point
   if (String.fromCodePoint(cp) !== s) return null;
+  // Restrict to known bidi/format-control codepoints
+  if (!isBidiControlCodePoint(cp)) return null;
   return `U+${cp.toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
@@ -216,12 +242,17 @@ export function parseLinguistJson(text: string): LinguistInventory {
       ? nfcArr(raw["independent_vowels"] as unknown[])
       : undefined;
 
-  const directionControlChars =
+  const directionControlCharsRaw =
     Array.isArray(raw["direction_control_chars"])
       ? (raw["direction_control_chars"] as unknown[])
           .filter((v): v is string => typeof v === "string")
           .map(toDirectionControlNotation)
           .filter((c): c is string => c !== null)
+      : undefined;
+  // Treat an all-filtered-out array the same as absent — do not store an empty field
+  const directionControlChars =
+    directionControlCharsRaw !== undefined && directionControlCharsRaw.length > 0
+      ? directionControlCharsRaw
       : undefined;
 
   const syllabicFinalMarkers =
