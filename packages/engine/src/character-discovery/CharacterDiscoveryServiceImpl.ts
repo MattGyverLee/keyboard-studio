@@ -82,6 +82,17 @@ function parseUPlusHex(s: string): string | null {
   return isNaN(cp) ? null : String.fromCodePoint(cp);
 }
 
+/**
+ * Parse a U+XXXX codepoint string into the corresponding character.
+ * If the string is not valid U+ notation, returns the NFC-normalized
+ * input string (pass-through for syllabic final markers that may be
+ * provided as literal characters rather than U+ codes).
+ */
+function parseUPlusHexOrNFC(s: string): string {
+  const result = parseUPlusHex(s);
+  return result !== null ? result : s.normalize("NFC");
+}
+
 export function parseLinguistJson(text: string): LinguistInventory {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
@@ -190,7 +201,7 @@ export function parseLinguistJson(text: string): LinguistInventory {
     Array.isArray(raw["syllabic_final_markers"])
       ? (raw["syllabic_final_markers"] as unknown[])
           .filter((v): v is string => typeof v === "string")
-          .map((s) => { const cp = parseInt(s.replace(/^U\+/i, ''), 16); return isNaN(cp) ? s.normalize("NFC") : String.fromCodePoint(cp); })
+          .map(parseUPlusHexOrNFC)
       : undefined;
 
   return makeLinguistInventory({
@@ -221,7 +232,7 @@ export async function cldrCrossCheck(
 
   const addLettersFrom = (arr: string[]) => {
     for (const ch of arr) {
-      if (/^\p{L}+$/u.test(ch)) agentLetters.add(ch);
+      if (/^\p{L}+$/u.test(ch) && (ch.codePointAt(0) ?? 0) > 0x7f) agentLetters.add(ch);
     }
   };
 
