@@ -86,7 +86,7 @@ export function extractIdentity(
     if (validFamilies.has(scriptFamily)) {
       return {
         ...base,
-        scriptFamily: scriptFamily as KeyboardIdentity["scriptFamily"],
+        scriptFamily: scriptFamily as NonNullable<KeyboardIdentity["scriptFamily"]>,
       };
     }
   }
@@ -118,7 +118,7 @@ export function extractProvenance(result: SurveyPhaseResult): KeyboardProvenance
         affiliation: requesterAffiliation,
         relationToCommunity: requesterRelation,
       }).filter(([, v]) => v !== undefined),
-    ) as KeyboardProvenance["requester"];
+    ) as NonNullable<KeyboardProvenance["requester"]>;
   }
 
   const repName = s("provenance_community_rep_name");
@@ -129,7 +129,7 @@ export function extractProvenance(result: SurveyPhaseResult): KeyboardProvenance
       Object.entries({ name: repName, role: repRole, email: repEmail }).filter(
         ([, v]) => v !== undefined,
       ),
-    ) as KeyboardProvenance["communityRep"];
+    ) as NonNullable<KeyboardProvenance["communityRep"]>;
   }
 
   const localizedName = answerString(result, "language_name_autonym");
