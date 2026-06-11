@@ -131,7 +131,7 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   PRS_JSON=$(gh pr list \
     --state open \
     --json number,title,author,headRefName,headRefOid,baseRefName,labels,isDraft,mergeable,mergeStateStatus,statusCheckRollup,reviewDecision,isCrossRepository,headRepositoryOwner \
-    --limit 50)
+    --limit 50 | jq 'sort_by(.number)')
 
   TOTAL=$(echo "$PRS_JSON" | jq 'length')
   PR_NUMS=$(echo "$PRS_JSON" | jq -r '[.[].number] | map(tostring) | join(",")')
