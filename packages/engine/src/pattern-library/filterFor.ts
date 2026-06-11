@@ -32,6 +32,7 @@ import { selectStrategy } from "../strategy-selector/index.js";
  * @see spec.md §7.2
  * @see spec.md §8 step 4
  * @see spec.md §9
+ * Module-level function satisfying {@link PatternLibraryService}.filterFor (consistent with getPatterns/getById).
  */
 export async function filterFor(
   base: BaseKeyboard,
@@ -75,6 +76,8 @@ export async function filterFor(
     } else if (p.appliesTo.length === 0 || p.appliesTo.includes(base.script)) {
       appliesToOnlyPatterns.push(p);
     }
+    // Patterns with a strategyId that matches neither primary nor secondaries are
+    // intentionally excluded: they are off-strategy for this keyboard recommendation.
   }
 
   const ordered = [...primaryPatterns, ...secondaryPatterns, ...appliesToOnlyPatterns];

@@ -67,7 +67,7 @@ export type { PatternFilter, LoadReport } from "./pattern-library/index.js";
 
 export { filterFor } from "./pattern-library/index.js";
 
-// Issue #311 — strategy selector (§7.2 decision tree).
+// Strategy selector: §7.2 decision tree.
 export { selectStrategy } from "./strategy-selector/index.js";
 
 // Issue #248 — Sprint-1 identity stub mutator (deleted at Sprint-2 start per #238).
