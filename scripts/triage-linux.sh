@@ -23,7 +23,7 @@ REPO="${KM_TRIAGE_REPO:-MattGyverLee/keyboard-studio}"
 TL_EMAIL="${KM_TRIAGE_TL_EMAIL:-matthew_lee@sil.org}"
 TL_LOGIN="${KM_TRIAGE_TL_LOGIN:-MattGyverLee}"
 TRIAGE_OWNERS_JSON='["MattGyverLee","gboltono","coopabla","KevinPNG","dhigby","myczka"]'
-CLAUDE="${CLAUDE_BIN:-claude}"
+CLAUDE="${CLAUDE_BIN:-/home/lee2mr/.local/bin/claude}"
 
 INBOX_DIR=".tech-lead-inbox"
 AUDIT_LOG="$INBOX_DIR/audit-log.jsonl"
@@ -104,9 +104,12 @@ if ! node utilities/km-triage-app/mint-token.js > /dev/null 2>&1; then
 fi
 
 # Refresh main so each claude call sees the latest crew/command definitions.
+# Stash any local changes so the pull can proceed; restore them after.
 git fetch origin main --quiet
 git checkout main --quiet
+STASH_OUTPUT=$(git stash --include-untracked 2>&1)
 git pull --ff-only --quiet
+[[ "$STASH_OUTPUT" != "No local changes to save" ]] && git stash pop --quiet || true
 
 # ── Iteration loop ────────────────────────────────────────────────────────────
 
@@ -123,9 +126,11 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
 
   # ── Discover all open PRs (one API call per iteration) ────────────────────
 
+  # commits is omitted here — it blows the GraphQL node limit at --limit 50.
+  # HEAD SHA comes from headRefOid; commit authors are fetched per-PR lazily in Gate 7.
   PRS_JSON=$(gh pr list \
     --state open \
-    --json number,title,author,headRefName,baseRefName,labels,isDraft,mergeable,mergeStateStatus,statusCheckRollup,reviewDecision,commits,isCrossRepository,headRepositoryOwner \
+    --json number,title,author,headRefName,headRefOid,baseRefName,labels,isDraft,mergeable,mergeStateStatus,statusCheckRollup,reviewDecision,isCrossRepository,headRepositoryOwner \
     --limit 50)
 
   TOTAL=$(echo "$PRS_JSON" | jq 'length')
@@ -144,7 +149,7 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   while IFS= read -r PR; do
     NUM=$(echo "$PR" | jq -r '.number')
     TITLE=$(echo "$PR" | jq -r '.title')
-    HEAD_SHA=$(echo "$PR" | jq -r '.commits | last | .oid // "unknown"')
+    HEAD_SHA=$(echo "$PR" | jq -r '.headRefOid // "unknown"')
     AUTHOR=$(echo "$PR" | jq -r '.author.login')
     TRIGGER_COMMENT_ID=""   # populated lazily; reset each PR
 
@@ -215,11 +220,12 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
       n_skip=$((n_skip + 1)); continue
     fi
 
-    # Gate 7 — solo tech-lead authorship
-    COMMIT_COUNT=$(echo "$PR" | jq '.commits | length')
+    # Gate 7 — solo tech-lead authorship (lazy commits fetch — not in bulk query)
+    PR_COMMITS=$(gh pr view "$NUM" --json commits --jq '.commits' 2>/dev/null || echo "[]")
+    COMMIT_COUNT=$(echo "$PR_COMMITS" | jq 'length')
     if [[ "$COMMIT_COUNT" -gt 0 ]]; then
-      NON_TL=$(echo "$PR" | jq --arg tl "$TL_EMAIL" \
-        '[.commits[].authors[].email] | unique | map(select(. != $tl)) | length')
+      NON_TL=$(echo "$PR_COMMITS" | jq --arg tl "$TL_EMAIL" \
+        '[.[].authors[].email] | unique | map(select(. != $tl)) | length')
       if [[ "$NON_TL" -eq 0 ]]; then
         echo "  skip: solo_tech_lead_author" | tee -a "$LOG"
         audit_skip "$NUM" solo_tech_lead_author "$HEAD_SHA"
@@ -276,7 +282,7 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     echo "  -> spawning claude for PR #$NUM" | tee -a "$LOG"
     n_review=$((n_review + 1))
     set +e
-    "$CLAUDE" -p "/km-triage $NUM" --dangerously-skip-permissions --output-format text \
+    CLAUDECODE="" "$CLAUDE" -p "/km-triage $NUM" --dangerously-skip-permissions --output-format text \
       >> "$LOG" 2>&1
     CLAUDE_EXIT=$?
     set -e
