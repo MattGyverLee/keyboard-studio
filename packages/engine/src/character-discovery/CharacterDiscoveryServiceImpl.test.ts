@@ -385,6 +385,51 @@ describe("synthesizeInventory helpers + integration", () => {
     expect(cldrOmittedChars).not.toContain("ई");
   });
 
+  it("cldrCrossCheck ASCII exclusion — ASCII letters in CLDR exemplars do NOT produce cldr-omitted flags", async () => {
+    // Inventory has only non-ASCII core chars. CLDR returns a mix of ASCII and
+    // non-ASCII. The > 0x7F gate must suppress cldr-omitted for ASCII letters.
+    const mixedLoader = async (locale: string): Promise<string | null> =>
+      locale === "fr" ? "[a b é]" : null;
+
+    const inv = parseLinguistJson(
+      JSON.stringify({
+        language: "fr",
+        script: "Latin",
+        alphabet_core: { lowercase: ["é"], uppercase: [] },
+        mandatory_diacritics_and_ligatures: [],
+        language_specific_punctuation: [],
+        numerals: [],
+      })
+    );
+
+    const result = await cldrCrossCheck(inv, "fr", mixedLoader);
+    const flags = result.flags ?? [];
+    const cldrOmittedChars = flags
+      .filter((f: InventoryFlag) => f.issue === "cldr-omitted")
+      .map((f: InventoryFlag) => f.char);
+    // ASCII letters 'a' and 'b' must NOT appear as cldr-omitted
+    expect(cldrOmittedChars).not.toContain("a");
+    expect(cldrOmittedChars).not.toContain("b");
+  });
+
+  it("parseLinguistJson syllabic_final_markers — literal non-ASCII char (no U+ prefix) stored as NFC character", () => {
+    // U+1039 MYANMAR SIGN ASAT — a real syllabic final marker supplied as
+    // a literal character in the LLM response (parseUPlusHexOrNFC fallback path).
+    const literalChar = "္"; // U+1039
+    const json = JSON.stringify({
+      language: "my",
+      script: "Myanmar",
+      alphabet_core: { lowercase: [], uppercase: [] },
+      mandatory_diacritics_and_ligatures: [],
+      language_specific_punctuation: [],
+      numerals: [],
+      syllabic_final_markers: [literalChar],
+    });
+    const inv = parseLinguistJson(json);
+    expect(inv.syllabicFinalMarkers).toBeDefined();
+    expect(inv.syllabicFinalMarkers![0]).toBe(literalChar.normalize("NFC"));
+  });
+
   it("synthesizeInventory end-to-end — mock completer + null loader → correct inventory", async () => {
     const mockCompleter = async (_prompt: string): Promise<string> =>
       MINIMAL_VALID_JSON;
