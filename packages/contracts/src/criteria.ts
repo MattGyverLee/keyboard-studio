@@ -95,7 +95,7 @@ export interface RedChecklistCriterion extends BaseCriterion {
  * field for a band (e.g. `{ band: "scaffolder-bake", lintRuleId: "x" }`)
  * is now a TS type error.
  *
- * Each variant's hook field is required — all 145 entries in
+ * Each variant's hook field is required — all 146 entries in
  * `criteria.json` are populated per #70. Omitting the hook field or
  * assigning the wrong band's field is now a compile-time error.
  *

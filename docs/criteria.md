@@ -215,7 +215,8 @@ _(Section 18 covers DISCUS design heuristics enforced by the survey flow; those 
 
 ## 19. Import output
 
-Applies to keyboards adapted from an existing `release/` keyboard via the v1.1.0 import feature. Both checks are mechanical green-criteria — auto-enforced by the keyboard-studio output service at PR submission time.
+Applies to keyboards adapted from an existing `release/` keyboard via the v1.1.0 import feature. This check is a mechanical green-criterion — auto-enforced by the keyboard-studio output service at PR submission time.
 
 - <span style="color:green">[ ] PR body includes the attribution block: adapted-from path, commit SHA, round-trip status, and opaque feature inventory.</span>
-- <span style="color:green">[ ] `<id>.kmn.imported` sidecar is present in the OAuth working tree but absent from the PR commit tree (not staged for the PR diff).</span>
+
+_(19.2 dropped — sidecar removed unconditionally per D11)_
