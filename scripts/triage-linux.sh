@@ -58,6 +58,26 @@ last_audit_entry() {
     "$AUDIT_LOG" 2>/dev/null | tail -1 || echo ""
 }
 
+# Posts a CONFLICTING merge-state notice via bot-gh, logs the skip, and
+# increments n_skip.  $1=pr_num  $2=author_login  $3=head_sha
+post_conflict_notice() {
+  local pr_num="$1" author_login="$2" head_sha="$3"
+  local mention_line f
+  if [[ "$author_login" == "$TL_LOGIN" ]]; then
+    mention_line="@$TL_LOGIN — km-triage skipped this PR."
+  else
+    mention_line="@$TL_LOGIN @$author_login — km-triage skipped this PR."
+  fi
+  f=$(mktemp)
+  printf '%s\n\nPR is in CONFLICTING merge state. Triage policy is not to auto-fix or review a branch that needs rebasing.\n\nPlease rebase against `main` first; the next sweep will run the full review crew and either auto-fix mechanical findings or @-mention you again with any open questions.\n' \
+    "$mention_line" > "$f"
+  node utilities/km-triage-app/bot-gh.js pr comment "$pr_num" \
+    --body-file "$f" >> "$LOG" 2>&1 || true
+  rm -f "$f"
+  audit_skip "$pr_num" merge_conflict "$head_sha"
+  n_skip=$((n_skip + 1))
+}
+
 # Returns the id of a lead-trigger comment (any TRIAGE_OWNERS member's
 # comment containing @km-triage) posted after since_ts, or empty string.
 find_trigger_comment() {
@@ -179,19 +199,8 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     # Gate 4 — CONFLICTING: post notice via bot-gh directly, zero Claude credits
     if echo "$PR" | jq -e '.mergeable == "CONFLICTING"' > /dev/null 2>&1; then
       echo "  skip: merge_conflict — posting notice" | tee -a "$LOG"
-      CONFLICT_FILE=$(mktemp)
-      if [[ "$AUTHOR" == "$TL_LOGIN" ]]; then
-        MENTION_LINE="@$TL_LOGIN — km-triage skipped this PR."
-      else
-        MENTION_LINE="@$TL_LOGIN @$AUTHOR — km-triage skipped this PR."
-      fi
-      printf '%s\n\nPR is in CONFLICTING merge state. Triage policy is not to auto-fix or review a branch that needs rebasing.\n\nPlease rebase against `main` first; the next sweep will run the full review crew and either auto-fix mechanical findings or @-mention you again with any open questions.\n' \
-        "$MENTION_LINE" > "$CONFLICT_FILE"
-      node utilities/km-triage-app/bot-gh.js pr comment "$NUM" \
-        --body-file "$CONFLICT_FILE" >> "$LOG" 2>&1 || true
-      rm -f "$CONFLICT_FILE"
-      audit_skip "$NUM" merge_conflict "$HEAD_SHA"
-      n_skip=$((n_skip + 1)); continue
+      post_conflict_notice "$NUM" "$AUTHOR" "$HEAD_SHA"
+      continue
     fi
 
     # Gate 5 — mergeability unknown: defer to end of sweep rather than next cron tick.
@@ -302,6 +311,14 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
       RETRY_MERGEABLE=$(echo "$RETRY_PR" | jq -r '.mergeable // "UNKNOWN"')
       RETRY_HEAD=$(echo "$RETRY_PR" | jq -r '.headRefOid // "unknown"')
       RETRY_AUTHOR=$(echo "$RETRY_PR" | jq -r '.author.login // "unknown"')
+      RETRY_STATE=$(echo "$RETRY_PR" | jq -r '.state // "CLOSED"')
+      if [[ "$RETRY_STATE" != "OPEN" ]]; then
+        printf '  PR #%s no longer open (%s) — skipping\n' "$RETRY_NUM" "$RETRY_STATE" | tee -a "$LOG"
+        n_skip=$((n_skip + 1))
+        continue
+      fi
+
+      printf '  [retry] PR #%s\n' "$RETRY_NUM" | tee -a "$LOG"
 
       if [[ "$RETRY_MERGEABLE" == "UNKNOWN" ]]; then
         echo "  PR #$RETRY_NUM still UNKNOWN — skipping until next sweep" | tee -a "$LOG"
@@ -310,19 +327,7 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
 
       elif [[ "$RETRY_MERGEABLE" == "CONFLICTING" ]]; then
         echo "  PR #$RETRY_NUM resolved CONFLICTING — posting notice" | tee -a "$LOG"
-        CONFLICT_FILE=$(mktemp)
-        if [[ "$RETRY_AUTHOR" == "$TL_LOGIN" ]]; then
-          MENTION_LINE="@$TL_LOGIN — km-triage skipped this PR."
-        else
-          MENTION_LINE="@$TL_LOGIN @$RETRY_AUTHOR — km-triage skipped this PR."
-        fi
-        printf '%s\n\nPR is in CONFLICTING merge state. Triage policy is not to auto-fix or review a branch that needs rebasing.\n\nPlease rebase against `main` first; the next sweep will run the full review crew and either auto-fix mechanical findings or @-mention you again with any open questions.\n' \
-          "$MENTION_LINE" > "$CONFLICT_FILE"
-        node utilities/km-triage-app/bot-gh.js pr comment "$RETRY_NUM" \
-          --body-file "$CONFLICT_FILE" >> "$LOG" 2>&1 || true
-        rm -f "$CONFLICT_FILE"
-        audit_skip "$RETRY_NUM" merge_conflict "$RETRY_HEAD"
-        n_skip=$((n_skip + 1))
+        post_conflict_notice "$RETRY_NUM" "$RETRY_AUTHOR" "$RETRY_HEAD"
 
       else
         # Resolved to MERGEABLE — spawn Claude for full review
