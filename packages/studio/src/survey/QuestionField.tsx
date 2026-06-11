@@ -327,16 +327,24 @@ export function QuestionField({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      {question.type !== "notice" && (
-        <label id={`label-${question.id}`} htmlFor={question.id} style={LABEL_STYLE}>
-          {labelText}
-          {question.required === true && (
-            <span aria-label="required" style={{ color: "#e74c3c", marginLeft: 4 }}>
-              *
-            </span>
-          )}
-        </label>
-      )}
+      {question.type !== "notice" && (() => {
+        const isGrouped = question.type === "radio" || question.type === "bool" || question.type === "multi_select";
+        const labelContent = (
+          <>
+            {labelText}
+            {question.required === true && (
+              <span aria-label="required" style={{ color: "#e74c3c", marginLeft: 4 }}>
+                *
+              </span>
+            )}
+          </>
+        );
+        return isGrouped ? (
+          <span id={`label-${question.id}`} style={LABEL_STYLE}>{labelContent}</span>
+        ) : (
+          <label id={`label-${question.id}`} htmlFor={question.id} style={LABEL_STYLE}>{labelContent}</label>
+        );
+      })()}
 
       {question.help_text !== undefined && question.type !== "notice" && (
         <p style={HELP_STYLE}>{question.help_text}</p>

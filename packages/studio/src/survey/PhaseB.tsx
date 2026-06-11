@@ -70,6 +70,10 @@ export interface PhaseBProps {
 export function PhaseB({ context = {}, onComplete, onBack, findingsByQuestionId }: PhaseBProps) {
   const flow = useMemo(() => parseFlow(phaseBRaw as string), []);
   const [discoveryMethod, setDiscoveryMethod] = useState<DiscoveryMethod>(null);
+  // manualFlow is memoized here (before any early returns) to satisfy React's
+  // rules of hooks — useMemo must not be called after a conditional return.
+  // The result is stable as long as `flow` is stable (which it is, keyed on []).
+  const manualFlow = useMemo(() => makeManualOnlyFlow(flow), [flow]);
 
   // When the user picks a non-manual method at the intro question, we intercept
   // and show a stub. We do this by wrapping onComplete to detect the answer
@@ -157,8 +161,6 @@ export function PhaseB({ context = {}, onComplete, onBack, findingsByQuestionId 
   }
 
   // Manual path — use a patched flow that skips the intro question
-  const manualFlow = makeManualOnlyFlow(flow);
-
   return (
     <div
       style={{
@@ -178,6 +180,7 @@ export function PhaseB({ context = {}, onComplete, onBack, findingsByQuestionId 
         Phase B — Character inventory
       </h2>
       <SurveyRunner
+        key={manualFlow.flow_id}
         flow={manualFlow}
         context={context}
         onComplete={onComplete}

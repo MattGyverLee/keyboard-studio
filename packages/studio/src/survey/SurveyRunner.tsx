@@ -31,7 +31,7 @@ import { QuestionField } from "./QuestionField.tsx";
  *   <expr> or <expr>
  *   <expr> and <expr>
  */
-function evalCondition(
+export function evalCondition(
   condition: string,
   value: string | string[] | undefined,
   ctx: SurveyContext,
@@ -75,7 +75,7 @@ function evalCondition(
 // Next-question resolver
 // ---------------------------------------------------------------------------
 
-function resolveNext(
+export function resolveNext(
   question: FlowQuestion,
   value: string | string[] | undefined,
   ctx: SurveyContext,
@@ -135,7 +135,8 @@ function toSurveyAnswer(
     if (strVal === "") return null;
     return { questionId, answerType: "select", value: strVal };
   }
-  // text, short_text, autocomplete, notice
+  if (question.type === "notice") return null;
+  // text, short_text, autocomplete
   const strVal = typeof value === "string" ? value : "";
   return { questionId, answerType: "text", value: strVal };
 }
@@ -164,6 +165,46 @@ function interpolateQuestion(q: FlowQuestion, ctx: SurveyContext): FlowQuestion 
 }
 
 // ---------------------------------------------------------------------------
+// advanceThrough — moved before SurveyRunner so it is in scope for render-time
+// isLastQuestion computation (Fix 2). Function declarations are hoisted in JS
+// but TypeScript strict mode may flag use-before-declaration, so we keep the
+// definition here.
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the next question id starting from `currentQ`, skipping over any
+ * `engine_resolved` nodes by following their routing rules with the given context.
+ * Returns null when the flow has ended.
+ *
+ * A Set<string> visited guard prevents an infinite loop if a YAML author
+ * creates a cycle (A→B→A, both engine_resolved).
+ */
+export function advanceThrough(
+  currentQ: FlowQuestion,
+  value: string | string[] | undefined,
+  ctx: SurveyContext,
+  index: Map<string, FlowQuestion>,
+): string | null {
+  const visited = new Set<string>();
+  let nextId = resolveNext(currentQ, value, ctx);
+  while (nextId !== null) {
+    const next = index.get(nextId);
+    if (next === undefined) {
+      console.error("SurveyRunner: unresolved goto target", nextId);
+      return null;
+    }
+    if (next.engine_resolved !== true) return nextId;
+    if (visited.has(nextId)) {
+      console.error("SurveyRunner: cycle detected in engine_resolved chain", nextId);
+      return null;
+    }
+    visited.add(nextId);
+    nextId = resolveNext(next, undefined, ctx);
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // SurveyRunner component
 // ---------------------------------------------------------------------------
 
@@ -185,17 +226,18 @@ export function SurveyRunner({
   // Derive flow-level constants once per flow identity change.
   // findFirstRenderable receives context but does not read it (params are
   // underscore-prefixed), so keying on [flow] alone is correct.
-  const { allQuestions, index, firstId, approxTotal } = useMemo(() => {
+  const { index, firstId, approxTotal } = useMemo(() => {
     const all = [...flow.questions, ...(flow.provenance_questions ?? [])];
     const idx = buildIndex(all);
     return {
-      allQuestions: all,
       index: idx,
       firstId: findFirstRenderable(all, idx, context),
       approxTotal: all.filter((q) => q.engine_resolved !== true).length,
     };
   }, [flow]);
 
+  // Callers must provide key={flow.flow_id} so React remounts this component
+  // when the flow identity changes — useState does not re-run its initialiser on re-renders.
   const [stack, setStack] = useState<AnswerStackEntry[]>([
     { questionId: firstId ?? "", value: undefined },
   ]);
@@ -277,6 +319,10 @@ export function SurveyRunner({
   const value = currentValue ?? currentEntry?.value;
   const isNotice = displayQ.type === "notice";
   const canAdvance = isNotice || !displayQ.required || hasValue(value);
+  // Compute whether advancing from this question leads to end-of-flow. Using
+  // advanceThrough (not just checking displayQ.next) handles FlowGotoRule[]
+  // arrays that might resolve to null via conditional routing.
+  const isLastQuestion = advanceThrough(currentQ, value, context, index) === null;
 
   return (
     <div
@@ -370,9 +416,7 @@ export function SurveyRunner({
             transition: "background 120ms ease",
           }}
         >
-          {displayQ.next === null || displayQ.next === undefined
-            ? "Finish"
-            : "Next"}
+          {isLastQuestion ? "Finish" : "Next"}
         </button>
       </div>
     </div>
@@ -400,27 +444,3 @@ function findFirstRenderable(
   return null;
 }
 
-/**
- * Resolve the next question id starting from `currentQ`, skipping over any
- * `engine_resolved` nodes by following their routing rules with the given context.
- * Returns null when the flow has ended.
- */
-function advanceThrough(
-  currentQ: FlowQuestion,
-  value: string | string[] | undefined,
-  ctx: SurveyContext,
-  index: Map<string, FlowQuestion>,
-): string | null {
-  let nextId = resolveNext(currentQ, value, ctx);
-  while (nextId !== null) {
-    const next = index.get(nextId);
-    if (next === undefined) {
-      console.error("SurveyRunner: unresolved goto target", nextId);
-      return null;
-    }
-    if (next.engine_resolved !== true) return nextId;
-    // Skip engine_resolved: evaluate its routing without a user value
-    nextId = resolveNext(next, undefined, ctx);
-  }
-  return null;
-}
