@@ -3,6 +3,7 @@ import { PatternCard } from './carve/PatternCard.tsx';
 import { GroupCard } from './carve/GroupCard.tsx';
 import { StoreCard } from './carve/StoreCard.tsx';
 import { RawFragmentCard } from './carve/RawFragmentCard.tsx';
+import { navigateTo } from '../lib/navigate.ts';
 
 export function CarveGallery() {
   const ir = useIRStore((s) => s.ir);
@@ -31,7 +32,7 @@ export function CarveGallery() {
 
   const handleSkip = () => {
     keepAll();
-    window.location.hash = '#survey';
+    navigateTo('survey');
   };
 
   return (

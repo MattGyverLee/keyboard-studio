@@ -10,12 +10,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { PreviewShell } from "./components/PreviewShell.tsx";
 import { CarveGallery } from "./components/CarveGallery.tsx";
-
-// ---------------------------------------------------------------------------
-// Route types
-// ---------------------------------------------------------------------------
-
-type RouteId = "pick-base" | "survey" | "gallery" | "preview" | "output";
+import { type RouteId } from "./lib/navigate.ts";
 
 const VALID_ROUTES = new Set<RouteId>([
   "pick-base",
