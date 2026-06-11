@@ -133,14 +133,16 @@
       "notes": "All three-layer interfaces typed. Layer A 9 TS-portable checks + 5 WASM-only not yet implemented. D3 governs 300ms debounce."
     },
     "§11": {
-      "title": "11. Virtual FS",
+      "title": "11. criteria.md compliance",
       "hash": "sha256:5acf160cf451fdbe",
-      "status": "unimplemented",
+      "status": "partial",
       "implements": [
-        "packages/engine/src/output/index.ts"
+        "packages/contracts/data/criteria.json"
       ],
-      "decisions": [],
-      "notes": "In-memory FS mirroring keymanapp/keyboards layout. Serialized at output time to .zip or GitHub OAuth fork+PR. Not yet built beyond the output service stub."
+      "decisions": [
+        "D4"
+      ],
+      "notes": "145-entry criteria catalog classified into four enforcement bands (Band 1 scaffolder-bake, Band 2 layer-c-enforce, Band 3 yellow-survey, Band 4 red-checklist). Day-1 triage recorded in criteria.json and closed as issue #6. Band enforcement (scaffolder, Layer C lint, survey questions, PR checklist) not yet fully wired."
     },
     "§12": {
       "title": "12. Output artifacts",
