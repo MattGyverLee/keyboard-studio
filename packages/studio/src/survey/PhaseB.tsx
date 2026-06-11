@@ -64,10 +64,10 @@ export interface PhaseBProps {
   context?: SurveyContext;
   onComplete: (result: SurveyPhaseResult) => void;
   onBack?: () => void;
-  findings?: LintFinding[];
+  findingsByQuestionId?: Record<string, LintFinding[]>;
 }
 
-export function PhaseB({ context = {}, onComplete, onBack, findings }: PhaseBProps) {
+export function PhaseB({ context = {}, onComplete, onBack, findingsByQuestionId }: PhaseBProps) {
   const flow = useMemo(() => parseFlow(phaseBRaw as string), []);
   const [discoveryMethod, setDiscoveryMethod] = useState<DiscoveryMethod>(null);
 
@@ -182,7 +182,7 @@ export function PhaseB({ context = {}, onComplete, onBack, findings }: PhaseBPro
         context={context}
         onComplete={onComplete}
         onBack={() => setDiscoveryMethod(null)}
-        {...(findings !== undefined ? { findings } : {})}
+        {...(findingsByQuestionId !== undefined ? { findingsByQuestionId } : {})}
       />
     </div>
   );

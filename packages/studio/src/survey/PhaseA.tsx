@@ -175,10 +175,10 @@ export interface PhaseAProps {
     provenance: KeyboardProvenance,
   ) => void;
   onBack?: () => void;
-  findings?: LintFinding[];
+  findingsByQuestionId?: Record<string, LintFinding[]>;
 }
 
-export function PhaseA({ context = {}, onComplete, onBack, findings }: PhaseAProps) {
+export function PhaseA({ context = {}, onComplete, onBack, findingsByQuestionId }: PhaseAProps) {
   const flow = useMemo(() => parseFlow(phaseARaw as string), []);
 
   function handleComplete(result: SurveyPhaseResult) {
@@ -215,7 +215,7 @@ export function PhaseA({ context = {}, onComplete, onBack, findings }: PhaseAPro
         context={context}
         onComplete={handleComplete}
         {...(onBack !== undefined ? { onBack } : {})}
-        {...(findings !== undefined ? { findings } : {})}
+        {...(findingsByQuestionId !== undefined ? { findingsByQuestionId } : {})}
       />
     </div>
   );

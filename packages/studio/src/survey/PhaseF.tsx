@@ -23,10 +23,10 @@ export interface PhaseFProps {
   context?: SurveyContext;
   onComplete: (result: SurveyPhaseResult) => void;
   onBack?: () => void;
-  findings?: LintFinding[];
+  findingsByQuestionId?: Record<string, LintFinding[]>;
 }
 
-export function PhaseF({ context = {}, onComplete, onBack, findings }: PhaseFProps) {
+export function PhaseF({ context = {}, onComplete, onBack, findingsByQuestionId }: PhaseFProps) {
   const flow = useMemo(() => parseFlow(phaseFRaw as string), []);
 
   return (
@@ -52,7 +52,7 @@ export function PhaseF({ context = {}, onComplete, onBack, findings }: PhaseFPro
         context={context}
         onComplete={onComplete}
         {...(onBack !== undefined ? { onBack } : {})}
-        {...(findings !== undefined ? { findings } : {})}
+        {...(findingsByQuestionId !== undefined ? { findingsByQuestionId } : {})}
       />
     </div>
   );

@@ -54,7 +54,6 @@ interface FieldProps {
   question: FlowQuestion;
   value: string | string[] | undefined;
   onChange: (v: string | string[]) => void;
-  findings?: LintFinding[];
 }
 
 function stringValue(v: string | string[] | undefined): string {
@@ -310,18 +309,19 @@ export interface QuestionFieldProps {
   question: FlowQuestion;
   value: string | string[] | undefined;
   onChange: (v: string | string[]) => void;
-  findings?: LintFinding[];
+  findingsByQuestionId?: Record<string, LintFinding[]>;
 }
 
 export function QuestionField({
   question,
   value,
   onChange,
-  findings = [],
+  findingsByQuestionId,
 }: QuestionFieldProps) {
-  const relevant = findings.filter(
-    (f) => f.location?.file === question.id || f.message.includes(question.id),
-  );
+  // Findings are associated to questions by id via a caller-supplied map.
+  // LintFinding has no questionId field by design (see contracts/lintFinding.ts);
+  // the survey<->lint bridge owns the mapping.
+  const relevant = findingsByQuestionId?.[question.id] ?? [];
 
   const labelText = question.prompt ?? question.label ?? question.id;
 

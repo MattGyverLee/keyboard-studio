@@ -172,7 +172,7 @@ export interface SurveyRunnerProps {
   context?: SurveyContext;
   onComplete: (result: SurveyPhaseResult) => void;
   onBack?: () => void;
-  findings?: LintFinding[];
+  findingsByQuestionId?: Record<string, LintFinding[]>;
 }
 
 export function SurveyRunner({
@@ -180,7 +180,7 @@ export function SurveyRunner({
   context = {},
   onComplete,
   onBack,
-  findings = [],
+  findingsByQuestionId,
 }: SurveyRunnerProps) {
   // Derive flow-level constants once per flow identity change.
   // findFirstRenderable receives context but does not read it (params are
@@ -330,7 +330,7 @@ export function SurveyRunner({
         question={displayQ}
         value={value}
         onChange={(v) => setCurrentValue(v)}
-        findings={findings}
+        {...(findingsByQuestionId !== undefined ? { findingsByQuestionId } : {})}
       />
 
       {/* Navigation */}
