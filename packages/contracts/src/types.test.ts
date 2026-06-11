@@ -220,6 +220,27 @@ describe("SurveyPhaseResult interface", () => {
     expect(r.computedAxes?.scale).toBeUndefined();
   });
 
+  it("computedAxes accepts A3a markInputOrder sub-axis", () => {
+    const prefix: SurveyPhaseResult = {
+      phase: "B",
+      answers: [],
+      computedAxes: { markInputOrder: "prefix" },
+    };
+    const postfix: SurveyPhaseResult = {
+      phase: "B",
+      answers: [],
+      computedAxes: { markInputOrder: "postfix" },
+    };
+    const unelicited: SurveyPhaseResult = {
+      phase: "B",
+      answers: [],
+      computedAxes: { phoneticIntuition: "strong" },
+    };
+    expect(prefix.computedAxes?.markInputOrder).toBe("prefix");
+    expect(postfix.computedAxes?.markInputOrder).toBe("postfix");
+    expect(unelicited.computedAxes?.markInputOrder).toBeUndefined();
+  });
+
   it("answers accepts SurveyAnswer[]", () => {
     const a: SurveyAnswer = { questionId: "triggerKey", answerType: "key-name", value: "K_QUOTE" };
     const r: SurveyPhaseResult = { phase: "B", answers: [a] };
