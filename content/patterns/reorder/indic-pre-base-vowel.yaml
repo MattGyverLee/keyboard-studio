@@ -191,3 +191,10 @@ skeleton:
     dead-key rules before the fallback any(consonantKeys) rule so the dead-key
     paths take priority. Atomic backspace (any(consonants) matra + K_BKSP > nul)
     should be added for each vowel class to prevent partial cluster deletion.
+
+    CAUTION (Malayalam): The vowels U+0D4A (o), U+0D4B (oo), and U+0D4C (au)
+    in Malayalam are two-codepoint composite vowels (e.g. U+0D4A = U+0D46 +
+    U+0D3E). Do NOT include these in the preBaseVowels store for this pattern —
+    they require a separate cluster-formation pattern that emits both component
+    codepoints in the correct order. This pattern handles only single-codepoint
+    pre-base matras.
