@@ -135,6 +135,7 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
 
   n_skip=0
   n_review=0
+  prs_to_retry=()
 
   # ── Per-PR gate loop ──────────────────────────────────────────────────────
   # Gates mirror km-triage Phase 2 exactly.  Any PR that passes all gates
@@ -188,11 +189,13 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
       n_skip=$((n_skip + 1)); continue
     fi
 
-    # Gate 5 — mergeability unknown (GitHub computing; retry next sweep)
+    # Gate 5 — mergeability unknown: defer to end of sweep rather than next cron tick.
+    # GitHub computes mergeability async; by the time all other PRs are processed
+    # it will usually have resolved to MERGEABLE or CONFLICTING.
     if echo "$PR" | jq -e '.mergeable == "UNKNOWN"' > /dev/null 2>&1; then
-      echo "  skip: mergeability_unknown" | tee -a "$LOG"
-      audit_skip "$NUM" mergeability_unknown "$HEAD_SHA"
-      n_skip=$((n_skip + 1)); continue
+      echo "  deferred: mergeability_unknown (will retry after other PRs)" | tee -a "$LOG"
+      prs_to_retry+=("$NUM")
+      continue
     fi
 
     # Gate 6 — CI blocking (any required check not SUCCESS/NEUTRAL/SKIPPED)
@@ -282,6 +285,54 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     fi
 
   done < <(echo "$PRS_JSON" | jq -c '.[]')
+
+  # ── Retry deferred UNKNOWN-mergeability PRs ──────────────────────────────
+  # Processing the other PRs buys enough time for GitHub to resolve mergeability.
+  if [[ ${#prs_to_retry[@]} -gt 0 ]]; then
+    echo "[km-triage] retrying ${#prs_to_retry[@]} UNKNOWN-mergeability PR(s)" | tee -a "$LOG"
+    for RETRY_NUM in "${prs_to_retry[@]}"; do
+      RETRY_PR=$(gh pr view "$RETRY_NUM" \
+        --json number,mergeable,headRefOid,author 2>/dev/null || echo "{}")
+      RETRY_MERGEABLE=$(echo "$RETRY_PR" | jq -r '.mergeable // "UNKNOWN"')
+      RETRY_HEAD=$(echo "$RETRY_PR" | jq -r '.headRefOid // "unknown"')
+      RETRY_AUTHOR=$(echo "$RETRY_PR" | jq -r '.author.login // "unknown"')
+
+      if [[ "$RETRY_MERGEABLE" == "UNKNOWN" ]]; then
+        echo "  PR #$RETRY_NUM still UNKNOWN — skipping until next sweep" | tee -a "$LOG"
+        audit_skip "$RETRY_NUM" mergeability_unknown "$RETRY_HEAD"
+        n_skip=$((n_skip + 1))
+
+      elif [[ "$RETRY_MERGEABLE" == "CONFLICTING" ]]; then
+        echo "  PR #$RETRY_NUM resolved CONFLICTING — posting notice" | tee -a "$LOG"
+        CONFLICT_FILE=$(mktemp)
+        if [[ "$RETRY_AUTHOR" == "$TL_LOGIN" ]]; then
+          MENTION_LINE="@$TL_LOGIN — km-triage skipped this PR."
+        else
+          MENTION_LINE="@$TL_LOGIN @$RETRY_AUTHOR — km-triage skipped this PR."
+        fi
+        printf '%s\n\nPR is in CONFLICTING merge state. Triage policy is not to auto-fix or review a branch that needs rebasing.\n\nPlease rebase against `main` first; the next sweep will run the full review crew and either auto-fix mechanical findings or @-mention you again with any open questions.\n' \
+          "$MENTION_LINE" > "$CONFLICT_FILE"
+        node utilities/km-triage-app/bot-gh.js pr comment "$RETRY_NUM" \
+          --body-file "$CONFLICT_FILE" >> "$LOG" 2>&1 || true
+        rm -f "$CONFLICT_FILE"
+        audit_skip "$RETRY_NUM" merge_conflict "$RETRY_HEAD"
+        n_skip=$((n_skip + 1))
+
+      else
+        # Resolved to MERGEABLE — spawn Claude for full review
+        echo "  PR #$RETRY_NUM resolved $RETRY_MERGEABLE — spawning claude" | tee -a "$LOG"
+        n_review=$((n_review + 1))
+        set +e
+        CLAUDECODE="" "$CLAUDE" -p "/km-triage $RETRY_NUM" --dangerously-skip-permissions --output-format text \
+          >> "$LOG" 2>&1
+        CLAUDE_EXIT=$?
+        set -e
+        if [[ "$CLAUDE_EXIT" -ne 0 ]]; then
+          echo "  [WARN] claude exited $CLAUDE_EXIT for PR #$RETRY_NUM" | tee -a "$LOG"
+        fi
+      fi
+    done
+  fi
 
   echo "[km-triage] iteration $i: $n_review reviewed, $n_skip skipped" | tee -a "$LOG"
   unset KM_TRIAGE_SWEEP_ID
