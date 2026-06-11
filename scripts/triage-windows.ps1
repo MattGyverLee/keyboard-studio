@@ -1,65 +1,312 @@
 # scripts/triage-windows.ps1 - run /km-triage from Task Scheduler
 #
-# Iterates the triage in-process: a sweep that auto-fixed any PR will
-# immediately re-sweep so the now-different head SHAs get re-reviewed,
-# instead of waiting for the next Task Scheduler tick. Bounded to a
-# small fixed depth so a buggy auto-fix can't drive an infinite loop.
+# Per-PR gate loop: all Phase 2 skip checks run in PowerShell/jq before
+# any claude invocation, so skipped PRs spend zero Claude credits.
+# PRs that clear every gate each get a fresh, clean claude process -
+# no accumulated context across unrelated PRs.
+#
+# The outer iteration loop is unchanged: a sweep that auto-fixed any PR
+# re-sweeps (up to $maxIterations) so the new head gets reviewed in the
+# same Task Scheduler tick rather than waiting 30 min.
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 Set-Location (Split-Path -Parent $PSScriptRoot)
 
-# Refresh main so the command sees the latest crew and command defs.
+$repo             = if ($env:KM_TRIAGE_REPO)    { $env:KM_TRIAGE_REPO }    else { "MattGyverLee/keyboard-studio" }
+$tlEmail          = if ($env:KM_TRIAGE_TL_EMAIL) { $env:KM_TRIAGE_TL_EMAIL } else { "matthew_lee@sil.org" }
+$tlLogin          = if ($env:KM_TRIAGE_TL_LOGIN) { $env:KM_TRIAGE_TL_LOGIN } else { "MattGyverLee" }
+$triageOwners     = @("MattGyverLee","gboltono","coopabla","KevinPNG","dhigby","myczka")
+
+$inboxDir         = ".tech-lead-inbox"
+$auditLog         = "$inboxDir\audit-log.jsonl"
+$maxIterations    = 3
+$sleepBetweenSec  = 45
+$loopOnActions    = @("auto_fix_only","fix_and_mention")
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+function Get-Ts { (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") }
+
+function Write-AuditSkip {
+  param($num, $reason, $headSha)
+  $ts = Get-Ts
+  $line = '{"ts":"{0}","pr":{1},"action_taken":"skipped","reason":"{2}","head_sha":"{3}","sweep_id":"{4}"}' `
+    -f $ts, $num, $reason, $headSha, $env:KM_TRIAGE_SWEEP_ID
+  Add-Content -Path $auditLog -Value $line
+  try { node utilities/km-triage-app/progress-emit.js "phase=pr-skip" "pr=$num" "reason=$reason" 2>$null } catch {}
+  try { node utilities/km-triage-app/progress-emit.js "phase=pr-end" "pr=$num" "action_taken=skipped" "head_sha=$headSha" 2>$null } catch {}
+}
+
+# Returns the most recent substantive audit entry for a PR as a PSCustomObject,
+# or $null if none exists.
+function Get-LastAuditEntry {
+  param($num)
+  if (-not (Test-Path $auditLog)) { return $null }
+  $substantive = @("approve_park","auto_fix_only","mention_only","fix_and_mention","escalate","auto_fix_attempt_failed")
+  $last = $null
+  foreach ($line in (Get-Content $auditLog)) {
+    if (-not $line) { continue }
+    try {
+      $entry = $line | ConvertFrom-Json
+      if ($entry.pr -eq $num -and $substantive -contains $entry.action_taken) {
+        $last = $entry
+      }
+    } catch {}
+  }
+  return $last
+}
+
+# Returns the id of a lead-trigger comment posted after $sinceTs, or $null.
+function Find-TriggerComment {
+  param($num, $sinceTs)
+  if (-not $sinceTs) { return $null }
+  try {
+    $match = @(gh api "repos/$repo/issues/$num/comments" |
+      ConvertFrom-Json |
+      Where-Object { $_.created_at -gt $sinceTs } |
+      Where-Object { $triageOwners -contains $_.user.login } |
+      Where-Object { $_.body.ToLower().Contains("@km-triage") })
+    if ($match.Count -gt 0) { return $match[-1].id }
+    return $null
+  } catch { return $null }
+}
+
+# ── Phase 1: Bootstrap (once per Task Scheduler tick) ────────────────────────
+
+New-Item -ItemType Directory -Force -Path "$inboxDir\runs" | Out-Null
+New-Item -ItemType Directory -Force -Path "$inboxDir\diffs" | Out-Null
+New-Item -ItemType Directory -Force -Path "$inboxDir\worktrees" | Out-Null
+
+if (-not (Test-Path "$inboxDir\INBOX.md")) {
+  Set-Content -Path "$inboxDir\INBOX.md" -Value @"
+# Tech Lead Inbox
+
+PRs and questions that need your attention. Append-only; the triage loop adds entries here.
+
+"@
+}
+
+if (-not (Test-Path $auditLog)) { New-Item -ItemType File -Path $auditLog | Out-Null }
+
+if (-not (Test-Path "$inboxDir\.labels-created")) {
+  gh label create tech-lead-ready-to-merge --color 0e8a16 `
+    --description "Triage approved - awaiting tech lead merge" 2>$null; $true
+  gh label create review-needed --color d93f0b `
+    --description "Triage escalated - awaiting submitter or tech-lead response" 2>$null; $true
+  gh label create triage-skip --color cfd3d7 `
+    --description "Do not run triage on this PR" 2>$null; $true
+  New-Item -ItemType File -Path "$inboxDir\.labels-created" | Out-Null
+}
+
+try {
+  node utilities/km-triage-app/mint-token.js 2>&1 | Out-Null
+} catch {
+  $ts = Get-Ts
+  Add-Content -Path $auditLog -Value ('{"ts":"{0}","action_taken":"auth_failed","reason":"bot_token_unavailable"}' -f $ts)
+  Add-Content -Path "$inboxDir\INBOX.md" -Value "[$ts] km-triage bot-token mint failed; run ``node utilities/km-triage-app/setup.js`` to reinstall."
+  Write-Error "[ERROR] bot-token unavailable - aborting"
+  exit 1
+}
+
+# Refresh main so each claude call sees the latest crew/command definitions.
 git fetch origin main --quiet
 git checkout main --quiet
 git pull --ff-only --quiet
 
-$auditLog        = ".tech-lead-inbox\audit-log.jsonl"
-$maxIterations   = 3                                                # global cap per Task Scheduler tick
-$sleepBetweenSec = 45                                               # let GitHub recompute mergeability after a push
-$loopOnActions   = @('auto_fix_only', 'fix_and_mention')            # actions that move HEAD and warrant re-review
-
-New-Item -ItemType Directory -Force -Path ".tech-lead-inbox\runs" | Out-Null
+# ── Iteration loop ─────────────────────────────────────────────────────────────
 
 for ($i = 1; $i -le $maxIterations; $i++) {
-    # Snapshot the audit log size BEFORE the sweep so we can read only this iteration's entries afterwards.
-    $priorLineCount = if (Test-Path $auditLog) { @(Get-Content $auditLog).Count } else { 0 }
+  $priorLineCount = if (Test-Path $auditLog) { @(Get-Content $auditLog).Count } else { 0 }
 
-    $stamp = Get-Date -Format "yyyy-MM-dd-HHmm"
-    $log   = ".tech-lead-inbox\runs\$stamp-iter$i.log"
+  $stamp = Get-Date -Format "yyyy-MM-dd-HHmm"
+  $sweepId = "$stamp-iter$i"
+  $env:KM_TRIAGE_SWEEP_ID = $sweepId
+  $log = "$inboxDir\runs\$stamp-iter$i.log"
 
-    # Tag every progress-emit / check-progress event from this iteration with the
-    # same sweep_id so tools/triage-watch.mjs can group them. Format matches the
-    # iteration log filename for cross-reference.
-    $env:KM_TRIAGE_SWEEP_ID = "$stamp-iter$i"
+  "[km-triage] $sweepId starting" | Tee-Object -FilePath $log -Append | Write-Host
 
-    # claude.exe is on PATH after install; verify with `where.exe claude` if needed.
-    try {
-        claude -p "/km-triage" --dangerously-skip-permissions --output-format text *> $log
-    } catch {
-        "[WARN] iteration $i: claude exited with error: $_" | Add-Content $log
-    } finally {
-        Remove-Item Env:\KM_TRIAGE_SWEEP_ID -ErrorAction SilentlyContinue
+  # ── Discover all open PRs (one API call per iteration) ──────────────────
+
+  $prsJson = gh pr list `
+    --state open `
+    --json number,title,author,headRefName,baseRefName,labels,isDraft,mergeable,mergeStateStatus,statusCheckRollup,reviewDecision,commits,isCrossRepository,headRepositoryOwner `
+    --limit 50
+  $prs = $prsJson | ConvertFrom-Json
+
+  $total  = $prs.Count
+  $prNums = ($prs | ForEach-Object { $_.number }) -join ","
+  "[km-triage] $total open PRs: [$prNums]" | Tee-Object -FilePath $log -Append | Write-Host
+  try { node utilities/km-triage-app/progress-emit.js "phase=sweep-start" "total_prs=$total" "prs=[$prNums]" 2>$null } catch {}
+
+  $nSkip   = 0
+  $nReview = 0
+
+  # ── Per-PR gate loop ─────────────────────────────────────────────────────
+  # Gates mirror km-triage Phase 2 exactly.  Any PR that passes all gates
+  # gets a fresh claude -p "/km-triage $num" with no prior-PR context.
+
+  foreach ($pr in $prs) {
+    $num     = $pr.number
+    $title   = $pr.title
+    $headSha = if ($pr.commits -and $pr.commits.Count -gt 0) { $pr.commits[-1].oid } else { "unknown" }
+    $author  = $pr.author.login
+    $triggerCommentId = $null   # populated lazily; reset each PR
+
+    "  PR #$num : $title" | Tee-Object -FilePath $log -Append | Write-Host
+
+    # Gate 1 — external fork
+    if ($pr.isCrossRepository -eq $true) {
+      "    skip: external_pr_not_in_scope" | Tee-Object -FilePath $log -Append | Write-Host
+      Write-AuditSkip $num "external_pr_not_in_scope" $headSha
+      $nSkip++; continue
     }
 
-    # Inspect this iteration's audit entries to decide whether to loop again.
-    if (-not (Test-Path $auditLog)) { break }
-    $newLines = @(Get-Content $auditLog) | Select-Object -Skip $priorLineCount
+    # Gate 2 — draft
+    if ($pr.isDraft -eq $true) {
+      "    skip: draft" | Tee-Object -FilePath $log -Append | Write-Host
+      Write-AuditSkip $num "draft" $headSha
+      $nSkip++; continue
+    }
 
-    $shouldLoop = $false
-    foreach ($line in $newLines) {
-        if (-not $line) { continue }
-        try {
-            $entry = $line | ConvertFrom-Json
-            if ($loopOnActions -contains $entry.action_taken) {
-                $shouldLoop = $true
-                break
-            }
-        } catch {
-            # Malformed JSONL line - skip silently; don't let parse errors gate the loop.
+    # Gate 3 — hard-skip labels
+    $labelNames = $pr.labels | ForEach-Object { $_.name }
+    if ($labelNames -contains "tech-lead-ready-to-merge" -or $labelNames -contains "triage-skip") {
+      "    skip: already_in_lead_queue (label)" | Tee-Object -FilePath $log -Append | Write-Host
+      Write-AuditSkip $num "already_in_lead_queue" $headSha
+      $nSkip++; continue
+    }
+
+    # Gate 4 — CONFLICTING: post notice via bot-gh directly, zero Claude credits
+    if ($pr.mergeable -eq "CONFLICTING") {
+      "    skip: merge_conflict - posting notice" | Tee-Object -FilePath $log -Append | Write-Host
+      $conflictFile = [System.IO.Path]::GetTempFileName()
+      $mentionLine = if ($author -eq $tlLogin) {
+        "@$tlLogin - km-triage skipped this PR."
+      } else {
+        "@$tlLogin @$author - km-triage skipped this PR."
+      }
+      Set-Content -Path $conflictFile -Value @"
+$mentionLine
+
+PR is in CONFLICTING merge state. Triage policy is not to auto-fix or review a branch that needs rebasing.
+
+Please rebase against ``main`` first; the next sweep will run the full review crew and either auto-fix mechanical findings or @-mention you again with any open questions.
+"@
+      try { node utilities/km-triage-app/bot-gh.js pr comment $num --body-file $conflictFile >> $log 2>&1 } catch {}
+      Remove-Item -Path $conflictFile -Force -ErrorAction SilentlyContinue
+      Write-AuditSkip $num "merge_conflict" $headSha
+      $nSkip++; continue
+    }
+
+    # Gate 5 — mergeability unknown
+    if ($pr.mergeable -eq "UNKNOWN") {
+      "    skip: mergeability_unknown" | Tee-Object -FilePath $log -Append | Write-Host
+      Write-AuditSkip $num "mergeability_unknown" $headSha
+      $nSkip++; continue
+    }
+
+    # Gate 6 — CI blocking (any required check not SUCCESS/NEUTRAL/SKIPPED)
+    $ciBlocking = 0
+    if ($pr.statusCheckRollup) {
+      foreach ($check in $pr.statusCheckRollup) {
+        if (-not $check.isRequired) { continue }
+        $passing = @("SUCCESS","NEUTRAL","SKIPPED")
+        $state = if ($check.__typename -eq "CheckRun") {
+          if ($check.conclusion) { $check.conclusion } else { $check.status }
+        } else {
+          $check.state
         }
+        if ($state -notin $passing) { $ciBlocking++ }
+      }
+    }
+    if ($ciBlocking -gt 0) {
+      "    skip: ci_not_ready ($ciBlocking blocking)" | Tee-Object -FilePath $log -Append | Write-Host
+      Write-AuditSkip $num "ci_not_ready" $headSha
+      $nSkip++; continue
     }
 
-    if (-not $shouldLoop) { break }
-    if ($i -lt $maxIterations) { Start-Sleep -Seconds $sleepBetweenSec }
+    # Gate 7 — solo tech-lead authorship
+    if ($pr.commits -and $pr.commits.Count -gt 0) {
+      $allEmails = $pr.commits | ForEach-Object { $_.authors | ForEach-Object { $_.email } } | Sort-Object -Unique
+      $nonTl = $allEmails | Where-Object { $_ -ne $tlEmail }
+      if (-not $nonTl) {
+        "    skip: solo_tech_lead_author" | Tee-Object -FilePath $log -Append | Write-Host
+        Write-AuditSkip $num "solo_tech_lead_author" $headSha
+        $nSkip++; continue
+      }
+    }
+
+    # Gates 8+9 share the last audit entry — read once per PR
+    $lastEntry       = Get-LastAuditEntry $num
+    $lastAuditTs     = if ($lastEntry) { $lastEntry.ts }            else { "" }
+    $lastAuditSha    = if ($lastEntry) { $lastEntry.head_sha }      else { "" }
+    $lastAuditAction = if ($lastEntry) { $lastEntry.action_taken }  else { "" }
+
+    # Gate 8 — review-needed label + no trigger comment since last audit
+    if ($labelNames -contains "review-needed") {
+      $triggerCommentId = Find-TriggerComment $num $lastAuditTs
+      if (-not $triggerCommentId) {
+        "    skip: already_in_lead_queue (review-needed, no trigger)" | Tee-Object -FilePath $log -Append | Write-Host
+        Write-AuditSkip $num "already_in_lead_queue" $headSha
+        $nSkip++; continue
+      } else {
+        "    trigger comment #$triggerCommentId - removing review-needed" | Tee-Object -FilePath $log -Append | Write-Host
+        try { node utilities/km-triage-app/bot-gh.js api "repos/$repo/issues/$num/labels/review-needed" -X DELETE >> $log 2>&1 } catch {}
+        # fall through - Claude handles the re-review
+      }
+    }
+
+    # Gate 9 — same head SHA as last review + no trigger comment
+    # Exception: auto_fix_only + unchanged SHA = push silently failed; re-run.
+    if ($lastAuditSha -and $lastAuditSha -eq $headSha) {
+      if ($lastAuditAction -eq "auto_fix_only") {
+        "    [WARN] auto_fix_push_unverified - re-running review" | Tee-Object -FilePath $log -Append | Write-Host
+        Add-Content -Path "$inboxDir\INBOX.md" -Value ("[{0}] PR #{1}: auto_fix_only recorded but head SHA unchanged - re-running" -f (Get-Ts), $num)
+        # fall through to Claude
+      } else {
+        if (-not $triggerCommentId) {
+          $triggerCommentId = Find-TriggerComment $num $lastAuditTs
+        }
+        if (-not $triggerCommentId) {
+          "    skip: no_new_commits_since_last_review" | Tee-Object -FilePath $log -Append | Write-Host
+          Write-AuditSkip $num "no_new_commits_since_last_review" $headSha
+          $nSkip++; continue
+        }
+        # Has trigger comment - fall through to Claude
+      }
+    }
+
+    # All gates cleared - spawn a fresh, isolated Claude process for this PR
+    "    -> spawning claude for PR #$num" | Tee-Object -FilePath $log -Append | Write-Host
+    $nReview++
+    try {
+      claude -p "/km-triage $num" --dangerously-skip-permissions --output-format text *>> $log
+    } catch {
+      "[WARN] claude exited with error for PR #$num : $_" | Add-Content $log
+    }
+  }
+
+  "[km-triage] iteration $i : $nReview reviewed, $nSkip skipped" | Tee-Object -FilePath $log -Append | Write-Host
+  Remove-Item Env:\KM_TRIAGE_SWEEP_ID -ErrorAction SilentlyContinue
+
+  # ── Decide whether to re-sweep ───────────────────────────────────────────
+  # Re-sweep if any action moved a head SHA (auto_fix_only, fix_and_mention).
+
+  if (-not (Test-Path $auditLog)) { break }
+  $newLines = @(Get-Content $auditLog) | Select-Object -Skip $priorLineCount
+  $shouldLoop = $false
+  foreach ($line in $newLines) {
+    if (-not $line) { continue }
+    try {
+      $entry = $line | ConvertFrom-Json
+      if ($loopOnActions -contains $entry.action_taken) {
+        $shouldLoop = $true
+        break
+      }
+    } catch {}
+  }
+
+  if (-not $shouldLoop) { break }
+  if ($i -lt $maxIterations) { Start-Sleep -Seconds $sleepBetweenSec }
 }
