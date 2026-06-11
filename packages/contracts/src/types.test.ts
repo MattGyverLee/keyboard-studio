@@ -611,7 +611,7 @@ describe("StrategyRecommendation interface", () => {
   });
 
   it("accepts all valid PrimaryRuleNumber values (rules 9-10 excluded by type)", () => {
-    const validRules: PrimaryRuleNumber[] = [1, 2, 3, 4, 5, 6, 7, 8, 11, 12];
+    const validRules: PrimaryRuleNumber[] = [1, 2, 3, "3a", 4, 5, 6, 7, 8, 11, 12];
     validRules.forEach((rule) => {
       const r: StrategyRecommendation = {
         primary: "S-03",
