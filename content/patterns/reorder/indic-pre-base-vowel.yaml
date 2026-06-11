@@ -19,8 +19,6 @@ appliesTo:
   - "Mlym"
   - "Knda"
   - "Telu"
-  - "Mymr"
-  - "Khmr"
 priority: 2
 group_visibility: non-roman
 strategyId: "S-09"
@@ -92,20 +90,20 @@ reorderRules: null
 touchLayoutFragment: null
 
 tests:
-  - input: ["b", "h"]
-    expectedOutput: "U+0B95 U+0BC6"
+  - input: ["K_B", "K_H"]
+    expectedOutput: "கெ"
     description: "e_short + ka => கெ"
-  - input: ["n", "h"]
-    expectedOutput: "U+0B95 U+0BC7"
+  - input: ["K_N", "K_H"]
+    expectedOutput: "கே"
     description: "E_long + ka => கே"
-  - input: ["i", "h"]
-    expectedOutput: "U+0B95 U+0BC8"
+  - input: ["K_I", "K_H"]
+    expectedOutput: "கை"
     description: "ai + ka => கை"
-  - input: ["i", "b"]
-    expectedOutput: "U+0BA9 U+0BC8"
+  - input: ["K_I", "K_B"]
+    expectedOutput: "னை"
     description: "ai + na => னை"
-  - input: ["h"]
-    expectedOutput: "U+0B95"
+  - input: ["K_H"]
+    expectedOutput: "க"
     description: "consonant alone"
 
 validatedForFamilies:
