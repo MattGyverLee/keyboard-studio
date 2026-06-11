@@ -72,6 +72,8 @@ function buildPattern(matchResult: MatchResult): Pattern {
   });
 }
 
+const S01_MAX_DISTINCT_KEYS = 5; // spec §7.3 S-01: at most 5 extra characters
+
 export const s01Recognizer: RecognizerRule = {
   id: "s01-simple-swap",
   strategyId: "S-01",
@@ -90,7 +92,7 @@ export const s01Recognizer: RecognizerRule = {
           .filter((ctx): ctx is NonNullable<typeof ctx> & { kind: "vkey" } => ctx?.kind === "vkey")
           .map((ctx) => ctx.name),
       );
-      if (distinctBaseNames.size > 5) continue;
+      if (distinctBaseNames.size > S01_MAX_DISTINCT_KEYS) continue;
 
       const lines = matchingRules
         .map(formatMapLine)
