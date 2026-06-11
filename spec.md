@@ -604,7 +604,7 @@ Ordered rules. The first matching rule fixes the **primary** strategy; rules 9�
 
 **Firing order — important.** The table is numbered 1-12 but rules do NOT fire in raw 1→12 sequence. The actual order an implementation runs is:
 
-1. **Primary-fixing pass.** Try rules 1-8 in order; the first matching rule sets `primary`. If none of 1-8 match, try rule 11 (`A1=tiny AND A3=strong`); if it matches, primary is S-01. Otherwise rule 12 (catch-all) sets primary to S-03. Rule 3a, when A3a is elicited, intercepts postfix-preference keyboards before rules 5 and 7 can claim them.
+1. **Primary-fixing pass.** Try rules 1, 2, 3, 3a, 4, 5, 6, 7, 8 in order (rule 3a, when A3a is elicited, intercepts postfix-preference keyboards before rules 5 and 7 can claim them); the first matching rule sets `primary`. If none of 1, 2, 3, 3a, 4, 5, 6, 7, 8 match, try rule 11 (`A1=tiny AND A3=strong`); if it matches, primary is S-01. Otherwise rule 12 (catch-all) sets primary to S-03.
 2. **Secondary-adding pass.** Regardless of which primary was chosen, rules 9 (A6=loud → +S-10) and 10 (A7=fully-booked → +S-08) fire to APPEND axis-conditional secondaries to `StrategyRecommendation.secondaries`. These rules never set the primary — see {@link PrimaryRuleNumber} in `packages/contracts` which excludes 9 and 10 from valid `triggeredRule` values.
 
 An implementation that walked the table top-to-bottom and halted on the first match would mis-categorize keyboards where rule 9 (A6=loud) fires before any 1-8 match — they'd be left with no primary. The Mermaid diagram below shows the correct flow (R1-R8 → R11 → R12 chain for primary, then `Sec → R9 → R10` for add-ons).

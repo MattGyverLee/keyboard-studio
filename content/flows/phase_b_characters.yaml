@@ -370,7 +370,7 @@ questions:
         goto: pb_mark_input_order
       - default: pb_special_letters
 
-  # -- Q3: Mark-input order (A3a sub-axis; only asked when A3=strong) -----------
+  # -- Q3a: Mark-input order (A3a sub-axis; only asked when A3=strong) -----------
 
   - id: pb_mark_input_order
     prompt: "When typing a letter with an accent mark, does the typist expect to press the accent key before the letter, or type the letter first and then the accent?"
