@@ -15,7 +15,7 @@ import { SurveyRunner } from "./SurveyRunner.tsx";
 import { parseFlow } from "./loadFlow.ts";
 import type { SurveyContext, FlowDef } from "./types.ts";
 
-// Vite ?raw import
+// Vite ?raw import — typed via the `*.yaml?raw` declaration in src/vite-env.d.ts.
 import phaseBRaw from "../../../../content/flows/phase_b_characters.yaml?raw";
 
 // Question id in content/flows/phase_b_characters.yaml that begins the manual

@@ -224,8 +224,9 @@ export function SurveyRunner({
   findingsByQuestionId,
 }: SurveyRunnerProps) {
   // Derive flow-level constants once per flow identity change.
-  // findFirstRenderable receives context but does not read it (params are
-  // underscore-prefixed), so keying on [flow] alone is correct.
+  // context is intentionally excluded from the deps array: findFirstRenderable
+  // ignores it (underscore-prefixed params), so keying on [flow] alone is correct.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const { index, firstId, approxTotal } = useMemo(() => {
     const all = [...flow.questions, ...(flow.provenance_questions ?? [])];
     const idx = buildIndex(all);
@@ -280,10 +281,7 @@ export function SurveyRunner({
   function handleNext() {
     if (currentQ === undefined) return;
 
-    // Use the already-computed nextIdForCurrent to avoid a second advanceThrough call.
-    const nextId = nextIdForCurrent;
-
-    if (nextId === null) {
+    if (nextIdForCurrent === null) {
       // End of flow — build the result
       const answers: SurveyAnswer[] = [];
       for (const entry of stack) {
@@ -308,7 +306,7 @@ export function SurveyRunner({
       const updated = prev.map((e, i) =>
         i === prev.length - 1 ? { ...e, value } : e,
       );
-      return [...updated, { questionId: nextId, value: undefined }];
+      return [...updated, { questionId: nextIdForCurrent, value: undefined }];
     });
     setCurrentValue(undefined);
   }

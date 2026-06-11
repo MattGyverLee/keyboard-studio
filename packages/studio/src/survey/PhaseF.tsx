@@ -10,7 +10,7 @@ import { SurveyRunner } from "./SurveyRunner.tsx";
 import { parseFlow } from "./loadFlow.ts";
 import type { SurveyContext } from "./types.ts";
 
-// Vite ?raw import
+// Vite ?raw import — typed via the `*.yaml?raw` declaration in src/vite-env.d.ts.
 import phaseFRaw from "../../../../content/flows/phase_f_helpdocs.yaml?raw";
 
 // ---------------------------------------------------------------------------
@@ -46,6 +46,7 @@ export function PhaseF({ context = {}, onComplete, onBack, findingsByQuestionId 
         Phase F — Help documentation
       </h2>
       <SurveyRunner
+        key={flow.flow_id}
         flow={flow}
         context={context}
         onComplete={onComplete}

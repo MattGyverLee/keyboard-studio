@@ -20,6 +20,7 @@ import { parseFlow } from "./loadFlow.ts";
 import type { SurveyContext } from "./types.ts";
 
 // Vite ?raw import — YAML source as a plain string, no network request.
+// Typed via the `*.yaml?raw` module declaration in src/vite-env.d.ts.
 import phaseARaw from "../../../../content/flows/phase_a_identity.yaml?raw";
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,7 @@ export function extractIdentity(
   const scriptFamily = answerString(result, "script_family");
   const langNameAutonym = answerString(result, "language_name_autonym");
   const isoCode = answerString(result, "iso_code");
+  const primaryScript = answerString(result, "primary_script");
 
   if (languageName === "" || copyrightHolder === "") return undefined;
 
@@ -58,10 +60,17 @@ export function extractIdentity(
         ? "non-roman"
         : "qwerty-qwertz";
 
-  // TODO: compose full BCP47 tag (iso_code + ISO 15924 script subtag) once Phase A
-  // collects primary_script as an ISO 15924 code — current script_family values
-  // ("indic", "rtl", etc.) are routing groups, not composable BCP47 subtags.
-  const bcp47Tag = isoCode !== "" ? isoCode : "und";
+  // Compose a full BCP47 tag: language subtag + ISO 15924 script subtag when
+  // both are known (e.g. "bfd-Latn"). Minority-language tags benefit from an
+  // explicit script subtag; suppress-script defaults are not applied here. The
+  // primary_script "Other" choice is a UI sentinel, not a real script code, so
+  // it is never appended. Falls back to "und" when no language subtag is given.
+  const bcp47Tag =
+    isoCode === ""
+      ? "und"
+      : primaryScript !== "" && primaryScript !== "Other"
+        ? `${isoCode}-${primaryScript}`
+        : isoCode;
   const displayName =
     langNameAutonym !== ""
       ? `${langNameAutonym} (${languageName})`
@@ -212,6 +221,7 @@ export function PhaseA({ context = {}, onComplete, onBack, findingsByQuestionId 
         Phase A — Language identity
       </h2>
       <SurveyRunner
+        key={flow.flow_id}
         flow={flow}
         context={context}
         onComplete={handleComplete}

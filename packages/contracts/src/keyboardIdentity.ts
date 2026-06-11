@@ -15,10 +15,12 @@ import type { RoutingGroup } from "./scaffolder";
  * discovery-axis value used by the §7.2 strategy selector. Do not unify them.
  *
  * `"alpha-nonlatin"` is emitted by the Phase A flow for users who select the
- * non-roman layout and identify their script as a non-Latin alphabet (Cyrillic,
- * Greek, Georgian, or Armenian). It routes directly to the shared universal
- * tail in Phase B (pb_special_letters), bypassing the Indic/SEA/RTL/syllabic
- * sub-branches.
+ * non-roman layout and identify their script as a non-Latin alphabet (e.g.
+ * Coptic, Tifinagh, Adlam). Cyrillic, Greek, Georgian, and Armenian do NOT
+ * reach this value — they are detected at `primary_script` and pre-routed to
+ * the roman layout-family branch before `script_family` is asked. This value
+ * routes directly to the shared universal tail in Phase B (pb_special_letters),
+ * bypassing the Indic/SEA/RTL/syllabic sub-branches.
  *
  * `"logographic"` is RESERVED for CJK. In v1 it is never emitted as a Phase B
  * routing value: Hangul (Hang) and Han (Hani) are detected at `primary_script`

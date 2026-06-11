@@ -12,6 +12,7 @@ import type { BaseKeyboard, KeyboardIdentity } from "@keyboard-studio/contracts"
 import { PreviewShell } from "./components/PreviewShell.tsx";
 import { PhaseA, PhaseB, PhaseF } from "./survey/index.ts";
 import type { SurveyContext } from "./survey/types.ts";
+import type { KeyboardIdentity } from "@keyboard-studio/contracts";
 import { CarveGallery } from "./components/CarveGallery.tsx";
 import { type RouteId } from "./lib/navigate.ts";
 import { useKeyboardArtifact } from "./hooks/useKeyboardArtifact.ts";
@@ -219,6 +220,9 @@ function SurveyView({ baseKeyboard }: SurveyViewProps) {
     setPhase("B");
   }
 
+  // TODO: persist Phase B/F results into a survey store so the gallery and
+  // §7.2 strategy selector can read survey context + answers. Discarding them
+  // is acceptable only while those consumers are scaffolded-not-built.
   function handlePhaseBComplete(_result: unknown) {
     // TODO: persist phase B answers to IR store once #141/#142 land
     setPhase("F");
@@ -259,7 +263,8 @@ function SurveyView({ baseKeyboard }: SurveyViewProps) {
         Survey complete
       </h2>
       <p style={{ margin: 0, fontSize: 13, color: "#8b949e" }}>
-        All survey phases have been completed. You can proceed to the gallery.
+        All survey phases have been completed. Gallery hand-off is not yet
+        wired up, so your answers are not persisted yet.
       </p>
       <button
         type="button"

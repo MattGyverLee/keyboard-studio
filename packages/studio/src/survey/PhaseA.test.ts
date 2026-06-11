@@ -97,6 +97,29 @@ describe("extractIdentity — bcp47Tag", () => {
     const result = makeResult(identityBase());
     expect(extractIdentity(result)?.bcp47Tag).toBe("und");
   });
+
+  it("composes language + script subtags when primary_script is present", () => {
+    const result = makeResult([
+      ...identityBase(),
+      a("iso_code", "sr"),
+      a("primary_script", "Cyrl"),
+    ]);
+    expect(extractIdentity(result)?.bcp47Tag).toBe("sr-Cyrl");
+  });
+
+  it("does not append the 'Other' script sentinel", () => {
+    const result = makeResult([
+      ...identityBase(),
+      a("iso_code", "xyz"),
+      a("primary_script", "Other"),
+    ]);
+    expect(extractIdentity(result)?.bcp47Tag).toBe("xyz");
+  });
+
+  it("keeps 'und' when iso_code is absent even if primary_script is set", () => {
+    const result = makeResult([...identityBase(), a("primary_script", "Latn")]);
+    expect(extractIdentity(result)?.bcp47Tag).toBe("und");
+  });
 });
 
 // ---------------------------------------------------------------------------
