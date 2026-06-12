@@ -294,7 +294,9 @@ function scanOne(kmnPath: string, releaseDir: string): ScanReport {
   const i2 = structuralRoundTrip(ir, keyboardId);
   base.i2 = i2;
 
-  if (i2 === "structural-divergence") {
+  if (i2 === "structural-divergence" || i2 === "error") {
+    // A throwing emit/re-parse is a round-trip failure, not a clean import:
+    // the codec could not reproduce the IR, so the keyboard is NOT import-ready.
     base.status = ImportStatus.RoundTripDivergence;
   } else if (base.rawFragmentCount > 0 || base.opaqueFeatureInventory.length > 0) {
     base.status = ImportStatus.CleanWithOpaque;
@@ -467,12 +469,17 @@ function main(): void {
   if (!args.quiet) console.error(`[OK] found ${kpjFiles.length} .kpj projects`);
 
   const reports: ScanReport[] = [];
+  // A single .kmn can be referenced by more than one .kpj — the aggregate
+  // bundle projects under release/packages/ point at .kmn files that also have
+  // their own standalone project. Scan each physical file exactly once.
+  const seenKmn = new Set<string>();
   let scanned = 0;
   for (const kpj of kpjFiles) {
     if (args.limit != null && scanned >= args.limit) break;
     for (const kmn of kmnPathsForProject(kpj)) {
       if (args.limit != null && scanned >= args.limit) break;
-      if (!existsSync(kmn)) continue;
+      if (seenKmn.has(kmn) || !existsSync(kmn)) continue;
+      seenKmn.add(kmn);
       const report = scanOne(kmn, args.releaseDir);
       reports.push(report);
       scanned++;
