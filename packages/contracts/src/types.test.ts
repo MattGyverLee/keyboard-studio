@@ -447,7 +447,7 @@ describe("criteria.json schema conformance", () => {
     expect(unique.size).toBe(ids.length);
   });
 
-  it("matches the expected per-band counts (39/66/32/10 after the flagged-criteria re-review + 1 section-19 import-output row)", () => {
+  it("matches the expected per-band counts (40/66/32/10 after the flagged-criteria re-review + 2 section-19 import-output rows)", () => {
     const counts = records.reduce<Record<string, number>>((acc, c) => {
       acc[c.band] = (acc[c.band] ?? 0) + 1;
       return acc;
@@ -458,9 +458,9 @@ describe("criteria.json schema conformance", () => {
     });
     // 133 original repo-hygiene criteria + 12 section-18 DISCUS design
     // heuristics + 1 split row (7.7a) from the flagged-criteria re-review
-    // + 1 section-19 import-output criterion = 147 total.
-    expect(records.length).toBe(147);
-    expect(counts["scaffolder-bake"]).toBe(39);
+    // + 2 section-19 import-output criteria = 148 total.
+    expect(records.length).toBe(148);
+    expect(counts["scaffolder-bake"]).toBe(40);
     expect(counts["layer-c-enforce"]).toBe(66);
     expect(counts["yellow-survey"]).toBe(32);
     expect(counts["red-checklist"]).toBe(10);
@@ -551,6 +551,21 @@ describe("criteria.json schema conformance", () => {
     }
     expect(row?.section).toBe("19. Import output");
   });
+
+  it("section-19 has 2 import-output criteria", () => {
+    expect(
+      ALL_CRITERIA.filter((c) => c.section === "19. Import output").length
+    ).toBe(2);
+    const row2 = ALL_CRITERIA.find((c) => c.id === "19.2-import-attribution-in-history-md");
+    expect(row2).toBeDefined();
+    expect(row2?.band).toBe("scaffolder-bake");
+    if (row2?.band === "scaffolder-bake") {
+      expect(row2.scaffolderRule).toBe("emit-import-attribution-history-bullet");
+    } else {
+      expect.fail("19.2 row is not scaffolder-bake band");
+    }
+    expect(row2?.section).toBe("19. Import output");
+  });
 });
 
 // -----------------------------------------------------------------------------
@@ -560,7 +575,7 @@ describe("criteria.json schema conformance", () => {
 describe("criteriaData loader (#116)", () => {
   it("ALL_CRITERIA is a non-empty readonly Criterion[]", () => {
     expect(Array.isArray(ALL_CRITERIA)).toBe(true);
-    expect(ALL_CRITERIA.length).toBe(147);
+    expect(ALL_CRITERIA.length).toBe(148);
   });
 
   it("CRITERIA_BY_BAND partitions ALL_CRITERIA across the four bands", () => {

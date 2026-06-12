@@ -219,4 +219,4 @@ Applies to keyboards adapted from an existing `release/` keyboard via the v1.1.0
 
 - <span style="color:green">[ ] PR body includes the attribution block: adapted-from path, commit SHA, round-trip status, and opaque feature inventory.</span>
 
-_(19.2 dropped — sidecar removed unconditionally per D11)_
+- <span style="color:green">[ ] `HISTORY.md` contains an "Adapted from `<sourcePath>`" bullet under the 1.0 entry (mandatory D14 carrier, auto-enforced by the scaffolder).</span>
