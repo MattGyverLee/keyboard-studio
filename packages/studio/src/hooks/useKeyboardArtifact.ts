@@ -5,13 +5,21 @@ import { createVirtualFS } from "@keyboard-studio/contracts";
 import { LOCAL_PROXY_BASE } from "../lib/services.ts";
 import { useIRStore } from "../stores/irStore.ts";
 
+/** Font entry returned by the engine's fetchKeyboardSourceToVfs. */
+interface KpsFontEntry {
+  vfsPath: string;
+  ttfRelPath: string;
+  isOskFont: boolean;
+  family?: string;
+}
+
 interface EngineModule {
   compile: (fs: VirtualFS, keyboardId: string) => Promise<CompileResult>;
   fetchKeyboardSourceToVfs: (
     baseKeyboard: BaseKeyboard,
     fs: VirtualFS,
     opts?: { proxyBase?: string }
-  ) => Promise<{ options?: Record<string, unknown>; filesLoaded?: string[]; warnings?: string[] }>;
+  ) => Promise<{ options?: Record<string, unknown>; filesLoaded?: string[]; warnings?: string[]; fonts?: KpsFontEntry[] }>;
   init: () => Promise<void>;
   isReady?: () => boolean;
   parseKmn?: (text: string, keyboardId: string) => { ir: KeyboardIR; opaqueFeatures: Array<{ feature: string; count: number }> };
@@ -51,7 +59,7 @@ export type Stage =
    */
   | { kind: "vfs-loading" }
   | { kind: "compiling"; isWarmCompile: boolean }
-  | { kind: "ready"; compileResult: CompileResult; jsBlobUrl: string }
+  | { kind: "ready"; compileResult: CompileResult; jsBlobUrl: string; fontFaceUrl?: string; fontFaceFamily?: string }
   | {
       kind: "error";
       step: "fetch" | "vfs" | "compile";
@@ -82,6 +90,7 @@ export function useKeyboardArtifact(
 ): KeyboardArtifactResult {
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
   const prevBlobUrl = useRef<string | null>(null);
+  const prevFontBlobUrl = useRef<string | null>(null);
   const runId = useRef(0);
   const engineRef = useRef<EngineModule | null>(null);
   const engineLoadAttempted = useRef(false);
@@ -116,12 +125,14 @@ export function useKeyboardArtifact(
     setStage({ kind: "fetching" });
 
     const vfs = createVirtualFS();
+    let fetchedFonts: KpsFontEntry[] = [];
 
     try {
       if (engineRef.current) {
-        await engineRef.current.fetchKeyboardSourceToVfs(kb, vfs, {
+        const fetchResult = await engineRef.current.fetchKeyboardSourceToVfs(kb, vfs, {
           proxyBase: LOCAL_PROXY_BASE,
         });
+        fetchedFonts = fetchResult.fonts ?? [];
       }
     } catch (err: unknown) {
       if (runId.current !== thisRunId) return;
@@ -172,6 +183,10 @@ export function useKeyboardArtifact(
       URL.revokeObjectURL(prevBlobUrl.current);
       prevBlobUrl.current = null;
     }
+    if (prevFontBlobUrl.current !== null) {
+      URL.revokeObjectURL(prevFontBlobUrl.current);
+      prevFontBlobUrl.current = null;
+    }
 
     let jsBlobUrl: string;
     if (jsArtifact) {
@@ -191,7 +206,26 @@ export function useKeyboardArtifact(
       jsBlobUrl = "";
     }
 
-    setStage({ kind: "ready", compileResult: result, jsBlobUrl });
+    // Build a blob URL for the OSK font so the frame can inject a @font-face
+    // rule before the keyboard JS executes.
+    let fontFaceUrl: string | undefined;
+    let fontFaceFamily: string | undefined;
+    const oskFontEntry = fetchedFonts.find((f) => f.isOskFont && f.family);
+    if (oskFontEntry) {
+      const fontFile = vfs.get(oskFontEntry.vfsPath);
+      if (fontFile && fontFile.content instanceof Uint8Array) {
+        const fontBytes: BlobPart = fontFile.content.buffer as ArrayBuffer;
+        const blob = new Blob([fontBytes], { type: "font/ttf" });
+        fontFaceUrl = URL.createObjectURL(blob);
+        fontFaceFamily = oskFontEntry.family;
+        prevFontBlobUrl.current = fontFaceUrl;
+      }
+    }
+
+    const readyStage: Stage & { kind: "ready" } = { kind: "ready", compileResult: result, jsBlobUrl };
+    if (fontFaceUrl !== undefined) readyStage.fontFaceUrl = fontFaceUrl;
+    if (fontFaceFamily !== undefined) readyStage.fontFaceFamily = fontFaceFamily;
+    setStage(readyStage);
   }, []);
 
   useEffect(() => {
@@ -211,6 +245,10 @@ export function useKeyboardArtifact(
       if (prevBlobUrl.current !== null) {
         URL.revokeObjectURL(prevBlobUrl.current);
         prevBlobUrl.current = null;
+      }
+      if (prevFontBlobUrl.current !== null) {
+        URL.revokeObjectURL(prevFontBlobUrl.current);
+        prevFontBlobUrl.current = null;
       }
     };
   }, []);
