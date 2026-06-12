@@ -1,3 +1,5 @@
+
+
 import type {
   ScaffolderService,
   ScaffoldOptions,
@@ -151,7 +153,7 @@ function generateStubs(vfs: VirtualFS, keyboardId: string, displayName: string):
   const stubs: Array<{ path: string; content: string | Uint8Array; isBinary?: boolean }> = [
     {
       path: `source/${keyboardId}.kmn`,
-      content: `store(&NAME) '${kmnStringEscape(displayName)}'\nstore(&VERSION) '1.0'\nstore(&KEYBOARDVERSION) '1.0'\nstore(&TARGETS) 'any'\nbegin Unicode > use(main)\ngroup(main) using keys\n`,
+      content: `store(&NAME) '${kmnStringEscape(displayName)}'\nstore(&VERSION) '14.0'\nstore(&KEYBOARDVERSION) '1.0'\nstore(&TARGETS) 'any'\nbegin Unicode > use(main)\ngroup(main) using keys\n`,
     },
     {
       path: `source/${keyboardId}.kps`,
