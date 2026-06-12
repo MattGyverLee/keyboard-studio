@@ -238,8 +238,20 @@ const LEFT_MIN_PCT = 20;
 const LEFT_MAX_PCT = 70;
 const LEFT_INIT_PCT = 40;
 
-export function PreviewShell() {
+interface PreviewShellProps {
+  onBaseKeyboardSelected?: (kb: BaseKeyboard) => void;
+}
+
+export function PreviewShell({ onBaseKeyboardSelected }: PreviewShellProps) {
   const [baseKeyboard, setBaseKeyboard] = useState<BaseKeyboard | null>(null);
+
+  const handleBaseKeyboardChange = useCallback(
+    (kb: BaseKeyboard | null) => {
+      setBaseKeyboard(kb);
+      if (kb !== null) onBaseKeyboardSelected?.(kb);
+    },
+    [onBaseKeyboardSelected]
+  );
   const [oskMode, setOskMode] = useState<OskMode>("desktop");
   const [leftPct, setLeftPct] = useState(LEFT_INIT_PCT);
   const [handleHovered, setHandleHovered] = useState(false);
@@ -371,7 +383,7 @@ export function PreviewShell() {
           the live preview.
         </p>
         <div style={{ marginTop: 8 }}>
-          <BaseKeyboardPicker value={baseKeyboard} onChange={setBaseKeyboard} />
+          <BaseKeyboardPicker value={baseKeyboard} onChange={handleBaseKeyboardChange} />
         </div>
         {baseKeyboard !== null ? <MetadataCard kb={baseKeyboard} /> : null}
       </section>

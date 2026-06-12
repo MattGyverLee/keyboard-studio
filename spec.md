@@ -969,6 +969,14 @@ Note: S-04 (`any`/`index` table mechanism) is structurally embedded in every S-0
 
 These two remaining mismatches are **the value of the validation pass** — they pinpoint where v1 needs work before release. They are not v1 blockers: EuroLatin and IPA are expert-authored, well outside the target user's profile, and the strategies the tree picks (S-05 for EuroLatin, S-05 for IPA) produce working keyboards even if they differ from what SIL chose.
 
+**Phase-gated elicitation gaps (intended phased-delivery omissions, not tree bugs).**  The following §7.2 rules cannot fire from the currently shipped survey phases (A, B, F) because the required axis is not yet elicited.  Each is gated on Phase C delivery.  The §7.5 validation rows for these exemplars confirm the *tree logic* is correct when a full axis vector is supplied — the gap is upstream in the survey layer.
+
+- **Rule 3 / S-07 (A4=replacing-cycling):** `phase_b_characters.yaml` elicits A4=stacking-combining and A4=multi-family but defers A4=replacing-cycling to Phase C (see YAML engine-notes TIMING NOTE).  The `vietnamese_telex` §7.5 row confirms the tree fires correctly when supplied A4=replacing-cycling; it cannot be reached through the live survey until Phase C adds a replacing/cycling probe.
+
+- **Rules 4 and 9 / S-11, S-10 (A5=two-orthography, A6=loud):** Neither A5 (multi-mode orthography) nor A6 (constraint enforcement) is elicited by any current phase.  The `sil_yoruba8` (rule 4) and `el_pasifika` (rule 9) §7.5 rows confirm correct tree behaviour given a full vector; they are Phase C-gated.
+
+- **Rule 8 / S-06 (A7a=full-remap for alpha-nonlatin users):** `phase_b_characters.yaml` routes the `alpha-nonlatin` sub-branch of `pb_non_roman_branch` directly to `pb_special_letters` without asking about remap posture (A7a).  Keyboards like `armenian_mnemonic_r` and `russian_mnemonic_r` that use a Latin base but replace nearly every key (A7a=full-remap) cannot be correctly classified until an A7a probe is added to that branch.  Spec §7.1 notes this as a Phase B follow-up; it is outstanding.
+
 Once import lands, the validation pass also runs against each exemplar's *imported* IR — the round-trip emit must produce the same strategy attribution. A mismatch here surfaces as an `ImportStatus.RoundTripDivergence` for that exemplar in the supportability scanner output (§13).
 
 **Touch strategy validation (S-13).** S-13 is not reached by the desktop decision tree above — it is selected whenever a touch keyboard's layout JSON defines more than one named layer. The A1–A7 axes do not apply; the confirmation criterion is simply the presence of `"nextlayer":` on one or more keys.
