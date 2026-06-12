@@ -13,6 +13,7 @@ import { fetchKeyboardSourceToVfs, type FetchFn } from "../loader/fetchKeyboardS
 import { parse } from "../codec/parse.js";
 import { emit } from "../codec/emit.js";
 import { scaffoldIR } from "./scaffold-ir.js";
+import { sanitizeDisplayName, kmnStringEscape } from "./_helpers.js";
 
 export { scaffoldIR } from "./scaffold-ir.js";
 export type { ScaffoldIROptions, ScaffoldIRIdentity } from "./scaffold-ir.js";
@@ -22,20 +23,7 @@ export interface ScaffolderServiceOptions {
   fetchImpl?: FetchFn;
 }
 
-// Replace C0/C1 control chars (incl. newlines, nulls) with spaces, then collapse and trim.
-function sanitizeDisplayName(raw: string): string {
-  return raw
-    .replace(/[\x00-\x1F\x7F-\x9F]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// In KMN, single-quoted strings have no escape sequence; U+2019 is the typographic equivalent.
-function kmnStringEscape(s: string): string {
-  return s.replace(/'/g, "’");
-}
-
-// Defuse PHP block-comment terminator '*/' for stub generation.
+// Defuse PHP block-comment terminator ‘*/’ for stub generation.
 function phpCommentEscape(s: string): string {
   return s.replace(/\*\//g, "* /");
 }

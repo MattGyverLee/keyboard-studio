@@ -13,6 +13,7 @@ import type {
   StoreItem,
   RoutingGroup,
 } from "@keyboard-studio/contracts";
+import { sanitizeDisplayName, kmnStringEscape } from "./_helpers.js";
 
 export interface ScaffoldIRIdentity {
   keyboardId: string;
@@ -31,19 +32,6 @@ export interface ScaffoldIROptions {
 // callers in deterministic tests can monkey-patch via Date if needed.
 function currentYear(): number {
   return new Date().getFullYear();
-}
-
-// Replace C0/C1 control chars (incl. newlines, nulls) with spaces, collapse and trim.
-function sanitizeDisplayName(raw: string): string {
-  return raw
-    .replace(/[\x00-\x1F\x7F-\x9F]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// In KMN, single-quoted strings have no escape sequence; U+2019 is the typographic equivalent.
-function kmnStringEscape(s: string): string {
-  return s.replace(/'/g, "’");
 }
 
 function stringToStoreItems(s: string): StoreItem[] {

@@ -158,7 +158,7 @@ function parseVkeyBracket(tok: string): { name: string; modifiers: string[] } | 
 // `store(hamis-E:key)`, `store(a-ሳድስ)` in real released keyboards).
 // We require the first char to be a letter/underscore (no leading digit) and
 // allow any subsequent non-whitespace, non-paren character.
-const KMN_IDENT = String.raw`[^\s\d\(\)\,][^\s\(\)\,]*`;
+export const KMN_IDENT = String.raw`[^\s\d\(\)\,][^\s\(\)\,]*`;
 
 /** Returns a parser for keyword(storeName) → storeName. */
 function makeStoreParser(keyword: string): (tok: string) => string | null {
@@ -172,9 +172,11 @@ const parseAny = makeStoreParser("any");
 /** Parse notany(storeName) → storeName, or null. */
 const parseNotAny = makeStoreParser("notany");
 
+const PARSE_INDEX_RE = new RegExp(`^index\\s*\\(\\s*(${KMN_IDENT})\\s*,\\s*(\\d+)\\s*\\)$`, "i");
+
 /** Parse index(storeName, N) → {storeRef, offset}, or null. */
 function parseIndex(tok: string): { storeRef: string; offset: number } | null {
-  const m = new RegExp(`^index\\s*\\(\\s*(${KMN_IDENT})\\s*,\\s*(\\d+)\\s*\\)$`, "i").exec(tok);
+  const m = PARSE_INDEX_RE.exec(tok);
   if (!m) return null;
   return { storeRef: m[1] ?? "", offset: parseInt(m[2] ?? "0", 10) };
 }
@@ -196,9 +198,11 @@ function parseBaselayout(tok: string): string | null {
 /** Parse outs(storeName) → storeName, or null. */
 const parseOuts = makeStoreParser("outs");
 
+const PARSE_USE_RE = new RegExp(`^use\\s*\\(\\s*(${KMN_IDENT})\\s*\\)$`, "i");
+
 /** Parse use(groupName) → groupName, or null. */
 function parseUse(tok: string): string | null {
-  const m = new RegExp(`^use\\s*\\(\\s*(${KMN_IDENT})\\s*\\)$`, "i").exec(tok);
+  const m = PARSE_USE_RE.exec(tok);
   return m ? (m[1] ?? null) : null;
 }
 

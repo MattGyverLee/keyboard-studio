@@ -149,5 +149,25 @@ describe("scaffoldIR — IR-native scaffolder operations", () => {
     expect(emitted).not.toContain("[NCAPS");
     expect(emitted).toContain("store(&NAME) 'My US Layout'");
     expect(emitted).toMatch(/store\(&CASEDKEYS\)/);
+
+    // Idempotency: running scaffoldIR a second time with different identity
+    // must not double-insert system stores.
+    const { ir: ir2 } = parse(US_BASE_KMN, "us_english");
+    const result2 = scaffoldIR(ir2, {
+      identity: { keyboardId: "my_us_layout", displayName: "My US Layout" },
+      group: "qwerty-qwertz",
+    });
+    // Now apply a second scaffoldIR call on the already-scaffolded IR.
+    scaffoldIR(result2, {
+      identity: { keyboardId: "second_id", displayName: "Second" },
+      group: "qwerty-qwertz",
+    });
+    // &CASEDKEYS must not be double-inserted.
+    const casedAll = result2.stores.filter(
+      (s) => s.isSystem && s.name === "CASEDKEYS"
+    );
+    expect(casedAll.length).toBe(1);
+    // Identity must reflect the second call.
+    expect(result2.header.keyboardId).toBe("second_id");
   });
 });
