@@ -447,7 +447,7 @@ describe("criteria.json schema conformance", () => {
     expect(unique.size).toBe(ids.length);
   });
 
-  it("matches the expected per-band counts (38/66/32/10 after the flagged-criteria re-review)", () => {
+  it("matches the expected per-band counts (39/66/32/10 after the flagged-criteria re-review + 1 section-19 import-output row)", () => {
     const counts = records.reduce<Record<string, number>>((acc, c) => {
       acc[c.band] = (acc[c.band] ?? 0) + 1;
       return acc;
@@ -544,7 +544,11 @@ describe("criteria.json schema conformance", () => {
     const row = ALL_CRITERIA.find((c) => c.id === "19.1-import-attribution-in-pr-body");
     expect(row).toBeDefined();
     expect(row?.band).toBe("scaffolder-bake");
-    expect((row as { scaffolderRule?: string })?.scaffolderRule).toBe("emit-import-attribution-block");
+    if (row?.band === "scaffolder-bake") {
+      expect(row.scaffolderRule).toBe("emit-import-attribution-block");
+    } else {
+      expect.fail("19.1 row is not scaffolder-bake band");
+    }
     expect(row?.section).toBe("19. Import output");
   });
 });
