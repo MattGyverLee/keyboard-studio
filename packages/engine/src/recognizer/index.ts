@@ -1,9 +1,14 @@
 import type { KeyboardIR } from "@keyboard-studio/contracts";
 import { s01Recognizer } from "./rules/s01-simple-swap.js";
 import { s02Recognizer } from "./rules/s02-deadkey-single-tap.js";
+import * as generatedRules from "./rules/generated/index.js";
 import type { RecognizerRule, RecognizeResult } from "./types.js";
 
-const DEFAULT_RULES: RecognizerRule[] = [s01Recognizer, s02Recognizer];
+const DEFAULT_RULES: RecognizerRule[] = [
+  s01Recognizer,
+  s02Recognizer,
+  ...Object.values(generatedRules),
+];
 
 export function recognizePatterns(
   ir: KeyboardIR,

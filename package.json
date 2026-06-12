@@ -9,7 +9,8 @@
   },
   "scripts": {
     "fetch-kmcmplib": "node scripts/fetch-kmcmplib.mjs",
-    "prebuild": "pnpm run fetch-kmcmplib",
+    "compile-recognizer-rules": "node scripts/compile-recognizer-rules.mjs",
+    "prebuild": "pnpm run fetch-kmcmplib && pnpm run compile-recognizer-rules",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
