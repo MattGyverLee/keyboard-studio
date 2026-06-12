@@ -446,6 +446,10 @@ export function interpretPredicate(rule: RecognizerRuleYaml, ir: KeyboardIR): Ma
       const storesByName = new Map<string, IRStore>([
         ...ir.stores.map((s): [string, IRStore] => [s.name, s]),
       ]);
+      // Add abstract YAML aliases so populateSlots can resolve "S_bases" / "S_output"
+      // from the YAML slot_mapping without knowing the IR-level store names.
+      storesByName.set("S_bases", cluster.baseStore);
+      storesByName.set("S_output", cluster.outStore);
 
       const slotValues = rule.lifts_to.slot_mapping !== undefined
         ? populateSlots(
