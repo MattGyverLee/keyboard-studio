@@ -213,10 +213,9 @@ interface S02ClusterMatch {
 }
 
 function findS02Clusters(ir: KeyboardIR): S02ClusterMatch[] {
-  // Index triggers by deadkey id (from usingKeys groups that are not the deadkeys group)
+  // Index triggers by deadkey id (from usingKeys=true groups, any name).
   const triggersByDkId = new Map<number, IRRule[]>();
   for (const group of ir.groups) {
-    if (group.name === "deadkeys") continue;
     if (!groupPassesConstraints(group, true)) continue;
     for (const rule of group.rules) {
       if (rule.ownedByPattern !== undefined) continue;
@@ -229,26 +228,36 @@ function findS02Clusters(ir: KeyboardIR): S02ClusterMatch[] {
     }
   }
 
-  const deadkeysGroup = ir.groups.find((g) => g.name === "deadkeys");
-  if (deadkeysGroup === undefined) return [];
-
-  // Index fan-out rules (body rules) by deadkey id
-  const fanOutByDkId = new Map<number, IRRule>();
-  for (const rule of deadkeysGroup.rules) {
-    if (rule.ownedByPattern !== undefined) continue;
-    if (!matchesFanOutRole(rule)) continue;
-    const c0 = rule.context[0];
-    if (c0 === undefined || c0.kind !== "deadkey") continue;
-    if (!fanOutByDkId.has(c0.id)) {
-      fanOutByDkId.set(c0.id, rule);
+  // Index fan-out rules by deadkey id across ALL groups (no name filter).
+  // Also track which group each fan-out lives in, so we can find escape in
+  // the same group and check the usingKeys constraint.
+  const fanOutByDkId = new Map<number, { rule: IRRule; group: IRGroup }>();
+  for (const group of ir.groups) {
+    for (const rule of group.rules) {
+      if (rule.ownedByPattern !== undefined) continue;
+      if (!matchesFanOutRole(rule)) continue;
+      const c0 = rule.context[0];
+      if (c0 === undefined || c0.kind !== "deadkey") continue;
+      if (!fanOutByDkId.has(c0.id)) {
+        fanOutByDkId.set(c0.id, { rule, group });
+      }
     }
   }
 
   const clusters: S02ClusterMatch[] = [];
 
   for (const [dkId, triggers] of triggersByDkId.entries()) {
-    const fanOut = fanOutByDkId.get(dkId);
-    if (fanOut === undefined) continue;
+    const fanOutEntry = fanOutByDkId.get(dkId);
+    if (fanOutEntry === undefined) continue;
+    const { rule: fanOut, group: deadkeyGroup } = fanOutEntry;
+
+    // Fan-out group must not be a usingKeys=true group (triggers are usingKeys=true;
+    // the deadkey group that holds fan-out/escape is typically usingKeys=false).
+    // Reject any dkId where triggers and fan-out share the same group instance.
+    const triggerGroupOwnsAll = triggers.every((t) =>
+      deadkeyGroup.rules.includes(t),
+    );
+    if (triggerGroupOwnsAll) continue;
 
     const c1 = fanOut.context[1];
     const outEl = fanOut.output[0];
@@ -271,15 +280,14 @@ function findS02Clusters(ir: KeyboardIR): S02ClusterMatch[] {
     const outAllChar = outStore.items.every((item) => item.kind === "char");
     if (!baseAllChar || !outAllChar) continue;
 
-    // Find escape rule in deadkeys group
-    const escape = deadkeysGroup.rules.find(
+    // Find escape rule in the SAME group as fan-out (no name filter).
+    const escape = deadkeyGroup.rules.find(
       (r) => r.ownedByPattern === undefined && matchesEscapeRole(r, dkId),
     );
     if (escape === undefined) continue;
 
-    // Check for beep in any rule in the deadkeys group with this dk id
-    // (for the combinedWith_if condition)
-    const hasBeep = deadkeysGroup.rules.some((r) => {
+    // Check for beep in any rule in the deadkey group with this dk id.
+    const hasBeep = deadkeyGroup.rules.some((r) => {
       const c0 = r.context[0];
       if (c0 === undefined || c0.kind !== "deadkey" || c0.id !== dkId) return false;
       return r.output.some((el) => el.kind === "beep");
@@ -292,7 +300,7 @@ function findS02Clusters(ir: KeyboardIR): S02ClusterMatch[] {
       deadkeyId: dkId,
       baseStore,
       outStore,
-      group: deadkeysGroup,
+      group: deadkeyGroup,
       hasBeep,
     });
   }
@@ -430,13 +438,19 @@ export function interpretPredicate(rule: RecognizerRuleYaml, ir: KeyboardIR): Ma
       storesByName.set("S_bases", cluster.baseStore);
       storesByName.set("S_output", cluster.outStore);
 
+      const canonicalTrigger =
+        cluster.triggers.find((r) => {
+          const ctx = r.context[0];
+          return ctx?.kind === "vkey" && ctx.modifiers.length === 0;
+        }) ?? cluster.triggers[0];
+
       const slotValues = rule.lifts_to.slot_mapping !== undefined
         ? populateSlots(
             rule.lifts_to.slot_mapping,
             {
               clusterRules: [cluster.fanOut, cluster.escape, ...cluster.triggers],
               stores: storesByName,
-              triggerRule: cluster.triggers[0],
+              triggerRule: canonicalTrigger,
               escapeRule: cluster.escape,
               fanOutRule: cluster.fanOut,
               deadkeyId: cluster.deadkeyId,
@@ -453,15 +467,16 @@ export function interpretPredicate(rule: RecognizerRuleYaml, ir: KeyboardIR): Ma
         storeRef(cluster.outStore.nodeId),
       ];
 
-      // Carry beep state forward via the patternId suffix so interpretLift can
-      // check it without re-scanning IR
       const suffix = `dk_${cluster.deadkeyId.toString(16).toUpperCase().padStart(4, "0")}`;
       const patternIdBase = `${rule.lifts_to.patternId}#${suffix}`;
 
       results.push({
-        patternId: cluster.hasBeep ? `${patternIdBase}:beep` : patternIdBase,
+        patternId: patternIdBase,
         ownedNodes,
-        slotValues,
+        slotValues: {
+          ...slotValues,
+          ...(cluster.hasBeep ? { __hasBeep: "1" } : {}),
+        },
       });
     }
     return results;
@@ -477,48 +492,33 @@ export function interpretPredicate(rule: RecognizerRuleYaml, ir: KeyboardIR): Ma
 export function interpretLift(rule: RecognizerRuleYaml, match: MatchResult): Pattern {
   const today = new Date().toISOString().slice(0, 10);
 
-  // Detect beep flag carried in patternId suffix
-  const needsHumanReview = match.patternId.endsWith(":beep");
-  // Normalize the patternId (strip the beep suffix for the real pattern id)
-  const cleanPatternId = needsHumanReview
-    ? match.patternId.slice(0, -5)
-    : match.patternId;
+  // Read beep flag from reserved slotValues entry; strip it before passing to makePattern.
+  const hasBeep = match.slotValues["__hasBeep"] === "1";
+  const cleanSlotValues: Record<string, string> = { ...match.slotValues };
+  delete cleanSlotValues["__hasBeep"];
 
   // Check combinedWith_if for flag_for_human_review actions.
-  // The beep suffix above is the S-02 case — this is the general path.
-  let flaggedForReview = needsHumanReview;
   const combinedWithIf = rule.predicate.combinedWith_if ?? [];
+  let flaggedForReview = false;
   for (const entry of combinedWithIf) {
-    if (entry.action === "flag_for_human_review" && needsHumanReview) {
+    if (entry.action === "flag_for_human_review" && hasBeep) {
       flaggedForReview = true;
     }
   }
 
-  // Build provenance: if flagged, add an annotation entry so the author can
-  // confirm A6=loud before S-10 is added. provenance[].notes is the only
-  // existing Pattern field suitable for review annotations.
-  const provenance: Array<{ keyboard: string; notes?: string }> = [];
-  if (flaggedForReview) {
-    // Find the relevant combinedWith_if entry note
-    let reviewNote =
-      "Flagged for human review by YAML DSL interpreter (flag_for_human_review).";
-    for (const entry of combinedWithIf) {
-      if (entry.action === "flag_for_human_review" && entry.note !== undefined) {
-        reviewNote = entry.note.trim();
-        break;
-      }
-    }
-    provenance.push({ keyboard: "recognizer", notes: reviewNote });
-  }
+  // flag_for_human_review is a no-op in the interpreter for now — a follow-up
+  // issue will wire it to a proper Pattern field once the type is extended.
+  // Do not push a provenance entry with a synthetic keyboard id ("recognizer").
+  void flaggedForReview;
 
   // Derive questions from slot_mapping
-  const questions = buildQuestions(rule, match.slotValues);
+  const questions = buildQuestions(rule, cleanSlotValues);
 
   // Derive kmnFragment from strategyId defaults
-  const kmnFragment = buildKmnFragment(rule.strategyId, match.slotValues);
+  const kmnFragment = buildKmnFragment(rule.strategyId, cleanSlotValues);
 
   const patternInit = {
-    id: cleanPatternId,
+    id: match.patternId,
     title: titleForStrategy(rule.strategyId),
     description: rule.description?.trim() ?? "",
     category: "desktop" as const,
@@ -533,14 +533,13 @@ export function interpretLift(rule: RecognizerRuleYaml, match: MatchResult): Pat
     sourceKeyboards: [] as string[],
     reviewedBy: "recognizer",
     reviewDate: today,
-    ...(provenance.length > 0 ? { provenance } : {}),
   };
 
   try {
     return makePattern(patternInit);
   } catch (err) {
     throw new Error(
-      `interpretLift: makePattern failed for pattern "${cleanPatternId}": ${String(err)}`
+      `interpretLift: makePattern failed for pattern "${match.patternId}": ${String(err)}`
     );
   }
 }
@@ -615,7 +614,8 @@ function buildKmnFragment(strategyId: string, slotValues: Record<string, string>
       // Use slot names that match the YAML slot_mapping keys
       return (
         "+ [{{triggerKey}}] > dk({{deadkeyName}})\n" +
-        "dk({{deadkeyName}}) + any({{baseLetters}}) > index({{accentedForms}}, 2)"
+        "dk({{deadkeyName}}) + any({{baseLetters}}) > index({{accentedForms}}, 2)\n" +
+        "dk({{deadkeyName}}) + [{{triggerKey}}] > {{accentChar}}"
       );
     default:
       // Fallback: emit placeholders for every known slot value
