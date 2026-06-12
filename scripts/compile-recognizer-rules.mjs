@@ -70,7 +70,9 @@ for (const filename of yamlFiles) {
     }
   }
 
-  const { id, strategyId } = parsed;
+  const { id: rawId, strategyId } = parsed;
+  // Normalize to kebab-case so generated rule ids match hand-written convention
+  const id = rawId.replace(/_/g, '-');
 
   // Gate check: only emit for supported strategies
   if (!SUPPORTED_STRATEGIES.has(strategyId)) {
@@ -79,7 +81,7 @@ for (const filename of yamlFiles) {
   }
 
   // Emit generated TypeScript file
-  const outFile = join(OUT_DIR, `${id}.ts`);
+  const outFile = join(OUT_DIR, `${rawId}.ts`);
   const ruleDef = JSON.stringify(parsed, null, 2);
 
   const ts = `// generated — do not edit; source: content/recognizer-rules/${filename}
@@ -87,7 +89,7 @@ import type { RecognizerRule } from "../../types.js";
 import { interpretPredicate, interpretLift } from "../../interpreter.js";
 import type { RecognizerRuleYaml } from "../../yaml-schema.js";
 
-const RULE_DEF = ${ruleDef} as RecognizerRuleYaml;
+const RULE_DEF = ${ruleDef} satisfies RecognizerRuleYaml;
 
 export const rule: RecognizerRule = {
   id: "${id}",
@@ -97,21 +99,35 @@ export const rule: RecognizerRule = {
 };
 `;
 
-  writeFileSync(outFile, ts, 'utf8');
-  console.log(`[OK] Generated ${outFile}`);
-  generated.push({ id, filename });
+  // Only write when content differs to avoid spurious git diffs
+  let existing = '';
+  try { existing = readFileSync(outFile, 'utf8'); } catch { /* file does not exist yet */ }
+  if (existing === ts) {
+    console.log(`[OK] Unchanged ${outFile}`);
+  } else {
+    writeFileSync(outFile, ts, 'utf8');
+    console.log(`[OK] Generated ${outFile}`);
+  }
+  generated.push({ id, rawId, filename });
 }
 
 // Emit barrel
 const barrelLines = [
   '// generated — do not edit',
-  ...generated.map(({ id }) => {
-    // id -> camelCase: e.g. "simple_swap" -> "simpleSwap", "deadkey_single_tap" -> "deadkeySingleTap"
-    const camel = id.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-    return `export { rule as ${camel}Rule } from "./${id}.js";`;
+  ...generated.map(({ rawId }) => {
+    // rawId (snake_case) -> camelCase export alias: "simple_swap" -> "simpleSwapRule"
+    const camel = rawId.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    return `export { rule as ${camel}Rule } from "./${rawId}.js";`;
   }),
 ];
 
 const barrelPath = join(OUT_DIR, 'index.ts');
-writeFileSync(barrelPath, barrelLines.join('\n') + '\n', 'utf8');
-console.log(`[OK] Barrel: ${barrelPath}`);
+const barrelContent = barrelLines.join('\n') + '\n';
+let existingBarrel = '';
+try { existingBarrel = readFileSync(barrelPath, 'utf8'); } catch { /* file does not exist yet */ }
+if (existingBarrel === barrelContent) {
+  console.log(`[OK] Unchanged ${barrelPath}`);
+} else {
+  writeFileSync(barrelPath, barrelContent, 'utf8');
+  console.log(`[OK] Barrel: ${barrelPath}`);
+}

@@ -105,7 +105,6 @@ function matchesSingleRole(rule: IRRule): boolean {
 // ---------------------------------------------------------------------------
 
 function checkStoreConstraints(
-  ir: KeyboardIR,
   constraints: StoreConstraint[],
   resolvedStores: Map<string, IRStore>,
 ): boolean {
@@ -130,8 +129,6 @@ function checkStoreConstraints(
     }
   }
 
-  // Unused parameter: suppress lint
-  void ir;
   return true;
 }
 
@@ -499,17 +496,9 @@ export function interpretLift(rule: RecognizerRuleYaml, match: MatchResult): Pat
 
   // Check combinedWith_if for flag_for_human_review actions.
   const combinedWithIf = rule.predicate.combinedWith_if ?? [];
-  let flaggedForReview = false;
-  for (const entry of combinedWithIf) {
-    if (entry.action === "flag_for_human_review" && hasBeep) {
-      flaggedForReview = true;
-    }
-  }
-
-  // flag_for_human_review is a no-op in the interpreter for now — a follow-up
-  // issue will wire it to a proper Pattern field once the type is extended.
-  // Do not push a provenance entry with a synthetic keyboard id ("recognizer").
-  void flaggedForReview;
+  // flag_for_human_review is a no-op for now — Pattern has no suitable field for
+  // a machine-generated review flag without a real keyboard id. Tracked as follow-up.
+  void (hasBeep || combinedWithIf.some((e) => e.action === "flag_for_human_review"));
 
   // Derive questions from slot_mapping
   const questions = buildQuestions(rule, cleanSlotValues);
