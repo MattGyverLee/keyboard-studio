@@ -56,6 +56,7 @@ describe("filterFor()", () => {
       makePattern({ id: "primary-p", appliesTo: [], strategyId: "S-02" }),
       makePattern({ id: "secondary-p", appliesTo: [], strategyId: "S-04" }),
       makePattern({ id: "applies-p", appliesTo: [] }),
+      makePattern({ id: "off-strategy-p", appliesTo: [], strategyId: "S-12" }),
     ];
     mockGetPatterns.mockReturnValue(patterns);
 
@@ -76,6 +77,7 @@ describe("filterFor()", () => {
     expect(result[2]!.reason).toBe("appliesTo-match");
     expect(result[0]!.rank).toBe(1);
     expect(result[2]!.rank).toBe(3);
+    expect(result.map(m => m.patternId)).not.toContain("off-strategy-p");
   });
 
   it("Latin script — reorder-category patterns are excluded", async () => {

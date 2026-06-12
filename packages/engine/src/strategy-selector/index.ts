@@ -1,4 +1,4 @@
-// Issue #311 — strategy selector (§7.2 decision tree)
+// selectStrategy() — §7.2 decision tree implementation.
 
 import type {
   DiscoveryAxisVector,

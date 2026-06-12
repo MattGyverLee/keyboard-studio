@@ -150,7 +150,7 @@ describe("mergePhaseResults()", () => {
   it("irAxes field on returned session equals the passed irAxes object", () => {
     const irAxes: Partial<DiscoveryAxisVector> = { scale: "small" };
     const session = mergePhaseResults(irAxes, []);
-    expect(session.irAxes).toBe(irAxes);
+    expect(session.irAxes).toEqual(irAxes);
   });
 });
 

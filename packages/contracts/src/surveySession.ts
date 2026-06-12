@@ -64,7 +64,7 @@ export function mergePhaseResults(
   const selectedPatternIds = [
     ...new Set(phaseResults.flatMap((p) => p.selectedPatternIds ?? [])),
   ];
-  return { axes, irAxes, phaseResults, selectedPatternIds };
+  return { axes, irAxes: { ...irAxes }, phaseResults, selectedPatternIds };
 }
 
 /**
