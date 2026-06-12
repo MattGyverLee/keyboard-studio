@@ -75,6 +75,16 @@ export interface TouchKeyIR {
   flick?: Partial<Record<"n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw", TouchKeyIR>>;
   /** Rapid successive taps cycling through characters. */
   multitap?: TouchKeyIR[];
+  /**
+   * Key class from .keyman-touch-layout `sp` (0 letter, 1 special, 2 active-special, 8 spacer).
+   * The wire format encodes this as a JSON string (e.g. `"sp": "1"`); the IR normalizes it to a number.
+   */
+  sp?: number;
+  /**
+   * Relative key width (percent) from .keyman-touch-layout.
+   * The wire format encodes this as a JSON string (e.g. `"width": "100"`); the IR normalizes it to a number.
+   */
+  width?: number;
 }
 
 /** Diff produced by the I2 functional-equivalence round-trip check (decision D7, spec §14). */
