@@ -27,7 +27,9 @@ wrapper landed in Issue #16.
 
 ## Simulator
 
-`src/simulator/index.ts` exposes two functions exported from this package:
+`src/simulator/index.ts` exposes two functions exported from the
+`@keyboard-studio/engine/simulator` subpath (Node-only — kept off the main
+entry so the browser bundle never follows the vendored Keyman engine):
 
 - `simulate(compiled, keys)` — feeds a `SimKeyInput[]` sequence through the compiled Keyman `.js`
   artifact via a vendored JS-processor in a Node `vm` sandbox and returns a `SimulationResult`
@@ -59,7 +61,7 @@ Contract types (`SimKeyInput`, `DeadkeySnapshot`, `SimulationStep`, `SimulationR
 ### Quick usage (Node / vitest)
 
 ```ts
-import { simulate, runPatternTests } from "@keyboard-studio/engine";
+import { simulate, runPatternTests } from "@keyboard-studio/engine/simulator";
 import type { SimKeyInput } from "@keyboard-studio/contracts";
 
 // Compile first (see "Compiler service" below), then:
