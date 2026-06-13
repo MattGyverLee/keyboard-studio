@@ -28,11 +28,11 @@ import type {
 
 import { tokenize, type Token } from "./tokenize.js";
 import { NodeIdMinter } from "./node-ids.js";
+import { OPAQUE_REASONS } from "./opaque-reasons.js";
 
 // System stores whose canonical spelling is NOT all-uppercase. The lookup key
 // is the uppercased form; the value is what gets stored in IRStore.name.
 const CANONICAL_SYSTEM_STORE: Record<string, string> = { CASEDKEYS: "CasedKeys" };
-import { OPAQUE_REASONS } from "./opaque-reasons.js";
 
 // ---------------------------------------------------------------------------
 // Public types

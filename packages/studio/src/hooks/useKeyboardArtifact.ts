@@ -17,14 +17,6 @@ interface EngineModule {
   isReady?: () => boolean;
   parseKmn?: (text: string, keyboardId: string) => { ir: KeyboardIR; opaqueFeatures: Array<{ feature: string; count: number }> };
   recognizePatterns?: (ir: KeyboardIR) => { ir: KeyboardIR; recognizedRatio: number };
-  createScaffolderService?: (opts?: { proxyBase?: string }) => {
-    scaffold: (
-      base: BaseKeyboard,
-      keyboardId: string,
-      displayName: string
-    ) => Promise<{ vfs: VirtualFS; warnings: string[] }>;
-  };
-  toZip?: (fs: VirtualFS) => Promise<Uint8Array>;
 }
 
 async function loadEngine(): Promise<EngineModule | null> {

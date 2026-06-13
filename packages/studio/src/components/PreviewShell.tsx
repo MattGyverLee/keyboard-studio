@@ -574,6 +574,11 @@ export function PreviewShell({ onBaseKeyboardSelected }: PreviewShellProps) {
             >
               {downloading ? "Downloading..." : "Download .zip"}
             </button>
+            {downloadError !== null && (
+              <div role="alert" style={{ fontSize: 11, color: '#f0a0a0', marginTop: 4 }}>
+                {downloadError}
+              </div>
+            )}
             <DiagnosticsPanel diagnostics={diagnostics} />
           </>
         )}

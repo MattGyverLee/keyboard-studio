@@ -4,7 +4,7 @@
 // intentional — services.ts is the designated service boundary. Vite
 // tree-shakes them in real builds. Do NOT add mocks imports elsewhere in
 // packages/studio/src/.
-import type { BaseBrowserService, ScaffolderService } from "@keyboard-studio/contracts";
+import type { BaseBrowserService, ScaffolderService, VirtualFS } from "@keyboard-studio/contracts";
 import { mockBaseBrowser, mockOutputService, mockScaffolder } from "@keyboard-studio/contracts/mocks";
 import { localBaseBrowser, LOCAL_PROXY_BASE } from "./localBaseBrowser.ts";
 
@@ -37,8 +37,11 @@ export async function getScaffolderService(): Promise<ScaffolderService> {
 // OutputService (zip path only): when USE_REAL is false returns the mock zip
 // serializer. When real, lazily imports toZip from the engine.
 // The GitHub OAuth publishPR path is separate (createGitHubOutputService).
-export async function getToZip(): Promise<(vfs: import("@keyboard-studio/contracts").VirtualFS) => Promise<Uint8Array>> {
+let toZipCache: ((vfs: VirtualFS) => Promise<Uint8Array>) | null = null;
+export async function getToZip(): Promise<(vfs: VirtualFS) => Promise<Uint8Array>> {
   if (!USE_REAL) return mockOutputService.toZip.bind(mockOutputService);
+  if (toZipCache !== null) return toZipCache;
   const { toZip } = await import(/* @vite-ignore */ "@keyboard-studio/engine");
-  return toZip as (vfs: import("@keyboard-studio/contracts").VirtualFS) => Promise<Uint8Array>;
+  toZipCache = toZip as (vfs: VirtualFS) => Promise<Uint8Array>;
+  return toZipCache;
 }
