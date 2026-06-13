@@ -56,6 +56,9 @@ importers:
       '@keymanapp/kmc-kmn':
         specifier: 19.0.240-alpha
         version: 19.0.240-alpha
+      eventemitter3:
+        specifier: ^5.0.4
+        version: 5.0.4
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
