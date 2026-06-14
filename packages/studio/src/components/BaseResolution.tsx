@@ -42,6 +42,25 @@ export function BaseResolution({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<BaseKeyboard | null>(null);
+  const [kpsProbe, setKpsProbe] = useState<string>("checking…");
+
+  useEffect(() => {
+    // Probe: fetch sil_cameroon_qwerty.kps directly via the dev proxy to
+    // check whether the file exists and what Language elements it contains.
+    const KPS_PATH = "/local-kbd-proxy/release/sil/sil_cameroon_qwerty/source/sil_cameroon_qwerty.kps";
+    fetch(KPS_PATH)
+      .then(async (r) => {
+        if (!r.ok) { setKpsProbe(`HTTP ${r.status} — file not found at ${KPS_PATH}`); return; }
+        const text = await r.text();
+        const matches = [...text.matchAll(/Language[^>]+ID="([^"]+)"/g)].map((m) => m[1] ?? "?");
+        setKpsProbe(
+          matches.length === 0
+            ? `file found (${text.length} bytes) but NO Language ID elements matched`
+            : `file found — first 5 IDs: ${matches.slice(0, 5).join(", ")} (${matches.length} total)`,
+        );
+      })
+      .catch((e: unknown) => setKpsProbe(`fetch error: ${String(e)}`));
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -129,6 +148,7 @@ export function BaseResolution({
       <details style={{ marginBottom: 12, fontSize: 11, color: "#8b949e", border: "1px solid #30363d", borderRadius: 6, padding: "6px 10px" }}>
         <summary style={{ cursor: "pointer" }}>Debug info</summary>
         <pre style={{ margin: "6px 0 0 0", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{JSON.stringify(debugInfo, null, 2)}</pre>
+        <p style={{ margin: "6px 0 0 0" }}>kps probe: {kpsProbe}</p>
       </details>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
