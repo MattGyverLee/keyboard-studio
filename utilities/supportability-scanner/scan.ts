@@ -38,8 +38,7 @@
  * See README.md.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -63,6 +62,16 @@ interface Args {
   quiet: boolean;
 }
 
+/** Read the value following a value-taking flag, erroring out if it is missing. */
+function requireValue(argv: string[], i: number, flag: string): string {
+  const v = argv[i];
+  if (v === undefined) {
+    console.error(`[ERROR] ${flag} requires a value`);
+    process.exit(2);
+  }
+  return v;
+}
+
 function parseArgs(argv: string[]): Args {
   const out: Args = {
     // Default: the sibling keymanapp/keyboards checkout (see docs/keyboard-index.md).
@@ -76,14 +85,20 @@ function parseArgs(argv: string[]): Args {
     const a = argv[i];
     switch (a) {
       case "--release-dir":
-        out.releaseDir = resolve(argv[++i] ?? "");
+        out.releaseDir = resolve(requireValue(argv, ++i, a));
         break;
       case "--out":
-        out.outDir = resolve(argv[++i] ?? "");
+        out.outDir = resolve(requireValue(argv, ++i, a));
         break;
-      case "--limit":
-        out.limit = Number(argv[++i]);
+      case "--limit": {
+        const n = Number(requireValue(argv, ++i, a));
+        if (!Number.isInteger(n) || n <= 0) {
+          console.error(`[ERROR] ${a} requires a positive integer`);
+          process.exit(2);
+        }
+        out.limit = n;
         break;
+      }
       case "--check":
         out.check = true;
         break;

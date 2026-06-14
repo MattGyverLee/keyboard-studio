@@ -33,7 +33,7 @@ jobs:
         with:
           repository: keymanapp/keyboards
           path: .keyboards
-          depth: 1
+          fetch-depth: 1
           sparse-checkout: release
           sparse-checkout-cone-mode: true
 
