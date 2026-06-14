@@ -27,8 +27,12 @@ const REASON_COLOR: Record<SuggestReason, string> = {
 };
 
 export interface BaseResolutionProps {
-  /** The chosen (language, script) target from identity-lite. */
-  target: SuggestTarget;
+  /**
+   * The chosen (language, script) target from identity-lite.
+   * Optional: when absent (Track 2 / base-first flow), suggestions are skipped
+   * and only the free-pick section is shown.
+   */
+  target?: SuggestTarget;
   onResolved: (base: BaseKeyboard) => void;
   onBack?: () => void;
 }
@@ -77,8 +81,13 @@ export function BaseResolution({
     [bases],
   );
 
+  // When no target is provided (base-first flow, no identity-lite result yet),
+  // skip script-ranking and show only the free-pick section.
   const suggestions = useMemo(
-    () => suggestBases(bases, target, { languagesById }),
+    () =>
+      target !== undefined
+        ? suggestBases(bases, target, { languagesById })
+        : [],
     [bases, target, languagesById],
   );
 

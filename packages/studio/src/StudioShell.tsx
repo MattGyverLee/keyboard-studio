@@ -1,9 +1,11 @@
 // Studio root — hash-based router + nav bar.
 //
 // Routes:
-//   #survey  (default)  — full authoring wizard: identity → base → prefill →
-//                         carve (Phase D) → inventory (Phase B) →
-//                         mechanisms (Phase C) → help (Phase F) → done
+//   #survey  (default)  — full authoring wizard (spec §8 v1.3.0):
+//                         Track 1 (Copy):  base → track → identity → project-name
+//                                          → prefill → carve → B → mechanisms → F → done
+//                         Track 2 (Adapt): base → track → prefill
+//                                          → carve → B → mechanisms → F → done
 //   #preview            — compiled preview (stub; not yet implemented)
 //   #output             — output / delivery (stub; not yet implemented)
 
@@ -15,6 +17,7 @@ import { IdentityLite, Prefill, PhaseB, PhaseF, type IdentityLiteResult } from "
 import { BaseResolution } from "./components/BaseResolution.tsx";
 import { UnsupportedScriptStub } from "./components/UnsupportedScriptStub.tsx";
 import type { SuggestTarget } from "./lib/suggestBase.ts";
+import { deriveScriptPrefill } from "./lib/scriptAxes.ts";
 import type { SurveyContext } from "./survey/types.ts";
 import { CarveGallery } from "./components/CarveGallery.tsx";
 import { MechanismGallery } from "./components/MechanismGallery.tsx";
@@ -147,13 +150,22 @@ const SURVEY_LEFT_MAX_PCT = 65;
 const SURVEY_LEFT_INIT_PCT = 45;
 
 // Studio wizard stage machine (spec §8 "Workflow ordering"):
-//   identity → base → track → (project-name [copy only]) → prefill →
-//   carve (Phase D) → B → mechanisms (Phase C) → F → done
-// Gated scripts route to "unsupported".
+//
+//   Track 1 (Copy):
+//     base → track → identity → project-name → prefill →
+//     carve (Phase D) → B → mechanisms (Phase C) → F → done
+//
+//   Track 2 (Adapt):
+//     base → track → prefill →
+//     carve (Phase D) → B → mechanisms (Phase C) → F → done
+//
+// Base resolution is the FIRST stage for both tracks. Identity-lite is only
+// shown for Track 1 (Copy), after the track choice. Gated scripts (Ethi/Hani/
+// Hang) from identity-lite route to "unsupported".
 type SurveyStage =
-  | "identity"
   | "base"
   | "track"
+  | "identity"
   | "project-name"
   | "prefill"
   | "carve"
@@ -182,7 +194,7 @@ interface SurveyViewProps {
 }
 
 export function SurveyView({ baseKeyboard }: SurveyViewProps) {
-  const [stage, setStage] = useState<SurveyStage>("identity");
+  const [stage, setStage] = useState<SurveyStage>("base");
   const [identityResult, setIdentityResult] = useState<IdentityLiteResult | null>(null);
   const [surveyContext, setSurveyContext] = useState<SurveyContext>({});
   const [oskMode, setOskMode] = useState<OskMode>("desktop");
@@ -295,13 +307,13 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
   const recordPhase = useWorkingCopyStore((s) => s.recordPhase);
   const resetSurvey = useWorkingCopyStore((s) => s.reset);
 
-  // Identity-lite is the hybrid flow's head: it captures the language + the
-  // INDEPENDENT target script, deriving the routing/A2 prefill. Gated scripts
-  // (Ethi/Hani/Hang) end on the "not supported" stage. See spec §8/§9.
+  // Identity-lite (Track 1 / Copy only): captures language + the INDEPENDENT
+  // target script, deriving routing/A2 prefill. Gated scripts (Ethi/Hani/Hang)
+  // end on the "not supported" stage. See spec §8/§9.
   //
-  // Change 4: if il_language_english is empty but il_language_autonym is set,
-  // default the English name to the autonym. SurveyRunner has no cross-field
-  // default mechanism — patch here in the post-onComplete handler.
+  // If il_language_english is empty but il_language_autonym is set, default the
+  // English name to the autonym. SurveyRunner has no cross-field default
+  // mechanism — patch here in the post-onComplete handler.
   function handleIdentityComplete(result: SurveyPhaseResult, identity: IdentityLiteResult) {
     // Apply autonym-as-English-name default when English name is blank.
     const patchedIdentity: IdentityLiteResult =
@@ -311,7 +323,8 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
     recordPhase(result);
     setIdentityResult(patchedIdentity);
     setSurveyContext(contextFromIdentity(patchedIdentity));
-    setStage(patchedIdentity.supported ? "base" : "unsupported");
+    // Copy path: identity → project-name (or unsupported for gated scripts).
+    setStage(patchedIdentity.supported ? "project-name" : "unsupported");
   }
 
   // The base chosen in-survey is set on localBase so the pipeline starts
@@ -322,12 +335,14 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
     setStage("track");
   }
 
-  // Handle track selection. Copy → project-name step. Adapt → skip to prefill
-  // (preserves base identity; pipeline already running in background).
+  // Handle track selection.
+  //   Copy  → identity-lite (to collect language/script for a NEW keyboard).
+  //   Adapt → prefill directly (identity is already known from the base).
+  // spec §8 line 1063: Track 2 skips identity-lite.
   function handleTrackSelected(track: Track) {
     setSelectedTrack(track);
     if (track === "copy") {
-      setStage("project-name");
+      setStage("identity");
     } else {
       // Track 2: no scaffoldSpec needed — adapt uses base's own id/displayName.
       setScaffoldSpec(null);
@@ -363,14 +378,17 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
     setLocalBase(null);
     setSelectedTrack(null);
     setScaffoldSpec(null);
-    setStage("identity");
+    setStage("base");
   }
 
   // The (language, script) target for base suggestion — keyed on the CHOSEN
   // script (decoupled from the language; spec §8/§9). The BCP47 tag (e.g.
   // "ha-Latn", "hi-Deva") enables language-aware ranking in BaseResolution;
   // an empty bcp47 degrades gracefully to script-match ranking.
-  const suggestTarget: SuggestTarget | null =
+  // For Track 2 (Adapt) base-resolution runs before identity-lite, so
+  // suggestTarget may be null — BaseResolution handles this by skipping
+  // the ranked-suggestions section and showing only the free-pick picker.
+  const suggestTarget: SuggestTarget | undefined =
     identityResult !== null
       ? {
           script: identityResult.prefill.script,
@@ -378,7 +396,7 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
             ? { bcp47: identityResult.bcp47 }
             : {}),
         }
-      : null;
+      : undefined;
 
   const questionsPaneStyle: CSSProperties = {
     flexBasis: `calc(${leftPct}% - ${SURVEY_DIVIDER_WIDTH / 2}px)`,
@@ -470,8 +488,26 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
       {/* Left pane: survey questions */}
       <section aria-label="Survey questions" style={questionsPaneStyle}>
         {stage === "done" && donePaneContent}
+        {stage === "base" && (
+          <BaseResolution
+            {...(suggestTarget !== undefined ? { target: suggestTarget } : {})}
+            onResolved={handleBaseResolved}
+          />
+        )}
+        {stage === "track" && localBase !== null && (
+          <TrackStep
+            base={localBase}
+            onNext={handleTrackSelected}
+            onBack={() => setStage("base")}
+          />
+        )}
+        {/* identity-lite is only shown for Track 1 (Copy), after track choice */}
         {stage === "identity" && (
-          <IdentityLite context={surveyContext} onComplete={handleIdentityComplete} />
+          <IdentityLite
+            context={surveyContext}
+            onComplete={handleIdentityComplete}
+            onBack={() => setStage("track")}
+          />
         )}
         {stage === "unsupported" && identityResult !== null && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16, alignItems: "flex-start" }}>
@@ -494,34 +530,37 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
             </button>
           </div>
         )}
-        {stage === "base" && suggestTarget !== null && (
-          <BaseResolution
-            target={suggestTarget}
-            onResolved={handleBaseResolved}
-            onBack={() => setStage("identity")}
-          />
-        )}
-        {stage === "track" && localBase !== null && (
-          <TrackStep
-            base={localBase}
-            onNext={handleTrackSelected}
-            onBack={() => setStage("base")}
-          />
-        )}
         {stage === "project-name" && identityResult !== null && (
           <ProjectNameStep
             defaultDisplayName={identityResult.autonym || identityResult.english}
             onNext={handleProjectNameNext}
-            onBack={() => setStage("track")}
+            onBack={() => setStage("identity")}
           />
         )}
-        {stage === "prefill" && identityResult !== null && localBase !== null && (
+        {stage === "prefill" && localBase !== null && (
           <Prefill
-            identity={identityResult}
+            identity={
+              identityResult !== null
+                ? identityResult
+                : // Track 2 (Adapt): synthesize identity from the base keyboard.
+                  // Language name and code are unknown at this point; the prefill
+                  // step surfaces the base's script/routing so the author can
+                  // confirm or go back. Language rows show the base displayName
+                  // as a placeholder until the documentation stage refines them.
+                  {
+                    autonym: localBase.displayName,
+                    english: localBase.displayName,
+                    languageSubtag: "",
+                    targetScriptRaw: localBase.script,
+                    bcp47: "",
+                    supported: true,
+                    prefill: deriveScriptPrefill(localBase.script),
+                  }
+            }
             base={localBase}
             onConfirm={() => setStage("carve")}
             onBack={() => {
-              // Back from prefill returns to track choice (not base picker directly).
+              // Back from prefill: Copy → project-name; Adapt → track choice.
               setStage(selectedTrack === "copy" ? "project-name" : "track");
             }}
           />
