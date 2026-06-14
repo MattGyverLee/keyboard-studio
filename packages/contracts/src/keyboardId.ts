@@ -16,7 +16,9 @@
  *   2. Lowercase.
  *   3. Replace any character that is NOT [a-z0-9] with `_`.
  *   4. Collapse runs of `_` to a single `_`.
- *   5. Strip leading non-[a-z] characters (result starts with a letter).
+ *   5. Strip leading non-[a-z] characters, including underscores (result starts with a letter).
+ *      validateKeyboardId permits a leading underscore (matching KD), but slugifyKeyboardId
+ *      never produces one — the slug-ifier and the validator are intentionally asymmetric.
  *   6. Strip trailing `_`.
  *   7. Truncate to 40 characters.
  *   8. Return `""` if the result is empty.
@@ -36,7 +38,11 @@ export function slugifyKeyboardId(displayName: string): string {
   // Step 4: Collapse runs of `_` to a single `_`.
   s = s.replace(/_+/g, "_");
 
-  // Step 5: Strip leading non-[a-z] characters.
+  // Step 5: Strip leading non-[a-z] characters (including underscores).
+  // Note: validateKeyboardId (aligned with KD) allows a leading underscore,
+  // but slugifyKeyboardId intentionally does NOT produce one — free-text
+  // input that starts with underscores after normalization should yield a
+  // letter-initial slug. The validator and the slug-ifier are not symmetric.
   s = s.replace(/^[^a-z]+/, "");
 
   // Step 6: Strip trailing `_`.
@@ -56,34 +62,36 @@ export interface KeyboardIdValidation {
   reason?: string;
 }
 
+// Canonical reference: ../keyman/developer/src/common/web/utils/src/valid-ids.ts line 13
+// KD regex: /^[a-z_][a-z0-9_]*$/  (no length cap upstream; we add a 254-char local limit)
+const KEYBOARD_ID_RE = /^[a-z_][a-z0-9_]{0,253}$/;
+
 /**
  * Validate a candidate keyboard id against keymanapp/keyboards convention.
  *
  * Rules:
- *   - Must match `/^[a-z][a-z0-9_]{0,253}$/`.
- *   - Must NOT contain the substring `keyboard`
- *     (per docs/criteria.md line 18).
+ *   - Must match `/^[a-z_][a-z0-9_]{0,253}$/` (aligned with KD `isValidKeymanKeyboardId`).
+ *   - Maximum 254 characters (local limit; KD has no explicit cap).
  *
- * Returns `{ valid: true }` when both pass; otherwise `{ valid: false, reason: "..." }`.
+ * Naming conventions (e.g. avoiding the substring "keyboard") are documented in
+ * docs/criteria.md but are NOT enforced here — they are advisory, not structural.
+ *
+ * Returns `{ valid: true }` on success; otherwise `{ valid: false, reason: "..." }`.
  */
 export function validateKeyboardId(id: string): KeyboardIdValidation {
   if (id.length === 0) {
-    return { valid: false, reason: "must start with a lowercase letter" };
+    return { valid: false, reason: "must start with a lowercase letter or underscore" };
   }
 
-  if (!/^[a-z]/.test(id)) {
-    return { valid: false, reason: "must start with a lowercase letter" };
+  if (id.length > 254) {
+    return { valid: false, reason: "must be 254 characters or fewer" };
   }
 
-  if (!/^[a-z][a-z0-9_]{0,253}$/.test(id)) {
-    if (id.length > 254) {
-      return { valid: false, reason: "must be 254 characters or fewer" };
+  if (!KEYBOARD_ID_RE.test(id)) {
+    if (!/^[a-z_]/.test(id)) {
+      return { valid: false, reason: "must start with a lowercase letter or underscore" };
     }
     return { valid: false, reason: "contains invalid characters (only a-z, 0-9, and _ are allowed)" };
-  }
-
-  if (id.includes("keyboard")) {
-    return { valid: false, reason: "must not contain the word 'keyboard'" };
   }
 
   return { valid: true };
