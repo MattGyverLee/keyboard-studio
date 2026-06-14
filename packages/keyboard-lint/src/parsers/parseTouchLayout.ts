@@ -141,5 +141,11 @@ export function parseTouchLayout(
     platforms.push(platform);
   }
 
+  // nodeIds is intentionally left empty. Building a full composite-key index
+  // (platform-id + layer-id + key-id -> IRNodeRef) is deferred to a planned
+  // consolidation with engine/src/codec/parse-touch.ts (tracked as #354).
+  // Callers that need to locate specific keys must walk the hierarchical
+  // `platforms` tree directly. An empty array is valid for the
+  // Array<[string, IRNodeRef]> type, so this does not affect type safety.
   return { platforms, nodeIds: [] };
 }

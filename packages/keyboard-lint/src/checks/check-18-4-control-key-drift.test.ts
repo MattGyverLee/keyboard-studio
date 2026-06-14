@@ -110,4 +110,33 @@ describe("checkControlKeyDrift (18.4 KM_WARN_CONTROL_KEY_DRIFT)", () => {
     expect(findings[0]?.code).toBe("KM_WARN_CONTROL_KEY_DRIFT");
     expect(findings[0]?.message).toContain("position in row");
   });
+
+  it("warns when baseline has sp+width but second layer omits both (asymmetric drift)", () => {
+    // Baseline layer: K_BKSP has sp:1 and width:100.
+    // Second layer: K_BKSP omits both sp and width (undefined).
+    // Asymmetric presence of sp/width IS drift per design decision.
+    const ir = makeIRTwoLayers({ sp: 1, width: 100 }, {});
+    const findings = checkControlKeyDrift(ir, PATH);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe("KM_WARN_CONTROL_KEY_DRIFT");
+    expect(findings[0]?.message).toContain("sp changed from 1");
+    expect(findings[0]?.message).toContain("unset");
+  });
+
+  it("passes (no finding) when both layers have neither sp nor width and position is unchanged", () => {
+    // Neither layer sets sp or width; position is the same in both.
+    // No drift of any kind, so no finding expected.
+    const ir = makeIRTwoLayers({}, {});
+    expect(checkControlKeyDrift(ir, PATH)).toEqual([]);
+  });
+
+  it("warns on position drift even when neither layer has sp/width data", () => {
+    // Both layers omit sp and width, but K_BKSP moves to a different row.
+    // Position drift must be flagged regardless of sp/width presence.
+    const ir = makeIRTwoLayers({ rowIndex: 0 }, { rowIndex: 1 });
+    const findings = checkControlKeyDrift(ir, PATH);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.code).toBe("KM_WARN_CONTROL_KEY_DRIFT");
+    expect(findings[0]?.message).toContain("row changed");
+  });
 });

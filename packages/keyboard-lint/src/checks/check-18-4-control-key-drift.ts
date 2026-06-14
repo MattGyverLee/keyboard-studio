@@ -1,7 +1,12 @@
 // Check 18.4 — KM_WARN_CONTROL_KEY_DRIFT
 // Criteria: Within a platform, control keys (K_BKSP, K_ENTER) must not move or
 // resize across layers. "Geometry" = sp + width + position (rowIndex + indexInRow).
-// Skip platforms or keys that lack the data needed for comparison.
+//
+// Design decision: asymmetric sp/width IS drift. If the baseline layer defines sp
+// or width and a subsequent layer omits it (or vice versa), that counts as drift.
+// The undefined side is reported as "unset" in the drift message. Position drift
+// (rowIndex and keyIndex) is ALWAYS checked regardless of whether sp/width data is
+// present on either side.
 
 import type { LintFinding } from "@keyboard-studio/contracts";
 import type { TouchLayoutIR, TouchKeyIR } from "@keyboard-studio/contracts";
@@ -18,7 +23,12 @@ interface KeyGeometry {
 
 /**
  * Check that control keys maintain consistent geometry (sp, width, position) across
- * all layers within each platform. Skips keys with no sp/width data on either side.
+ * all layers within each platform.
+ *
+ * Position drift (rowIndex, keyIndex) is always checked. sp and width drift is
+ * checked symmetrically: if either side has a value and they differ (including
+ * defined vs. undefined), that is drift. This matches the criterion that control-key
+ * geometry must be constant across layers.
  *
  * @param ir - Parsed touch layout.
  * @param touchLayoutPath - Virtual FS path used in `location.file`.
@@ -52,36 +62,30 @@ export function checkControlKeyDrift(
             return;
           }
 
-          // Skip comparison if neither side has sp/width data
-          const hasData =
-            (base.sp !== undefined || base.width !== undefined) &&
-            (geometry.sp !== undefined || geometry.width !== undefined);
-          if (!hasData) return;
-
           const drifts: string[] = [];
 
-          if (
-            base.sp !== undefined &&
-            geometry.sp !== undefined &&
-            base.sp !== geometry.sp
-          ) {
-            drifts.push(`sp changed from ${base.sp} (layer "${base.layerId}") to ${geometry.sp}`);
-          }
-
-          if (
-            base.width !== undefined &&
-            geometry.width !== undefined &&
-            base.width !== geometry.width
-          ) {
-            drifts.push(`width changed from ${base.width} (layer "${base.layerId}") to ${geometry.width}`);
-          }
-
+          // Position drift: always checked regardless of sp/width presence.
           if (base.rowIndex !== geometry.rowIndex) {
             drifts.push(`row changed from ${base.rowIndex + 1} (layer "${base.layerId}") to ${geometry.rowIndex + 1}`);
           }
 
           if (base.keyIndex !== geometry.keyIndex) {
             drifts.push(`position in row changed from ${base.keyIndex + 1} (layer "${base.layerId}") to ${geometry.keyIndex + 1}`);
+          }
+
+          // sp drift: flag whenever the values differ, including defined vs. undefined.
+          // Treat undefined as "unset" for the message; asymmetric sp IS drift.
+          if (base.sp !== geometry.sp) {
+            const from = base.sp !== undefined ? String(base.sp) : "unset";
+            const to = geometry.sp !== undefined ? String(geometry.sp) : "unset";
+            drifts.push(`sp changed from ${from} (layer "${base.layerId}") to ${to}`);
+          }
+
+          // width drift: same semantics as sp.
+          if (base.width !== geometry.width) {
+            const from = base.width !== undefined ? String(base.width) : "unset";
+            const to = geometry.width !== undefined ? String(geometry.width) : "unset";
+            drifts.push(`width changed from ${from} (layer "${base.layerId}") to ${to}`);
           }
 
           if (drifts.length > 0) {

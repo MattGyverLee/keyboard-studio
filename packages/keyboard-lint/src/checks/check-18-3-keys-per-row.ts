@@ -29,7 +29,9 @@ export function checkKeysPerRow(
 
     for (const layer of platform.layers) {
       layer.rows.forEach((row, rowIdx) => {
-        const keyCount = row.keys.length;
+        // sp===8 denotes spacer keys; they occupy horizontal space but do not add
+        // to the interactive key count that drives crowding on small screens.
+        const keyCount = row.keys.filter((k) => k.sp !== 8).length;
         if (keyCount > maxKeys) {
           findings.push({
             code: "KM_WARN_TOUCH_KEYS_PER_ROW",

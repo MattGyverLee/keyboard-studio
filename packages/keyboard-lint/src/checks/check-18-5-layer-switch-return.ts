@@ -54,20 +54,26 @@ export function checkLayerSwitchReturn(
       layerKeys.set(layer.id, allKeys);
     }
 
-    // Collect all layers that are switched into via nextlayer
+    // Collect all layers that are switched into via nextlayer.
+    // Self-references (a key whose nextlayer points back to its own layer id) do
+    // not constitute a real layer switch and are excluded from the switched-into set.
     const switchedInto = new Set<string>();
-    for (const keys of layerKeys.values()) {
+    for (const [sourceLayerId, keys] of layerKeys.entries()) {
       for (const target of collectNextlayerKeys(keys)) {
-        switchedInto.add(target);
+        if (target !== sourceLayerId) {
+          switchedInto.add(target);
+        }
       }
     }
 
-    // For each switched-into layer, verify it has at least one exit
+    // For each switched-into layer, verify it has at least one exit.
+    // A self-referencing nextlayer (pointing back to the same layer id) does not
+    // count as a real exit — the user would be stuck in a loop with no way out.
     for (const targetLayerId of switchedInto) {
       const keys = layerKeys.get(targetLayerId);
       if (!keys) continue; // target layer doesn't exist in this platform — a different issue
 
-      const exits = collectNextlayerKeys(keys);
+      const exits = collectNextlayerKeys(keys).filter((t) => t !== targetLayerId);
       if (exits.length === 0) {
         findings.push({
           code: "KM_WARN_LAYER_SWITCH_NO_RETURN",
