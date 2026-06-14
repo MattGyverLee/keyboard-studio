@@ -934,9 +934,11 @@ function GalleryPreviewWithPatterns({
 
 export interface MechanismGalleryProps {
   selectedBaseKeyboard: BaseKeyboard | null;
+  onComplete?: () => void;
+  onBack?: () => void;
 }
 
-export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps) {
+export function MechanismGallery({ selectedBaseKeyboard, onComplete, onBack }: MechanismGalleryProps) {
   const recordAssignments = useWorkingCopyStore((s) => s.recordAssignments);
   const desktopLocked = useWorkingCopyStore((s) => s.desktopLocked);
   const lockDesktop = useWorkingCopyStore((s) => s.lockDesktop);
@@ -1077,11 +1079,7 @@ export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps
           }}
         >
           <p style={{ fontSize: 15 }}>
-            No base keyboard selected. Go to{" "}
-            <a href="#pick-base" style={{ color: ACCENT, textDecoration: "none" }}>
-              Pick Base
-            </a>{" "}
-            to choose a starting point.
+            No base keyboard selected. Go back to choose a starting point.
           </p>
         </div>
       </div>
@@ -1285,15 +1283,15 @@ export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps
           >
             <p style={{ margin: 0, fontSize: 13, color: TEXT_DIM }}>
               When you are satisfied with your mechanism assignments, lock the
-              desktop layout to proceed to the touch gallery.
+              desktop layout to continue.
             </p>
             <button
               type="button"
-              onClick={lockDesktop}
+              onClick={() => { lockDesktop(); onComplete?.(); }}
               disabled={!hasAssignments}
               title={
                 hasAssignments
-                  ? "Lock the desktop layout and enable the touch gallery"
+                  ? "Lock the desktop layout and continue"
                   : "Apply at least one mechanism before locking"
               }
               style={{
