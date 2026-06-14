@@ -35,7 +35,7 @@ Owned by `/km-doc`. Update this file whenever a doc is added, archived, or re-sc
 | [`docs/making-a-template.md`](making-a-template.md) | Template authoring guide | Template pipeline changes | live |
 | [`docs/Checking Keyman Keyboard Pull Requests.md`](<Checking Keyman Keyboard Pull Requests.md>) | PR review checklist | Criteria or review-process changes | live |
 | [`docs/triage-scheduling.md`](triage-scheduling.md) | Issue triage and scheduling guide | Process changes | live |
-| [`docs/workflow-model.md`](workflow-model.md) | Supplementary workflow graph + question analysis; authoritative hybrid ordering now in spec §8 | Spec §8 workflow changes; two-track authoring changes | live |
+| [`docs/workflow-model.md`](workflow-model.md) | Hybrid authoring flow (Track 1 + Track 2), working-copy spine, node vocabulary, question inventory, efficiency findings, decisions; spec §8 is authoritative | Spec §8 workflow changes; two-track authoring changes | live |
 
 ## Audit / inventory docs
 
@@ -53,6 +53,7 @@ Owned by `/km-doc`. Update this file whenever a doc is added, archived, or re-sc
 |---|---|---|---|
 | [`docs/spec-amendment-2026-06-08-keyboardir.md`](spec-amendment-2026-06-08-keyboardir.md) | v1.1.0 KeyboardIR import amendment record | Superseded by spec.md §19 | archived |
 | [`docs/spec-amendment-2026-06-11-placement-priors.md`](spec-amendment-2026-06-11-placement-priors.md) | v1.1.1 placement-priors amendment record | Superseded by spec.md §19 | archived |
+| [`docs/archive/workflow-models-pre-hybrid.md`](archive/workflow-models-pre-hybrid.md) | Pre-hybrid authoring models: as-built two-island flow (Model 1) and intermediate intended model (Model 2); retained for provenance only | No update triggers — archived 2026-06-14; superseded by docs/workflow-model.md | archived |
 
 ## Project guidance
 
