@@ -92,6 +92,7 @@ export function BaseResolution({
       ),
     );
     const sample = withLangs[0];
+    const camQwerty = bases.find((b) => b.id === "sil_cameroon_qwerty");
     return {
       bcp47: target.bcp47 ?? "(not set)",
       script: target.script,
@@ -101,6 +102,7 @@ export function BaseResolution({
       sampleLanguages: (sample?.languages ?? []).slice(0, 5),
       langMatchCount: langMatches.length,
       langMatchIds: langMatches.slice(0, 5).map((b) => b.id),
+      sil_cameroon_qwerty_langs: (camQwerty?.languages ?? []).slice(0, 10),
     };
   }, [bases, target, languagesById]);
 
