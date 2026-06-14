@@ -1,16 +1,10 @@
-// Tests for the browser pattern library service (Part 1).
-// Note: import.meta.glob is mocked in the vitest environment (no Vite transform
-// at test time), so YAML_MODULES resolves to {}. The test exercises the logic by
-// directly calling getPatternLibraryService() and checking the empty-glob
-// degradation path (0 patterns), plus the mock path (USE_REAL=false gives
-// mockPatternLibrary). For the glob load logic itself, the engine's
-// patternLibrary.test.ts is the authoritative round-trip test.
+// Tests for the browser pattern library service.
+// vitest runs through Vite, so import.meta.glob IS transformed here and the real
+// content/patterns catalog loads — the same path the SPA build uses. The
+// "loads the real content/patterns catalog" case below is the regression guard
+// that the glob path resolves the repo-root tree (not an empty match).
 
-import { describe, it, expect, vi, beforeAll } from "vitest";
-
-// Mock import.meta.glob before importing the module under test.
-// Vitest runs in Node/jsdom, not Vite — import.meta.glob is undefined.
-vi.stubGlobal("importMetaGlob", {});
+import { describe, it, expect } from "vitest";
 
 describe("browserPatternLibrary", () => {
   it("getPatternLibraryService() returns an object satisfying PatternLibraryService", async () => {
