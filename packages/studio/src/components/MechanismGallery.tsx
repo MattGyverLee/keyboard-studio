@@ -5,6 +5,11 @@
 // to get strategy-ranked matches; renders mechanism cards with apply/scope UI
 // and a live coverage indicator (criterion 18.6).
 //
+// Preview wiring (this cycle): useKeyboardArtifact (open-base fetch path) +
+// vfsTransform (applyAssignmentsToVfs) feeds the compiled result into OSKFrame,
+// giving the author a live view of the base keyboard WITH their mechanisms
+// applied. Recomputes when selectedBaseKeyboard or sessionAssignments change.
+//
 // Scope support: keyboard-default and individual (character-class is OPTIONAL
 // for this slice and is not implemented — documented as a follow-up).
 
@@ -21,15 +26,18 @@ import type {
   PatternMatch,
   MechanismAssignment,
   DemoObject,
+  VirtualFS,
 } from "@keyboard-studio/contracts";
 import { uncoveredTargets } from "@keyboard-studio/contracts";
 import { useSurveyResultsStore } from "../stores/surveyResultsStore.ts";
 import { getPatternLibraryService } from "../lib/services.ts";
 import type { DiscoveryAxisVector } from "@keyboard-studio/contracts";
-// applyAssignments is browser-safe (pure string manipulation, no node:fs).
-// Full scaffold+VFS preview (fetch base keyboard source → scaffold → apply)
-// is a follow-up cycle — see §7.7 "Preview wiring" deferral comment below.
-import { applyAssignments } from "@keyboard-studio/engine";
+import { applyAssignmentsToVfs } from "@keyboard-studio/engine";
+import { useKeyboardArtifact } from "../hooks/useKeyboardArtifact.ts";
+import type { VfsTransform } from "../hooks/useKeyboardArtifact.ts";
+import { OSKFrame } from "./OSKFrame.tsx";
+import { OskModeToggle } from "./OskModeToggle.tsx";
+import type { OskMode } from "./OskModeToggle.tsx";
 
 // ---------------------------------------------------------------------------
 // Style constants (dark palette from studio CLAUDE.md)
@@ -592,84 +600,113 @@ function CoverageIndicator({ assignments, inventory }: CoverageIndicatorProps) {
 }
 
 // ---------------------------------------------------------------------------
-// KmnPreview — best-effort §7.7 preview (Part 6).
+// GalleryPreviewWithPatterns — wraps GalleryPreview, injects a real sync
+// pattern resolver into the vfsTransform via a factory approach.
 //
-// Applies assignments to an EMPTY .kmn base via applyAssignments() (browser-
-// safe, no network call). This shows the injected fragment text so the author
-// can verify slot values before committing. It does NOT scaffold the full base
-// keyboard (that requires a network fetch of the source .kmn from the proxy —
-// deferred to the next cycle as a follow-up). Warnings are surfaced inline.
+// The problem: applyAssignmentsToVfs needs a synchronous (id: string) =>
+// Pattern | undefined resolver, but PatternLibraryService.getById() is async.
+// BrowserPatternLibraryService is synchronously backed (Promise.resolve of an
+// in-memory array) but the interface is async. We solve this by passing the
+// already-loaded patternMap from the gallery's existing async load as the
+// resolver, so the transform always has the patterns it needs.
 // ---------------------------------------------------------------------------
 
-interface KmnPreviewProps {
-  assignments: MechanismAssignment[];
+interface GalleryPreviewWithPatternsProps {
+  selectedBaseKeyboard: BaseKeyboard;
+  sessionAssignments: MechanismAssignment[];
   patternMap: Map<string, Pattern>;
 }
 
-function KmnPreview({ assignments, patternMap }: KmnPreviewProps) {
-  const [expanded, setExpanded] = useState(false);
+function GalleryPreviewWithPatterns({
+  selectedBaseKeyboard,
+  sessionAssignments,
+  patternMap,
+}: GalleryPreviewWithPatternsProps) {
+  const [oskMode, setOskMode] = useState<OskMode>("desktop");
 
-  if (assignments.length === 0) return null;
+  // Build a stable memoization key from the assignment list.
+  const assignmentsKey = useMemo(
+    () =>
+      sessionAssignments
+        .map(
+          (a) =>
+            `${a.scope}:${a.target}:${a.mechanisms.map((m) => `${m.patternId}/${JSON.stringify(m.slotValues ?? {})}`).join(",")}`,
+        )
+        .join("|"),
+    [sessionAssignments],
+  );
 
-  const buildPreview = (): { kmn: string; warnings: string[] } => {
-    const getPattern = (id: string) => patternMap.get(id);
-    // Apply to an empty KMN base. The result is the injected fragment only —
-    // not a full compilable keyboard (that requires scaffolding the base source).
-    return applyAssignments(assignments, getPattern, "");
-  };
+  // Memoize patternMap identity — only changes when the loaded patterns change,
+  // not on every render.
+  const patternMapRef = useMemo(() => patternMap, [patternMap]);
 
-  const previewButtonStyle: CSSProperties = {
-    padding: "7px 14px",
-    background: "transparent",
-    border: `1px solid ${BORDER}`,
-    borderRadius: 6,
-    color: TEXT_DIM,
-    fontSize: 12,
-    cursor: "pointer",
-    fontFamily: FONT,
-  };
+  // vfsTransform: stable per assignmentsKey + patternMap. Uses patternMapRef
+  // for synchronous pattern resolution without an async service round-trip.
+  const vfsTransform = useMemo<VfsTransform>(
+    () =>
+      (vfs: VirtualFS, keyboardId: string) =>
+        applyAssignmentsToVfs(
+          vfs,
+          keyboardId,
+          sessionAssignments,
+          (id) => patternMapRef.get(id),
+        ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [assignmentsKey, patternMapRef],
+  );
 
-  if (!expanded) {
-    return (
-      <div style={{ marginTop: 24, borderTop: `1px solid ${BORDER}`, paddingTop: 16 }}>
-        <button type="button" style={previewButtonStyle} onClick={() => setExpanded(true)}>
-          Show .kmn preview (fragment only)
-        </button>
-        <p style={{ margin: "6px 0 0", fontSize: 11, color: TEXT_DIM }}>
-          Preview shows injected KMN fragments on an empty base. Full scaffold
-          preview (including base keyboard source) is a follow-up cycle.
-        </p>
-      </div>
-    );
-  }
+  const { stage, retry } = useKeyboardArtifact(
+    selectedBaseKeyboard,
+    null,
+    vfsTransform,
+  );
 
-  const { kmn, warnings } = buildPreview();
+  const applyWarnings =
+    stage.kind === "ready" && stage.scaffoldWarnings.length > 0
+      ? stage.scaffoldWarnings
+      : [];
 
   return (
-    <div
+    <section
+      aria-label="Live keyboard preview with mechanisms applied"
       style={{
-        marginTop: 24,
+        marginTop: 28,
         borderTop: `1px solid ${BORDER}`,
-        paddingTop: 16,
+        paddingTop: 20,
         display: "flex",
         flexDirection: "column",
-        gap: 10,
+        gap: 14,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: TEXT_MAIN }}>
-          .kmn preview (fragment only)
-        </span>
-        <button
-          type="button"
-          style={previewButtonStyle}
-          onClick={() => setExpanded(false)}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 10,
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            fontSize: "1rem",
+            fontWeight: 600,
+            color: ACCENT,
+            fontFamily: FONT,
+          }}
         >
-          hide
-        </button>
+          Live preview — base with mechanisms
+        </h2>
+        <OskModeToggle
+          value={oskMode}
+          onChange={setOskMode}
+          disabled={stage.kind !== "ready"}
+        />
       </div>
 
-      {warnings.length > 0 && (
+      {/* Apply warnings */}
+      {applyWarnings.length > 0 && (
         <div
           role="alert"
           aria-live="polite"
@@ -680,37 +717,109 @@ function KmnPreview({ assignments, patternMap }: KmnPreviewProps) {
             padding: "8px 12px",
             fontSize: 12,
             color: "#f0883e",
+            fontFamily: FONT,
           }}
         >
-          <strong>Warnings:</strong>
+          <strong>Apply warnings:</strong>
           <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-            {warnings.map((w, i) => (
+            {applyWarnings.map((w, i) => (
               <li key={i}>{w}</li>
             ))}
           </ul>
         </div>
       )}
 
-      <pre
-        style={{
-          margin: 0,
-          padding: "12px 14px",
-          background: BG_PAGE,
-          border: `1px solid ${BORDER}`,
-          borderRadius: 6,
-          fontSize: 12,
-          fontFamily: "monospace",
-          color: TEXT_MAIN,
-          overflowX: "auto",
-          whiteSpace: "pre",
-          maxHeight: 400,
-          overflowY: "auto",
-        }}
-        aria-label="Generated KMN fragment"
-      >
-        {kmn.trim() || "(empty — fill slot values and apply a mechanism first)"}
-      </pre>
-    </div>
+      {/* Loading state */}
+      {(stage.kind === "fetching" || stage.kind === "vfs-loading" || stage.kind === "compiling") && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Loading keyboard preview"
+          style={{
+            padding: "24px 0",
+            textAlign: "center",
+            color: TEXT_DIM,
+            fontSize: 13,
+            fontFamily: FONT,
+          }}
+        >
+          {stage.kind === "fetching"
+            ? "Fetching keyboard source..."
+            : stage.kind === "compiling"
+              ? `Compiling${stage.isWarmCompile ? "" : " (loading WASM)"}...`
+              : "Loading..."}
+        </div>
+      )}
+
+      {/* Error state */}
+      {stage.kind === "error" && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          style={{
+            padding: "16px 20px",
+            background: "#2a0a0a",
+            border: "1px solid #f85149",
+            borderRadius: 8,
+            color: "#f85149",
+            fontSize: 13,
+            fontFamily: FONT,
+          }}
+        >
+          <strong>[ERROR]</strong> Preview failed ({stage.step}): {stage.message}
+          <div style={{ marginTop: 10 }}>
+            <button
+              type="button"
+              onClick={retry}
+              style={{
+                padding: "5px 12px",
+                background: "transparent",
+                border: `1px solid #f85149`,
+                borderRadius: 4,
+                color: "#f85149",
+                fontSize: 12,
+                cursor: "pointer",
+                fontFamily: FONT,
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* OSKFrame — always mounted so KMW stays warm; overlay handles non-ready states */}
+      <div style={{ display: stage.kind === "error" ? "none" : "block" }}>
+        <OSKFrame
+          baseKeyboard={selectedBaseKeyboard}
+          oskMode={oskMode}
+          stage={stage}
+          retry={retry}
+        />
+      </div>
+
+      {/* Compile diagnostics */}
+      {stage.kind === "ready" && stage.compileResult.diagnostics.length > 0 && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label={`${stage.compileResult.diagnostics.length} compiler diagnostic(s)`}
+          style={{
+            background: BG_CARD,
+            border: `1px solid ${BORDER}`,
+            borderRadius: 6,
+            padding: "8px 12px",
+            fontSize: 11,
+            color: TEXT_DIM,
+            fontFamily: "ui-monospace, 'Cascadia Code', Consolas, monospace",
+          }}
+        >
+          <span style={{ color: "#d29922" }}>
+            {stage.compileResult.diagnostics.length} compiler diagnostic(s).
+          </span>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -973,13 +1082,18 @@ export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps
           </div>
         )}
 
-        {/* §7.7 preview wiring (best-effort, Part 6) */}
-        <KmnPreview
-          assignments={sessionAssignments}
-          patternMap={patternMap}
-        />
+        {/* §7.7 OSK preview: scaffold→fetch→applyAssignmentsToVfs→compile→OSKFrame.
+            Shown once patterns have loaded (patternMap available for sync resolver).
+            Empty-assignments state: the preview still renders the unmodified base
+            so the author sees what they are building on top of. */}
+        {!loading && loadError === null && (
+          <GalleryPreviewWithPatterns
+            selectedBaseKeyboard={selectedBaseKeyboard}
+            sessionAssignments={sessionAssignments}
+            patternMap={patternMap}
+          />
+        )}
       </div>
     </div>
   );
 }
-
