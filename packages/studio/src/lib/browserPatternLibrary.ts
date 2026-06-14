@@ -100,12 +100,14 @@ const PatternSchema = z
 type RawPattern = z.infer<typeof PatternSchema>;
 
 // ---------------------------------------------------------------------------
-// Vite glob — eager, raw text. Path is relative to the Vite project root
-// (packages/studio). Resolve: packages/studio/../../content/patterns = content/patterns.
+// Vite glob — eager, raw text. import.meta.glob resolves relative to THIS
+// module file (packages/studio/src/lib/), so reaching the repo-root content/
+// tree is four levels up: lib -> src -> studio -> packages -> <repo root>.
+//   packages/studio/src/lib/../../../../content/patterns = <repo root>/content/patterns
 // ---------------------------------------------------------------------------
 
 const YAML_MODULES = import.meta.glob(
-  "../../content/patterns/**/*.yaml",
+  "../../../../content/patterns/**/*.yaml",
   { eager: true, query: "?raw", import: "default" },
 ) as Record<string, string>;
 

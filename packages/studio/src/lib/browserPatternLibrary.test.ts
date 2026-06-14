@@ -23,11 +23,20 @@ describe("browserPatternLibrary", () => {
     expect(typeof svc.filterFor).toBe("function");
   });
 
-  it("listAll() resolves to an array (may be empty when glob yields no files in test env)", async () => {
+  // Regression guard: the import.meta.glob path must actually resolve the
+  // repo-root content/patterns tree. A too-lenient "may be empty" assertion
+  // previously masked a wrong glob path that loaded ZERO patterns (the gallery
+  // would render empty). Assert the real catalog loads.
+  it("listAll() loads the real content/patterns catalog", async () => {
     const { getPatternLibraryService } = await import("./browserPatternLibrary.ts");
     const svc = getPatternLibraryService();
     const all = await svc.listAll();
     expect(Array.isArray(all)).toBe(true);
+    expect(all.length).toBeGreaterThan(0);
+    // A known desktop-input pattern must be present (proves the glob path + the
+    // null-fragment schema handling both work against the real catalog).
+    expect(await svc.getById("deadkey_single_tap")).toBeDefined();
+    expect(await svc.getById("multi_char_sequence")).toBeDefined();
   });
 
   it("getById() returns undefined for an unknown id", async () => {
