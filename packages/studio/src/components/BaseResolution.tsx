@@ -3,8 +3,15 @@
 // BaseBrowserService, ranks them with suggestBases() (language > script >
 // US-QWERTY fallback), and lets the author accept a suggestion or pick any base.
 // The chosen base then back-fills the prefill confirmations. refs #369.
+//
+// Language data for dev-mode bases (served by the local Vite plugin) is sparse
+// in the catalog response. This component therefore fetches each base's .kps
+// file directly via the /local-kbd-proxy path and parses Language IDs client-
+// side — the same approach that is guaranteed to work regardless of whether the
+// Vite plugin's catalog cache was warm when the server started.
 
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import type { BaseKeyboard } from "@keyboard-studio/contracts";
 import { getBaseBrowserService } from "../lib/services.ts";
 import {
@@ -26,6 +33,26 @@ const REASON_COLOR: Record<SuggestReason, string> = {
   "us-qwerty-fallback": "#8b949e",
 };
 
+const KPS_LANG_RE = /Language[^>]+ID="([^"]+)"/g;
+
+async function fetchKpsLanguages(base: BaseKeyboard): Promise<[string, string[]]> {
+  const url = `/local-kbd-proxy/${base.path}/source/${base.id}.kps`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return [base.id, []];
+    const text = await res.text();
+    const ids: string[] = [];
+    const re = new RegExp(KPS_LANG_RE.source, "g");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      if (m[1] !== undefined && m[1].length > 0) ids.push(m[1]);
+    }
+    return [base.id, ids];
+  } catch {
+    return [base.id, []];
+  }
+}
+
 export interface BaseResolutionProps {
   /** The chosen (language, script) target from identity-lite. */
   target: SuggestTarget;
@@ -42,30 +69,7 @@ export function BaseResolution({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<BaseKeyboard | null>(null);
-  const [kpsProbe, setKpsProbe] = useState<string>("checking…");
-  const [langEndpointProbe, setLangEndpointProbe] = useState<string>("checking…");
-
-  useEffect(() => {
-    const KPS_PATH = "/local-kbd-proxy/release/sil/sil_cameroon_qwerty/source/sil_cameroon_qwerty.kps";
-    fetch(KPS_PATH)
-      .then(async (r) => {
-        if (!r.ok) { setKpsProbe(`HTTP ${r.status} — not found`); return; }
-        const text = await r.text();
-        const matches = [...text.matchAll(/Language[^>]+ID="([^"]+)"/g)].map((m) => m[1] ?? "?");
-        setKpsProbe(matches.length === 0 ? `found (${text.length} bytes) but no IDs matched` : `first 5: ${matches.slice(0, 5).join(", ")} (${matches.length} total)`);
-      })
-      .catch((e: unknown) => setKpsProbe(`error: ${String(e)}`));
-
-    fetch("/local-kbd-api/languages")
-      .then(async (r) => {
-        if (!r.ok) { setLangEndpointProbe(`HTTP ${r.status} — endpoint not registered (restart dev server)`); return; }
-        const data = (await r.json()) as Record<string, string[]>;
-        const keys = Object.keys(data);
-        const camEntry = data["sil_cameroon_qwerty"];
-        setLangEndpointProbe(`${keys.length} keyboards; sil_cameroon_qwerty: [${(camEntry ?? []).slice(0, 5).join(", ")}…]`);
-      })
-      .catch((e: unknown) => setLangEndpointProbe(`error: ${String(e)}`));
-  }, []);
+  const [proxyLangs, setProxyLangs] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     let live = true;
@@ -89,16 +93,35 @@ export function BaseResolution({
     };
   }, []);
 
-  // Build the phonebook from the loaded bases' .languages arrays so the caller
-  // need not thread a separate map. Each base's languages field (populated from
-  // its .kps <Languages> block) is used as-is; bases without languages degrade
-  // to script-match ranking via the empty-array default in suggestBases().
+  // Fetch .kps language data via the dev proxy for bases that have no languages
+  // populated by the catalog. In production the catalog already carries this data
+  // (populated by the GitHub API path); fetches fail gracefully with empty arrays.
+  useEffect(() => {
+    if (bases.length === 0) return;
+    let live = true;
+    const needFetch = bases.filter((b) => (b.languages ?? []).length === 0);
+    if (needFetch.length === 0) return;
+    Promise.allSettled(needFetch.map(fetchKpsLanguages)).then((results) => {
+      if (!live) return;
+      const map: Record<string, string[]> = {};
+      for (const r of results) {
+        if (r.status === "fulfilled" && r.value[1].length > 0) {
+          map[r.value[0]] = r.value[1];
+        }
+      }
+      setProxyLangs(map);
+    });
+    return () => {
+      live = false;
+    };
+  }, [bases]);
+
   const languagesById = useMemo(
-    () =>
-      Object.fromEntries(
-        bases.map((b) => [b.id, b.languages ?? []] as const),
-      ),
-    [bases],
+    () => ({
+      ...Object.fromEntries(bases.map((b) => [b.id, b.languages ?? []] as const)),
+      ...proxyLangs,
+    }),
+    [bases, proxyLangs],
   );
 
   const suggestions = useMemo(
@@ -106,37 +129,13 @@ export function BaseResolution({
     [bases, target, languagesById],
   );
 
-  // Debug: visible on-screen so mobile users can diagnose without a console.
-  const debugInfo = useMemo(() => {
-    const targetLang = target.bcp47?.split("-")[0] ?? "(none)";
-    const withLangs = bases.filter((b) => (b.languages ?? []).length > 0);
-    const langMatches = bases.filter((b) =>
-      (languagesById[b.id] ?? []).some(
-        (t) => t.split("-")[0] === targetLang,
-      ),
-    );
-    const sample = withLangs[0];
-    const camQwerty = bases.find((b) => b.id === "sil_cameroon_qwerty");
-    return {
-      bcp47: target.bcp47 ?? "(not set)",
-      script: target.script,
-      totalBases: bases.length,
-      withLanguagesCount: withLangs.length,
-      sampleId: sample?.id ?? "(none)",
-      sampleLanguages: (sample?.languages ?? []).slice(0, 5),
-      langMatchCount: langMatches.length,
-      langMatchIds: langMatches.slice(0, 5).map((b) => b.id),
-      sil_cameroon_qwerty_langs: (camQwerty?.languages ?? []).slice(0, 10),
-    };
-  }, [bases, target, languagesById]);
-
-  const heading: React.CSSProperties = {
+  const heading: CSSProperties = {
     margin: "0 0 8px 0",
     fontSize: "1.1rem",
     color: "#6ea8fe",
     fontWeight: 600,
   };
-  const subtle: React.CSSProperties = { margin: "0 0 20px 0", fontSize: 13, color: "#8b949e" };
+  const subtle: CSSProperties = { margin: "0 0 20px 0", fontSize: 13, color: "#8b949e" };
 
   if (loading) return <div style={{ color: "#8b949e" }}>Loading base keyboards…</div>;
   if (error !== null) return <div style={{ color: "#f85149" }}>{error}</div>;
@@ -148,14 +147,6 @@ export function BaseResolution({
         Based on your language and chosen script, here are the closest starting
         points. Pick one, or choose another below.
       </p>
-
-      {/* Temporary debug panel — remove once language-match is confirmed working */}
-      <details style={{ marginBottom: 12, fontSize: 11, color: "#8b949e", border: "1px solid #30363d", borderRadius: 6, padding: "6px 10px" }}>
-        <summary style={{ cursor: "pointer" }}>Debug info</summary>
-        <pre style={{ margin: "6px 0 0 0", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{JSON.stringify(debugInfo, null, 2)}</pre>
-        <p style={{ margin: "6px 0 0 0" }}>kps proxy: {kpsProbe}</p>
-        <p style={{ margin: "2px 0 0 0" }}>lang endpoint: {langEndpointProbe}</p>
-      </details>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
         {suggestions.map(({ base, reason }) => (
