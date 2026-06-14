@@ -757,7 +757,7 @@ function GalleryPreviewWithPatterns({
   // passed so assignment projection can run synchronously. The hook memoizes
   // on carve/assignment/identity layer values (not object references) so it
   // only recompiles when a layer actually changes. This unifies the gallery OSK
-  // with the survey/pick-base OSK — all three surfaces reflect the same layers.
+  // with the SurveyView OSK — all three surfaces reflect the same layers.
   const vfsTransform = useWorkingCopyTransform({ patternMap });
 
   const { stage, retry } = useKeyboardArtifact(
@@ -934,9 +934,11 @@ function GalleryPreviewWithPatterns({
 
 export interface MechanismGalleryProps {
   selectedBaseKeyboard: BaseKeyboard | null;
+  onComplete?: () => void;
+  onBack?: () => void;
 }
 
-export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps) {
+export function MechanismGallery({ selectedBaseKeyboard, onComplete, onBack }: MechanismGalleryProps) {
   const recordAssignments = useWorkingCopyStore((s) => s.recordAssignments);
   const desktopLocked = useWorkingCopyStore((s) => s.desktopLocked);
   const lockDesktop = useWorkingCopyStore((s) => s.lockDesktop);
@@ -1048,6 +1050,12 @@ export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps
     recordAssignments(next);
   }, [desktopLocked, sessionAssignments, recordAssignments]);
 
+  // handleLockAndContinue: lock the desktop layout and advance to the next stage.
+  const handleLockAndContinue = useCallback(() => {
+    lockDesktop();
+    onComplete?.();
+  }, [lockDesktop, onComplete]);
+
   // ---------------------------------------------------------------------------
   // Render — empty/error states
   // ---------------------------------------------------------------------------
@@ -1077,11 +1085,7 @@ export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps
           }}
         >
           <p style={{ fontSize: 15 }}>
-            No base keyboard selected. Go to{" "}
-            <a href="#pick-base" style={{ color: ACCENT, textDecoration: "none" }}>
-              Pick Base
-            </a>{" "}
-            to choose a starting point.
+            No base keyboard selected. Go back to choose a starting point.
           </p>
         </div>
       </div>
@@ -1121,6 +1125,31 @@ export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps
   return (
     <div style={pageStyle}>
       <div style={{ maxWidth: 780, margin: "0 auto" }}>
+        {/* Back button — wizard affordance to return to Phase B (character inventory).
+            Rendered only when onBack is provided; disabled when the desktop layout
+            is locked (going back after locking could leave state inconsistent). */}
+        {onBack !== undefined && (
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={desktopLocked}
+            style={{
+              marginBottom: 20,
+              padding: "8px 18px",
+              background: "transparent",
+              border: `1px solid ${BORDER}`,
+              borderRadius: 6,
+              color: TEXT_DIM,
+              fontSize: 13,
+              cursor: desktopLocked ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
+              opacity: desktopLocked ? 0.5 : 1,
+            }}
+          >
+            ← Back
+          </button>
+        )}
+
         {/* Page header */}
         <header style={{ marginBottom: 24 }}>
           <h1 style={{ margin: "0 0 6px", fontSize: "1.2rem", color: ACCENT, fontWeight: 600 }}>
@@ -1285,15 +1314,15 @@ export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps
           >
             <p style={{ margin: 0, fontSize: 13, color: TEXT_DIM }}>
               When you are satisfied with your mechanism assignments, lock the
-              desktop layout to proceed to the touch gallery.
+              desktop layout to continue.
             </p>
             <button
               type="button"
-              onClick={lockDesktop}
+              onClick={handleLockAndContinue}
               disabled={!hasAssignments}
               title={
                 hasAssignments
-                  ? "Lock the desktop layout and enable the touch gallery"
+                  ? "Lock the desktop layout and continue"
                   : "Apply at least one mechanism before locking"
               }
               style={{

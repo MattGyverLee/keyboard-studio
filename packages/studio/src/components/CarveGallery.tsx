@@ -3,9 +3,13 @@ import { PatternCard } from './carve/PatternCard.tsx';
 import { GroupCard } from './carve/GroupCard.tsx';
 import { StoreCard } from './carve/StoreCard.tsx';
 import { RawFragmentCard } from './carve/RawFragmentCard.tsx';
-import { navigateTo } from '../lib/navigate.ts';
 
-export function CarveGallery() {
+interface CarveGalleryProps {
+  onComplete: () => void;
+  onBack?: () => void;
+}
+
+export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
   const ir = useWorkingCopyStore((s) => s.ir);
   const undoStack = useWorkingCopyStore((s) => s.undoStack);
   const keepAll = useWorkingCopyStore((s) => s.keepAll);
@@ -15,9 +19,11 @@ export function CarveGallery() {
     return (
       <div style={{ padding: '1.5rem' }}>
         <p>Loading keyboard...</p>
-        <p>
-          <a href="#pick-base">Go back to keyboard selection</a>
-        </p>
+        {onBack !== undefined && (
+          <button type="button" onClick={onBack} style={{ marginTop: '0.5rem' }}>
+            ← Back
+          </button>
+        )}
       </div>
     );
   }
@@ -32,7 +38,7 @@ export function CarveGallery() {
 
   const handleSkip = () => {
     keepAll();
-    navigateTo('survey');
+    onComplete();
   };
 
   return (
@@ -43,7 +49,7 @@ export function CarveGallery() {
         undo a deletion.
       </p>
       <button onClick={handleSkip} style={{ marginBottom: '1.5rem' }}>
-        Keep everything &mdash; continue to survey
+        Keep everything &mdash; continue
       </button>
 
       {hasNothingToCarve && (
@@ -71,7 +77,7 @@ export function CarveGallery() {
       </div>
 
       <div style={{ marginTop: '1.5rem' }}>
-        <button onClick={handleSkip}>Continue to survey &rarr;</button>
+        <button onClick={onComplete}>Continue &rarr;</button>
       </div>
 
       {undoStack.length > 0 && (
