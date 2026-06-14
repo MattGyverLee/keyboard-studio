@@ -116,9 +116,11 @@ const NAV_ITEMS: NavItem[] = [
 
 interface NavBarProps {
   active: RouteId;
+  /** When false, the Touch nav item is rendered dimmed and non-navigable. */
+  desktopLocked: boolean;
 }
 
-function NavBar({ active }: NavBarProps) {
+function NavBar({ active, desktopLocked }: NavBarProps) {
   return (
     <nav
       aria-label="Studio navigation"
@@ -136,6 +138,32 @@ function NavBar({ active }: NavBarProps) {
     >
       {NAV_ITEMS.map(({ id, label }) => {
         const isActive = id === active;
+        // The Touch route requires the desktop layout to be locked first.
+        // When unlocked, render it as a non-navigable dimmed item so the author
+        // can see the route exists but knows it is not yet available.
+        const isTouchGated = id === "touch" && !desktopLocked;
+        if (isTouchGated) {
+          return (
+            <span
+              key={id}
+              aria-disabled="true"
+              title="Lock the desktop layout in Mechanisms before accessing Touch"
+              style={{
+                padding: "4px 12px",
+                fontSize: 14,
+                fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+                color: "#4a5568",
+                borderBottom: "2px solid transparent",
+                lineHeight: "40px",
+                whiteSpace: "nowrap",
+                cursor: "not-allowed",
+                userSelect: "none",
+              }}
+            >
+              {label}
+            </span>
+          );
+        }
         return (
           <a
             key={id}
@@ -242,13 +270,13 @@ function SurveyView({ baseKeyboard, onBaseSelected }: SurveyViewProps) {
   const rightPct = 100 - leftPct;
 
   // Survey results are persisted into the survey-results store (the data bus the
-  // gallery and §7.2 strategy selector read), not discarded. refs #334, #369.
+  // gallery and §7.2 strategy selector read), not discarded on each phase transition.
   const recordPhase = useSurveyResultsStore((s) => s.recordPhase);
   const resetSurvey = useSurveyResultsStore((s) => s.reset);
 
   // Identity-lite is the hybrid flow's head: it captures the language + the
   // INDEPENDENT target script, deriving the routing/A2 prefill. Gated scripts
-  // (Ethi/Hani/Hang) end on the "not supported" stage. refs #369, spec §8/§9.
+  // (Ethi/Hani/Hang) end on the "not supported" stage. See spec §8/§9.
   function handleIdentityComplete(result: SurveyPhaseResult, identity: IdentityLiteResult) {
     recordPhase(result);
     setIdentityResult(identity);
@@ -456,7 +484,7 @@ function SurveyView({ baseKeyboard, onBaseSelected }: SurveyViewProps) {
               textAlign: "center",
             }}
           >
-            <span style={{ fontSize: 32, opacity: 0.4 }}>⌨</span>
+            <span style={{ fontSize: 32, opacity: 0.4, fontFamily: "monospace" }}>[kb]</span>
             <span>
               Select a base keyboard on the{" "}
               <a href="#pick-base" style={{ color: "#6ea8fe", textDecoration: "none" }}>
@@ -510,7 +538,8 @@ function SurveyView({ baseKeyboard, onBaseSelected }: SurveyViewProps) {
 
 const TOUCH_GATE_FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
-function TouchGate() {
+/** Exported for unit testing only. */
+export function TouchGate() {
   const desktopLocked = useSurveyResultsStore((s) => s.desktopLocked);
 
   const containerStyle: CSSProperties = {
@@ -618,6 +647,10 @@ export function StudioShell() {
     setSelectedBaseKeyboard(kb);
   }, []);
 
+  // Read desktopLocked from the survey store so the NavBar can dim the Touch
+  // item when the desktop layout has not been locked yet.
+  const desktopLocked = useSurveyResultsStore((s) => s.desktopLocked);
+
   let content: ReactNode;
   switch (route) {
     case "pick-base":
@@ -663,7 +696,7 @@ export function StudioShell() {
         background: "#0d1117",
       }}
     >
-      <NavBar active={route} />
+      <NavBar active={route} desktopLocked={desktopLocked} />
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
         {content}
       </div>

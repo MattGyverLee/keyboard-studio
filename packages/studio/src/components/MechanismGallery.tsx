@@ -116,7 +116,7 @@ function SlotForm({ pattern, slotValues, onSlotChange, disabled = false }: SlotF
               htmlFor={`slot-${pattern.id}-${q.id}`}
               style={{
                 fontSize: 11,
-                color: disabled ? TEXT_DIM : TEXT_DIM,
+                color: TEXT_DIM,
                 fontFamily: FONT,
                 opacity: disabled ? 0.6 : 1,
               }}
@@ -658,12 +658,10 @@ function GalleryPreviewWithPatterns({
     [sessionAssignments],
   );
 
-  // Memoize patternMap identity — only changes when the loaded patterns change,
-  // not on every render.
-  const patternMapRef = useMemo(() => patternMap, [patternMap]);
-
-  // vfsTransform: stable per assignmentsKey + patternMap. Uses patternMapRef
-  // for synchronous pattern resolution without an async service round-trip.
+  // vfsTransform: stable per assignmentsKey + patternMap. Uses patternMap
+  // directly for synchronous pattern resolution without an async service round-trip.
+  // patternMap is a useState ref so it is already stable across renders when
+  // the loaded patterns have not changed.
   const vfsTransform = useMemo<VfsTransform>(
     () =>
       (vfs: VirtualFS, keyboardId: string) =>
@@ -671,10 +669,10 @@ function GalleryPreviewWithPatterns({
           vfs,
           keyboardId,
           sessionAssignments,
-          (id) => patternMapRef.get(id),
+          (id) => patternMap.get(id),
         ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [assignmentsKey, patternMapRef],
+    [assignmentsKey, patternMap],
   );
 
   const { stage, retry } = useKeyboardArtifact(
@@ -947,19 +945,23 @@ export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps
 
   // handleApply: merge the new assignment into the full physical assignment list
   // and route through recordAssignments so the find/create-Phase-C logic lives
-  // only in the store.
+  // only in the store. Defense-in-depth: bail early when locked even if a caller
+  // somehow bypasses the disabled controls.
   const handleApply = useCallback((assignment: MechanismAssignment) => {
+    if (desktopLocked) return;
     const next = [...sessionAssignments, assignment];
     recordAssignments(next);
-  }, [sessionAssignments, recordAssignments]);
+  }, [desktopLocked, sessionAssignments, recordAssignments]);
 
   // handleRemove: drop all assignments for this patternId from the physical list.
+  // Defense-in-depth: bail early when locked.
   const handleRemove = useCallback((patternId: string) => {
+    if (desktopLocked) return;
     const next = sessionAssignments.filter(
       (a) => !a.mechanisms.some((m) => m.patternId === patternId),
     );
     recordAssignments(next);
-  }, [sessionAssignments, recordAssignments]);
+  }, [desktopLocked, sessionAssignments, recordAssignments]);
 
   // ---------------------------------------------------------------------------
   // Render — empty/error states
@@ -1121,6 +1123,7 @@ export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps
         ) : loadError !== null ? (
           <div
             role="alert"
+            aria-live="assertive"
             style={{
               padding: "16px 20px",
               background: "#2a0a0a",
@@ -1193,7 +1196,6 @@ export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps
               type="button"
               onClick={lockDesktop}
               disabled={!hasAssignments}
-              aria-disabled={!hasAssignments}
               title={
                 hasAssignments
                   ? "Lock the desktop layout and enable the touch gallery"

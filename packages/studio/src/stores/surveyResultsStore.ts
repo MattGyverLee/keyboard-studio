@@ -23,8 +23,8 @@ interface SurveyResultsState {
   phaseResults: SurveyPhaseResult[];
   /**
    * IR-derived axis baseline, set before/at Phase A from the working IR's
-   * recognized patterns. `{}` until IR seeding lands (#231/#232); updating it
-   * (e.g. after a carve-gallery decision) re-derives the session.
+   * recognized patterns. `{}` until IR seeding lands (see the IR seeding
+   * milestone); updating it (e.g. after a carve-gallery decision) re-derives the session.
    */
   irAxes: Partial<DiscoveryAxisVector>;
   /** Merged session: `mergePhaseResults(irAxes, phaseResults)`. The single source downstream consumers read. */
@@ -40,8 +40,8 @@ interface SurveyResultsState {
    *
    * Promotion to a contract field on SurveySession is NOT done here to avoid a
    * major-version contract change (spec §17 policy requires a joint
-   * engine+content session for schema mutations). Recommend surfacing this for
-   * the next #5b joint session: if the lock flag needs to be persisted in the
+   * engine+content session for schema mutations). Recommend surfacing this in the
+   * next schema joint session: if the lock flag needs to be persisted in the
    * VFS or communicated to the output layer it should become a top-level field
    * on SurveySession (or a separate DesktopLayoutSnapshot type). For studio-only
    * gate purposes (no VFS/output impact yet), the store-local boolean is the
