@@ -83,19 +83,22 @@ export function BaseResolution({
   );
 
   // Debug: visible on-screen so mobile users can diagnose without a console.
-  // Shows target BCP47, total keyboards loaded, and how many have a language
-  // tag matching the target primary subtag.
   const debugInfo = useMemo(() => {
     const targetLang = target.bcp47?.split("-")[0] ?? "(none)";
+    const withLangs = bases.filter((b) => (b.languages ?? []).length > 0);
     const langMatches = bases.filter((b) =>
       (languagesById[b.id] ?? []).some(
         (t) => t.split("-")[0] === targetLang,
       ),
     );
+    const sample = withLangs[0];
     return {
       bcp47: target.bcp47 ?? "(not set)",
       script: target.script,
       totalBases: bases.length,
+      withLanguagesCount: withLangs.length,
+      sampleId: sample?.id ?? "(none)",
+      sampleLanguages: (sample?.languages ?? []).slice(0, 5),
       langMatchCount: langMatches.length,
       langMatchIds: langMatches.slice(0, 5).map((b) => b.id),
     };
