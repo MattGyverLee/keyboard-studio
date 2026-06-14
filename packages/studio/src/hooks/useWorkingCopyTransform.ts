@@ -3,7 +3,7 @@
 // identity overlay) for use with useKeyboardArtifact.
 //
 // This is the single shared factory for the OSK projection. Both the
-// survey/pick-base OSK and the gallery OSK call this hook and pass the
+// SurveyView OSK and the gallery OSK call this hook and pass the
 // resulting VfsTransform into useKeyboardArtifact. The transform is memoized
 // on the layer values (not object references) so a recompile fires only when
 // a layer actually changes — no spurious compile cycles, no second timer

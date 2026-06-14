@@ -145,7 +145,7 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("MechanismGallery — no base keyboard", () => {
-  it("renders the pick-base prompt when selectedBaseKeyboard is null", () => {
+  it("renders the no-base-selected prompt when selectedBaseKeyboard is null", () => {
     render(<MechanismGallery selectedBaseKeyboard={null} />);
     expect(screen.getByText(/No base keyboard selected/i)).toBeTruthy();
   });

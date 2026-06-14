@@ -757,7 +757,7 @@ function GalleryPreviewWithPatterns({
   // passed so assignment projection can run synchronously. The hook memoizes
   // on carve/assignment/identity layer values (not object references) so it
   // only recompiles when a layer actually changes. This unifies the gallery OSK
-  // with the survey/pick-base OSK — all three surfaces reflect the same layers.
+  // with the SurveyView OSK — all three surfaces reflect the same layers.
   const vfsTransform = useWorkingCopyTransform({ patternMap });
 
   const { stage, retry } = useKeyboardArtifact(
@@ -1050,6 +1050,12 @@ export function MechanismGallery({ selectedBaseKeyboard, onComplete, onBack }: M
     recordAssignments(next);
   }, [desktopLocked, sessionAssignments, recordAssignments]);
 
+  // handleLockAndContinue: lock the desktop layout and advance to the next stage.
+  const handleLockAndContinue = useCallback(() => {
+    lockDesktop();
+    onComplete?.();
+  }, [lockDesktop, onComplete]);
+
   // ---------------------------------------------------------------------------
   // Render — empty/error states
   // ---------------------------------------------------------------------------
@@ -1287,7 +1293,7 @@ export function MechanismGallery({ selectedBaseKeyboard, onComplete, onBack }: M
             </p>
             <button
               type="button"
-              onClick={() => { lockDesktop(); onComplete?.(); }}
+              onClick={handleLockAndContinue}
               disabled={!hasAssignments}
               title={
                 hasAssignments
