@@ -1,8 +1,6 @@
 # Workflow model — existing vs. intended authoring flow
 
-**Status:** working model, for intermingling. Not a spec. When the unified flow
-is ratified, fold the decisions back into [spec.md](../spec.md) §8 and update this
-file to describe what shipped.
+**Status:** Working model — hybrid ordering adopted and incorporated into spec.md v1.2.0 (2026-06-13). This file preserves the derivation, overlay analysis, and open questions that drove the amendment.
 
 This document models the studio's user workflow as a typed directed graph so that
 disconnects (an edge whose target's preconditions aren't met by its source) and
