@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode, type CSSPrope
 import type { BaseKeyboard, SurveyPhaseResult } from "@keyboard-studio/contracts";
 import { useSurveyResultsStore } from "./stores/surveyResultsStore.ts";
 import { useWorkingCopyStore } from "./stores/workingCopyStore.ts";
+import { confirmRebaseIfEdited } from "./lib/confirmRebase.ts";
 import { PreviewShell } from "./components/PreviewShell.tsx";
 import { IdentityLite, Prefill, PhaseB, PhaseF, type IdentityLiteResult } from "./survey/index.ts";
 import { BaseResolution } from "./components/BaseResolution.tsx";
@@ -289,25 +290,19 @@ function SurveyView({ baseKeyboard }: SurveyViewProps) {
   // Working-copy store instantiation — Track 1 wiring for the survey path.
   // The survey flow picks a base via BaseResolution; once the pipeline
   // completes, instantiateFromBase is called here to make the working copy
-  // official. The re-base confirm guard lives here (same pattern as PreviewShell).
+  // official. The re-base confirm guard reads live store state via
+  // confirmRebaseIfEdited() (getState() inside the helper) so stale closures
+  // cannot produce a wrong hasEdits decision when the async compile completes.
   const instantiateFromBase = useWorkingCopyStore((s) => s.instantiateFromBase);
-  const isInstantiated = useWorkingCopyStore((s) => s.isInstantiated);
-  const deletedNodeIds = useWorkingCopyStore((s) => s.deletedNodeIds);
-  const surveyPhaseResults = useWorkingCopyStore((s) => s.phaseResults);
 
   const onInstantiate = useCallback<OnInstantiateCallback>((base, { vfs, ir }) => {
-    if (ir === null || vfs === null) return;
-    const hasEdits =
-      isInstantiated() &&
-      (deletedNodeIds.size > 0 || surveyPhaseResults.length > 0);
-    if (hasEdits) {
-      const ok = window.confirm(
-        "Switching base keyboards will discard your current edits (carve deletions and survey answers). Continue?",
-      );
-      if (!ok) return;
+    if (ir === null || vfs === null) {
+      console.warn("[studio] instantiate skipped: no parsed IR (mock engine?)");
+      return;
     }
+    if (!confirmRebaseIfEdited()) return;
     instantiateFromBase(base, { vfs, ir });
-  }, [instantiateFromBase, isInstantiated, deletedNodeIds, surveyPhaseResults]);
+  }, [instantiateFromBase]);
 
   // Use localBase (immediately updated on selection) to drive the pipeline,
   // not the store's baseKeyboard (updated only after compile completes).
@@ -350,6 +345,7 @@ function SurveyView({ baseKeyboard }: SurveyViewProps) {
     resetSurvey();
     setIdentityResult(null);
     setSurveyContext({});
+    setLocalBase(null);
     setStage("identity");
   }
 

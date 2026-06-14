@@ -15,6 +15,7 @@ import { ScaffoldForm } from "./ScaffoldForm.tsx";
 import { KmnEditor } from "./KmnEditor.tsx";
 import { getToZip } from "../lib/services.ts";
 import { useWorkingCopyStore } from "../stores/workingCopyStore.ts";
+import { confirmRebaseIfEdited } from "../lib/confirmRebase.ts";
 
 // [TEMP] Per-fixture typing hints. Hardcoded until the Pattern schema's
 // `tests` field (spec §5) is wired into the UI to drive these automatically.
@@ -330,36 +331,25 @@ export function PreviewShell() {
 
   // Working-copy store — used for explicit instantiation at base selection.
   const instantiateFromBase = useWorkingCopyStore((s) => s.instantiateFromBase);
-  const isInstantiated = useWorkingCopyStore((s) => s.isInstantiated);
-  const deletedNodeIds = useWorkingCopyStore((s) => s.deletedNodeIds);
-  const phaseResults = useWorkingCopyStore((s) => s.phaseResults);
 
   // onInstantiate: explicit working-copy instantiation (spec §8 v1.3.0, Track 1).
   // Called by useKeyboardArtifact after a full fetch→compile run succeeds.
-  // Checks for existing edits before re-instantiating and prompts the user to
-  // confirm before discarding them (re-base decision: adopted confirm-discard).
+  // Reads live store state at call time via confirmRebaseIfEdited() (getState()
+  // inside the helper) so the stale-closure problem cannot arise even though
+  // this callback is memoised: the async compile may complete long after the
+  // render that created this closure.
   const onInstantiate = useCallback<OnInstantiateCallback>((base, { vfs, ir }) => {
     if (ir === null || vfs === null) {
       // IR or VFS unavailable (mock engine path); cannot fully instantiate.
       // The store's carve IR stays null — the gallery will show its empty state.
+      console.warn("[studio] instantiate skipped: no parsed IR (mock engine?)");
       return;
     }
 
-    const hasEdits =
-      isInstantiated() &&
-      (deletedNodeIds.size > 0 || phaseResults.length > 0);
-
-    if (hasEdits) {
-      // Re-basing onto a new base keyboard when there are unsaved edits.
-      // Per the adopted re-base decision: confirm-discard before replacing.
-      const ok = window.confirm(
-        "Switching base keyboards will discard your current edits (carve deletions and survey answers). Continue?",
-      );
-      if (!ok) return;
-    }
+    if (!confirmRebaseIfEdited()) return;
 
     instantiateFromBase(base, { vfs, ir });
-  }, [instantiateFromBase, isInstantiated, deletedNodeIds, phaseResults]);
+  }, [instantiateFromBase]);
 
   // Lifted from OSKFrame so DiagnosticsPanel and the download button can
   // read stage (and the embedded VFS) without prop-drilling through the iframe.
