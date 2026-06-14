@@ -1,7 +1,7 @@
 # Keyboard Studio Spec — Review Sign-Off
 
-**Spec version:** 1.1.1 (original sign-off: 1.0, 2026-06-02)
-**Date:** 2026-06-09
+**Spec version:** 1.2.0 (original sign-off: 1.0, 2026-06-02)
+**Date:** 2026-06-13
 **Spec file:** keyboard-studio-spec-draft.md (1044 lines, 19 sections)
 **Reviewer crew:** lex-doc (drafting + revision), lex-qc, lex-domain, lex-synthesis
 (lex-verification was not used — this was a doc-authoring cycle; no code or tests to verify.)
@@ -62,6 +62,8 @@ Three items noted in the spec's Revision policy (Sec 18) — Risk/dependencies s
   **Tier 3 known-gaps** (deferred, not blocking v1.1.1): (a) `RawKmnFragment.sourceFile?` — v1.1.x follow-up (km-output); (b) `OutputElement` JSDoc re `use()` and output-position `context` falling to `raw` per D8 — tracked at #268 (km-keyman); (c) deadkey naming (`dk(N)` vs `dk(acute)`) — pre-existing observation from km-author, Layer B style issue not Layer A correctness, follow-up minor bump; (d) TouchLayoutIR/KvksIR sub-file opaque escape hatch — v1.1.x; v1 codec required to refuse or warn rather than silently drop unmodeled sub-structures (§16 scope).
 
   **Reviewed by:** km-keyman, km-domain, km-strategy, km-author, km-validator, km-output (cycle 1) + km-programmer (cycle 2 group 1) + km-domain, km-keyman, km-validator, km-verification (cycle 2 group 2) + km-doc (cycle 2 group 3).
+
+- **2026-06-13 (v1.2.0, hybrid authoring workflow + scoped DISCUS-guided gallery):** Prose amendment deriving from the workflow-modeling session captured in [docs/workflow-model.md](workflow-model.md). Rewrote §8 to a **hybrid** authoring order — identity-lite → base resolution (suggest from the phonebook / manual / US-QWERTY blank) → base-derived prefill (routing/A2/A7/BCP47 as confirmations) → inventory (diffed vs base) → physical gallery (Phase C) → **lock desktop** → touch gallery (Phase E) → deferred documentation/metadata — via an ordering preamble over the existing numbered steps (steps relocated, not renumbered). Added §8 "Gallery instantiation" subsection (the gallery is a role instantiated once per modality, with the physical→touch mechanism-mapping table) and §7.7 "Gallery output and assignment-map precedence" (scoped default/class/individual map, individual > class > default, many-to-many mechanisms per character, DISCUS arbitration of the Discoverability-vs-Simplicity tension, coverage = dead-end via criterion 18.6 `KM_LINT_INVENTORY_UNCOVERED`). Reframed the §7 intro and §7.3 catalog (cards are mechanism templates, not whole-keyboard verdicts) and scoped the §7.5 table to default-scope tree validation. Added §5 "Base-derived pre-fill". Clarified §9 that there is no mobile-first routing (`pa_primary_target` advisory; Decision 6). **Decoupled language and script** (§8 identity-lite, §9): the keyboard target is a *(language, script) pair* with script chosen independently — romanization (`-Latn`) and IPA (`-fonipa`) are first-class alternate-script paths; the chosen script (not the language's default) drives routing, A2, base suggestion, and the inventory diff. Spec bumped to v1.2.0. **Held — blocks on the joint engine+content session (#5b):** the *typed* assignment-map contract. Until that session, the contract carries it as an additive optional field (`SurveyPhaseResult.assignments?`) alongside the flat `selectedPatternIds`; the breaking redesign that collapses the two is the joint-session deliverable (proposal: `docs/proposal-assignment-map-contract.md`). No `Pattern` schema change in this amendment.
 
 ---
 
