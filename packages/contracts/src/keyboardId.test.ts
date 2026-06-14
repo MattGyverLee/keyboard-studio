@@ -72,10 +72,16 @@ describe("validateKeyboardId", () => {
     expect(result.reason).toMatch(/invalid characters/);
   });
 
-  it("rejects id containing banned substring 'keyboard'", () => {
+  it("accepts id containing 'keyboard' as substring (convention only, not enforced)", () => {
+    // docs/criteria.md cites avoiding 'keyboard' as a naming convention, not a hard rule.
+    // KD's isValidKeymanKeyboardId does not ban it either.
     const result = validateKeyboardId("my_keyboard");
-    expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/keyboard/);
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts id starting with underscore (aligned with KD isValidKeymanKeyboardId)", () => {
+    const result = validateKeyboardId("_foo");
+    expect(result.valid).toBe(true);
   });
 
   it("rejects id over 254 characters", () => {
@@ -85,14 +91,9 @@ describe("validateKeyboardId", () => {
   });
 
   it("accepts id of exactly 254 characters (max)", () => {
-    // Pattern is /^[a-z][a-z0-9_]{0,253}$/ — max total length is 1 + 253 = 254
+    // Pattern is /^[a-z_][a-z0-9_]{0,253}$/ — max total length is 1 + 253 = 254
     const result = validateKeyboardId("a" + "b".repeat(253));
     expect(result.valid).toBe(true);
   });
 
-  it("rejects id starting with underscore", () => {
-    const result = validateKeyboardId("_foo");
-    expect(result.valid).toBe(false);
-    expect(result.reason).toBeDefined();
-  });
 });
