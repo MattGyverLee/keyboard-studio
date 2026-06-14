@@ -1,13 +1,17 @@
 // Studio root — hash-based router + nav bar.
 //
 // Routes:
-//   #survey  (default)  — full authoring wizard (spec §8 v1.3.0):
-//                         Track 1 (Copy):  base → track → identity → project-name
+//   #survey  (default)  — full authoring wizard (user override: identity-lite first):
+//                         Track 1 (Copy):  identity → base → track → project-name
 //                                          → prefill → carve → B → mechanisms → F → done
-//                         Track 2 (Adapt): base → track → prefill
+//                         Track 2 (Adapt): identity → base → track → prefill
 //                                          → carve → B → mechanisms → F → done
 //   #preview            — compiled preview (stub; not yet implemented)
 //   #output             — output / delivery (stub; not yet implemented)
+//
+// NOTE: spec §8 line 1063 ("Track 2 skips identity-lite") is intentionally
+// overridden here at user direction. Identity-lite must come first so the
+// autonym/English-name/code answers can feed ranked base suggestions.
 
 import { useCallback, useEffect, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import type { BaseKeyboard, SurveyPhaseResult } from "@keyboard-studio/contracts";
@@ -17,7 +21,6 @@ import { IdentityLite, Prefill, PhaseB, PhaseF, type IdentityLiteResult } from "
 import { BaseResolution } from "./components/BaseResolution.tsx";
 import { UnsupportedScriptStub } from "./components/UnsupportedScriptStub.tsx";
 import type { SuggestTarget } from "./lib/suggestBase.ts";
-import { deriveScriptPrefill } from "./lib/scriptAxes.ts";
 import type { SurveyContext } from "./survey/types.ts";
 import { CarveGallery } from "./components/CarveGallery.tsx";
 import { MechanismGallery } from "./components/MechanismGallery.tsx";
@@ -149,19 +152,19 @@ const SURVEY_LEFT_MIN_PCT = 25;
 const SURVEY_LEFT_MAX_PCT = 65;
 const SURVEY_LEFT_INIT_PCT = 45;
 
-// Studio wizard stage machine (spec §8 "Workflow ordering"):
+// Studio wizard stage machine (user override — identity-lite first for both tracks):
 //
 //   Track 1 (Copy):
-//     base → track → identity → project-name → prefill →
+//     identity → base → track → project-name → prefill →
 //     carve (Phase D) → B → mechanisms (Phase C) → F → done
 //
 //   Track 2 (Adapt):
-//     base → track → prefill →
+//     identity → base → track → prefill →
 //     carve (Phase D) → B → mechanisms (Phase C) → F → done
 //
-// Base resolution is the FIRST stage for both tracks. Identity-lite is only
-// shown for Track 1 (Copy), after the track choice. Gated scripts (Ethi/Hani/
-// Hang) from identity-lite route to "unsupported".
+// Identity-lite is the FIRST stage for both tracks so its answers (autonym,
+// English name, ISO code, script) feed the ranked base suggestions. Gated
+// scripts (Ethi/Hani/Hang) from identity-lite route to "unsupported".
 type SurveyStage =
   | "base"
   | "track"
@@ -194,7 +197,7 @@ interface SurveyViewProps {
 }
 
 export function SurveyView({ baseKeyboard }: SurveyViewProps) {
-  const [stage, setStage] = useState<SurveyStage>("base");
+  const [stage, setStage] = useState<SurveyStage>("identity");
   const [identityResult, setIdentityResult] = useState<IdentityLiteResult | null>(null);
   const [surveyContext, setSurveyContext] = useState<SurveyContext>({});
   const [oskMode, setOskMode] = useState<OskMode>("desktop");
@@ -307,9 +310,10 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
   const recordPhase = useWorkingCopyStore((s) => s.recordPhase);
   const resetSurvey = useWorkingCopyStore((s) => s.reset);
 
-  // Identity-lite (Track 1 / Copy only): captures language + the INDEPENDENT
-  // target script, deriving routing/A2 prefill. Gated scripts (Ethi/Hani/Hang)
-  // end on the "not supported" stage. See spec §8/§9.
+  // Identity-lite — FIRST stage for both tracks. Captures autonym, English name,
+  // ISO 639 code, and target script; these feed the ranked base suggestions on
+  // the next stage. Gated scripts (Ethi/Hani/Hang) route to "unsupported".
+  // See spec §8/§9 (note: §8 line 1063 ordering intentionally overridden).
   //
   // If il_language_english is empty but il_language_autonym is set, default the
   // English name to the autonym. SurveyRunner has no cross-field default
@@ -323,26 +327,25 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
     recordPhase(result);
     setIdentityResult(patchedIdentity);
     setSurveyContext(contextFromIdentity(patchedIdentity));
-    // Copy path: identity → project-name (or unsupported for gated scripts).
-    setStage(patchedIdentity.supported ? "project-name" : "unsupported");
+    // identity → base (or unsupported for gated scripts).
+    setStage(patchedIdentity.supported ? "base" : "unsupported");
   }
 
   // The base chosen in-survey is set on localBase so the pipeline starts
   // immediately (compile can run in the background while the user picks track).
-  // The survey stage advances to "track" so the author chooses Copy vs Adapt.
+  // base → track so the author chooses Copy vs Adapt.
   function handleBaseResolved(base: BaseKeyboard) {
     setLocalBase(base);
     setStage("track");
   }
 
   // Handle track selection.
-  //   Copy  → identity-lite (to collect language/script for a NEW keyboard).
-  //   Adapt → prefill directly (identity is already known from the base).
-  // spec §8 line 1063: Track 2 skips identity-lite.
+  //   Copy  → project-name (collect new keyboard id/display name).
+  //   Adapt → prefill directly (identity-lite already ran; real answers in state).
   function handleTrackSelected(track: Track) {
     setSelectedTrack(track);
     if (track === "copy") {
-      setStage("identity");
+      setStage("project-name");
     } else {
       // Track 2: no scaffoldSpec needed — adapt uses base's own id/displayName.
       setScaffoldSpec(null);
@@ -378,16 +381,14 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
     setLocalBase(null);
     setSelectedTrack(null);
     setScaffoldSpec(null);
-    setStage("base");
+    setStage("identity");
   }
 
   // The (language, script) target for base suggestion — keyed on the CHOSEN
   // script (decoupled from the language; spec §8/§9). The BCP47 tag (e.g.
-  // "ha-Latn", "hi-Deva") enables language-aware ranking in BaseResolution;
-  // an empty bcp47 degrades gracefully to script-match ranking.
-  // For Track 2 (Adapt) base-resolution runs before identity-lite, so
-  // suggestTarget may be null — BaseResolution handles this by skipping
-  // the ranked-suggestions section and showing only the free-pick picker.
+  // "ha-Latn", "hi-Deva") enables language-aware ranking in BaseResolution.
+  // Identity-lite always runs first, so identityResult is always set by the
+  // time base resolution is reached.
   const suggestTarget: SuggestTarget | undefined =
     identityResult !== null
       ? {
@@ -488,10 +489,18 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
       {/* Left pane: survey questions */}
       <section aria-label="Survey questions" style={questionsPaneStyle}>
         {stage === "done" && donePaneContent}
-        {stage === "base" && (
+        {/* identity-lite is the FIRST stage for both tracks */}
+        {stage === "identity" && (
+          <IdentityLite
+            context={surveyContext}
+            onComplete={handleIdentityComplete}
+          />
+        )}
+        {stage === "base" && suggestTarget !== undefined && (
           <BaseResolution
-            {...(suggestTarget !== undefined ? { target: suggestTarget } : {})}
+            target={suggestTarget}
             onResolved={handleBaseResolved}
+            onBack={() => setStage("identity")}
           />
         )}
         {stage === "track" && localBase !== null && (
@@ -499,14 +508,6 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
             base={localBase}
             onNext={handleTrackSelected}
             onBack={() => setStage("base")}
-          />
-        )}
-        {/* identity-lite is only shown for Track 1 (Copy), after track choice */}
-        {stage === "identity" && (
-          <IdentityLite
-            context={surveyContext}
-            onComplete={handleIdentityComplete}
-            onBack={() => setStage("track")}
           />
         )}
         {stage === "unsupported" && identityResult !== null && (
@@ -534,29 +535,14 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
           <ProjectNameStep
             defaultDisplayName={identityResult.autonym || identityResult.english}
             onNext={handleProjectNameNext}
-            onBack={() => setStage("identity")}
+            onBack={() => setStage("track")}
           />
         )}
-        {stage === "prefill" && localBase !== null && (
+        {stage === "prefill" && localBase !== null && identityResult !== null && (
           <Prefill
-            identity={
-              identityResult !== null
-                ? identityResult
-                : // Track 2 (Adapt): synthesize identity from the base keyboard.
-                  // Language name and code are unknown at this point; the prefill
-                  // step surfaces the base's script/routing so the author can
-                  // confirm or go back. Language rows show the base displayName
-                  // as a placeholder until the documentation stage refines them.
-                  {
-                    autonym: localBase.displayName,
-                    english: localBase.displayName,
-                    languageSubtag: "",
-                    targetScriptRaw: localBase.script,
-                    bcp47: "",
-                    supported: true,
-                    prefill: deriveScriptPrefill(localBase.script),
-                  }
-            }
+            // Identity-lite always runs first; real answers are always available
+            // for both tracks. No synthesis from base needed.
+            identity={identityResult}
             base={localBase}
             onConfirm={() => setStage("carve")}
             onBack={() => {
