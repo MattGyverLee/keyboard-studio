@@ -80,4 +80,22 @@ describe("deriveScriptPrefill — decoupling", () => {
       routingGroup: "non-roman",
     });
   });
+
+  // Cherokee is the canonical decoupling case: the SAME language has both a
+  // native-syllabary keyboard and (potentially) a Latin romanization. The chosen
+  // TARGET script — not the language — decides A2 + routing, so the two diverge.
+  it("decouples romanized vs native Cherokee by the chosen target script", () => {
+    // Romanized Cherokee — produces Latin letters, so alphabetic/qwerty.
+    expect(deriveScriptPrefill("romanization-Latn")).toMatchObject({
+      script: "Latn",
+      scriptClass: "alphabetic",
+      routingGroup: "qwerty-qwertz",
+    });
+    // Native Cherokee syllabary (chr-Cher) — syllabary mechanisms, non-roman.
+    expect(deriveScriptPrefill("Cher")).toEqual({
+      script: "Cher",
+      scriptClass: "syllabary",
+      routingGroup: "non-roman",
+    });
+  });
 });
