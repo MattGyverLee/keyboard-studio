@@ -27,6 +27,10 @@ import { uncoveredTargets } from "@keyboard-studio/contracts";
 import { useSurveyResultsStore } from "../stores/surveyResultsStore.ts";
 import { getPatternLibraryService } from "../lib/services.ts";
 import type { DiscoveryAxisVector } from "@keyboard-studio/contracts";
+// applyAssignments is browser-safe (pure string manipulation, no node:fs).
+// Full scaffold+VFS preview (fetch base keyboard source → scaffold → apply)
+// is a follow-up cycle — see §7.7 "Preview wiring" deferral comment below.
+import { applyAssignments } from "@keyboard-studio/engine";
 
 // ---------------------------------------------------------------------------
 // Style constants (dark palette from studio CLAUDE.md)
@@ -582,6 +586,129 @@ function CoverageIndicator({ assignments, inventory }: CoverageIndicatorProps) {
 }
 
 // ---------------------------------------------------------------------------
+// KmnPreview — best-effort §7.7 preview (Part 6).
+//
+// Applies assignments to an EMPTY .kmn base via applyAssignments() (browser-
+// safe, no network call). This shows the injected fragment text so the author
+// can verify slot values before committing. It does NOT scaffold the full base
+// keyboard (that requires a network fetch of the source .kmn from the proxy —
+// deferred to the next cycle as a follow-up). Warnings are surfaced inline.
+// ---------------------------------------------------------------------------
+
+interface KmnPreviewProps {
+  assignments: MechanismAssignment[];
+  patternMap: Map<string, Pattern>;
+}
+
+function KmnPreview({ assignments, patternMap }: KmnPreviewProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (assignments.length === 0) return null;
+
+  function buildPreview(): { kmn: string; warnings: string[] } {
+    const getPattern = (id: string) => patternMap.get(id);
+    // Apply to an empty KMN base. The result is the injected fragment only —
+    // not a full compilable keyboard (that requires scaffolding the base source).
+    return applyAssignments(assignments, getPattern, "");
+  }
+
+  const previewButtonStyle: CSSProperties = {
+    padding: "7px 14px",
+    background: "transparent",
+    border: `1px solid ${BORDER}`,
+    borderRadius: 6,
+    color: TEXT_DIM,
+    fontSize: 12,
+    cursor: "pointer",
+    fontFamily: FONT,
+  };
+
+  if (!expanded) {
+    return (
+      <div style={{ marginTop: 24, borderTop: `1px solid ${BORDER}`, paddingTop: 16 }}>
+        <button type="button" style={previewButtonStyle} onClick={() => setExpanded(true)}>
+          Show .kmn preview (fragment only)
+        </button>
+        <p style={{ margin: "6px 0 0", fontSize: 11, color: TEXT_DIM }}>
+          Preview shows injected KMN fragments on an empty base. Full scaffold
+          preview (including base keyboard source) is a follow-up cycle.
+        </p>
+      </div>
+    );
+  }
+
+  const { kmn, warnings } = buildPreview();
+
+  return (
+    <div
+      style={{
+        marginTop: 24,
+        borderTop: `1px solid ${BORDER}`,
+        paddingTop: 16,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: TEXT_MAIN }}>
+          .kmn preview (fragment only)
+        </span>
+        <button
+          type="button"
+          style={previewButtonStyle}
+          onClick={() => setExpanded(false)}
+        >
+          hide
+        </button>
+      </div>
+
+      {warnings.length > 0 && (
+        <div
+          role="alert"
+          aria-live="polite"
+          style={{
+            background: "#2a1a00",
+            border: "1px solid #f0883e",
+            borderRadius: 6,
+            padding: "8px 12px",
+            fontSize: 12,
+            color: "#f0883e",
+          }}
+        >
+          <strong>Warnings:</strong>
+          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+            {warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <pre
+        style={{
+          margin: 0,
+          padding: "12px 14px",
+          background: BG_PAGE,
+          border: `1px solid ${BORDER}`,
+          borderRadius: 6,
+          fontSize: 12,
+          fontFamily: "monospace",
+          color: TEXT_MAIN,
+          overflowX: "auto",
+          whiteSpace: "pre",
+          maxHeight: 400,
+          overflowY: "auto",
+        }}
+        aria-label="Generated KMN fragment"
+      >
+        {kmn.trim() || "(empty — fill slot values and apply a mechanism first)"}
+      </pre>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // MechanismGallery — main component
 // ---------------------------------------------------------------------------
 
@@ -822,6 +949,12 @@ export function MechanismGallery({ selectedBaseKeyboard }: MechanismGalleryProps
             })}
           </div>
         )}
+
+        {/* §7.7 preview wiring (best-effort, Part 6) */}
+        <KmnPreview
+          assignments={sessionAssignments}
+          patternMap={patternMap}
+        />
       </div>
     </div>
   );
