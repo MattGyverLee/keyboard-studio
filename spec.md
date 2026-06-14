@@ -1,8 +1,8 @@
 # keyboard-studio — Spec
 
 **Repository:** https://github.com/MattGyverLee/keyboard-studio
-**Date:** 2026-06-09
-**Version:** 1.1.1
+**Date:** 2026-06-14
+**Version:** 1.3.0
 **Status:** Draft — pre-Day-1 sync
 
 ---
@@ -546,6 +546,8 @@ For `char-list` answers, the value is inserted verbatim as a quoted KMN string l
 
 Substitution is deterministic and reproducible: given the same answer map, the same KMN fragment is always produced. After substitution the full fragment is run through the Layer A validator and the WASM oracle before being merged into the project's `.kmn`; a substitution-time validation failure is surfaced to the user as a slot-fill error, not a compiler error.
 
+**Base-derived pre-fill.** A `PatternQuestion` (and a survey question, Sec 8) may declare a `default`. When the chosen base keyboard already determines the answer, the studio pre-fills that default from the base rather than asking blank: the BCP47 script subtag and the IR's structural shape fix the routing group (Sec 9) and script class (A2); the base-vs-inventory key diff fixes spare-key availability (A7); the base's BCP47 tag seeds the language code and region. Pre-filled answers render as **confirmations** (editable, already populated), never as empty fields — the principle is *never ask before you can pre-fill*. This is the same propose-then-confirm posture as the placement proposals (Sec 8 Phase B) and the linguist agent; the author confirms or overrides each pre-fill in place.
+
 ---
 
 ## 7. Strategy selection
@@ -556,6 +558,8 @@ Substitution is deterministic and reproducible: given the same answer map, the s
 Character coverage is **not** "simple substitution." Choosing how a character is output — a bare key swap, a deadkey-then-base composition, an ASCII transliteration, a tone cycle, a context-sensitive cluster, an OS IME callout — is the core decision the studio makes for the user. This section is that recommendation engine.
 
 The survey does not emit output rules directly. It computes a seven-axis description of the keyboard's needs (Sec 7.1), runs a decision tree over those axes (Sec 7.2) to choose a **primary output strategy** (one of S-01..S-12) plus likely **secondaries**, and surfaces the matching gallery patterns for the user to confirm by example. The pattern library (Sec 5) is the implementation layer: each `Pattern` names the strategy it implements via `strategyId`, so a decision-tree result maps directly to the patterns the gallery shows first.
+
+The decision-tree result is a **starting recommendation**, not the final output. The gallery (Sec 8 Phase C/E) lets the user accept it, override it per character class or per individual character, and assign **more than one** access mechanism to a single character. The gallery's output is modeled as a **scoped, multi-valued assignment map** (default → class → individual precedence; 1..N mechanisms per character; computed once per modality), DISCUS-guided (Sec 7.7) — the decision tree seeds the default scope; the gallery refines it. The *typed contract* for that map is deferred to the Sec 17 joint session (Sec 7.7), so today the gallery still resolves the flat `selectedPatternIds`; the assignment map is the modeled target the implementation is converging on, not yet the shipped shape.
 
 **Scope note.** The strategy catalog (Sec 7.3) describes **physical-keyboard (desktop) KMN rules**. Touch counterparts are produced from each pattern's `touchLayoutFragment` and Phase E (Sec 8); packaging from Phase G. The catalog is the desktop-rule layer of the fuller v1 pipeline — not a separate, narrower product. (The strategy framework was originally drafted physical-keyboard-only; in the studio it is embedded in the full touch + packaging flow.) v1 is desktop-first by design (Decision 6, Sec 14); touch-first authoring is a v1.1 candidate.
 
@@ -664,13 +668,15 @@ flowchart TD
 
 **Prose summary.** Massive logographic → only the OS IME is fast enough; delegate (S-12). Indic/Arabic-shaped scripts need context-aware cluster rules (S-09); phonetic ones add mnemonic spelling. Tonal cycling (S-07) is neither stacking nor deadkey. Dual orthography (S-11) wraps a state toggle around the inner strategy. Big phonetic alphabets (S-05) — let the user type spellings, collapsed with `any`/`index`. Big diacritic palettes (S-06) — two-tier deadkey: first key picks the family, second the base. Small accent-heavy Latin (S-02) — classic deadkey composition. Non-Latin alphabetic full-remap (Russian/Armenian/Greek mnemonic) — chained deadkeys for case-and-diacritic alternates (S-06) plus an RAlt modifier plane (S-08) for the lesser-used letters. Loud feedback (S-10) and fully-booked layouts (S-08) are add-ons, never the whole answer. A handful of phonetic additions (S-01) — just swap them in. Otherwise (S-03) — short ASCII sequences expand to single chars.
 
-**Encoding.** The tree may be encoded as JSON/TS rules in `packages/contracts` or reasoned over by the LLM directly against this table; both are valid (pick per studio architecture). The strategy selector returns `{ primary: strategyId, secondaries: strategyId[] }`, which the gallery resolves to patterns via the `strategyId` / `combinesWith` fields (Sec 5).
+**Encoding.** The tree may be encoded as JSON/TS rules in `packages/contracts` or reasoned over by the LLM directly against this table; both are valid (pick per studio architecture). The strategy selector returns `{ primary: strategyId, secondaries: strategyId[] }`, which the gallery resolves to patterns via the `strategyId` / `combinesWith` fields (Sec 5). This pair seeds the **default scope**; the gallery may then refine it per character class or individual character per the assignment-map model (Sec 7.7).
 
 **Touch keyboards and S-13.** The rules above are desktop-oriented — they model character-entry strategies driven by the A1–A7 axis vector. Touch keyboards need an additional structural choice: a dedicated layer-switch key that swaps the entire visible keyboard layout (default, shift, numeric, symbol, alt-script). This is not an A1–A7 character-entry strategy; it is a touch layout feature. Any touch keyboard with more than one named layer uses **S-13 Touch layer switch** as a structural wrapper alongside whichever character-entry strategy (S-01–S-09) governs the content of each layer. S-13 is chosen outside this decision tree, triggered by the presence of multiple entries in the touch layout's `"layer":` array.
 
 ### 7.3 Strategy catalog (S-01..S-13)
 
 Each card is self-contained and citable by ID. Snippets are verbatim from `keymanapp/keyboards` (paths shown). The **Pattern mapping** line ties the card to the library: a pattern with that `strategyId` is what the gallery surfaces when the tree selects this strategy.
+
+These cards are **mechanism templates**, not whole-keyboard verdicts. A single keyboard's assignment map (Sec 7.7) may draw on several of them at once — one strategy for the default scope, a different one for a character class, and additional mechanisms layered onto individual characters for discoverability. Read each card as "here is how *this* mechanism works," not "here is what the *whole* keyboard does."
 
 #### S-01 Simple swap
 
@@ -832,7 +838,7 @@ any(BaseLetter) + 'g' > index(BaseLetter_modified, 1)
 **When to use:** A6=loud. Clusters where users need active feedback that they typed something illegal (e.g. an acute on a consonant that can't take it).
 **When to avoid:** When the invalid combination is rare (the constraint group adds overhead); when `beep` would annoy in long-form typing.
 **Combines well with:** Every primary strategy — a separate `group(constraints)` invoked before `group(main)`.
-**Pattern mapping:** `strategyId: "S-10"`; offered only as a secondary (rule 8).
+**Pattern mapping:** `strategyId: "S-10"`; offered only as a secondary (rule 9).
 
 ```
 begin Unicode > use(constraints)
@@ -951,6 +957,8 @@ nomatch > use(main)
 
 The decision tree must agree with the strategy each exemplar actually uses. This round-trip is the **regression suite**: if "Tree → strategy" disagrees with "Actual primary," the tree is wrong, not the keyboard. Re-run it after any edit to 7.1/7.2/7.3.
 
+**Scope of this table.** It validates the tree's **default-scope** recommendation — the single `{primary, secondaries}` the tree picks for the keyboard as a whole. Per-class and per-individual overrides, and characters reached by more than one mechanism, are the gallery's concern (Sec 7.7); they are not represented here and do not change a row's expected value. (Rows that list more than one strategy — e.g. `itrans_devanagari_hindi` → S-09 + S-05 + S-11 — are axis-driven tree secondaries from rules 2/4, **not** per-class overrides; the distinction matters.) The table answers "did the tree seed the right default?", not "what did the author finally assign to every character?"
+
 | Exemplar | A1 | A2 | A3 | A3a | A4 | A5 | A6 | A7 | A7a | Tree → strategy | Actual primary |
 |----------|----|----|----|-----|----|----|----|----|-----|-----------------|----------------|
 | `release/a/akan/` | tiny | alphabetic | strong | — | none | single | none | many | addition | rule 11 → S-01 | S-01 ✓ |
@@ -1012,14 +1020,64 @@ Strategy selection (Sec 7.2) decides **how** characters are entered; this sectio
 
 **Precedence rule (precedent vs. first principles).** When the prior and the anchor cascade disagree: ≥3 independent converging keyboards → precedent wins, sources cited. Single-origin precedent (one root keyboard everyone copied) → first principles win, but the conflict is shown to the user with both options. For abjads and abugidas, community convention is effectively never overridden — shaping engines, fonts, and OS text stacks assume the converged sequences; a divergent first-principles suggestion is an escalation, not an auto-override. The studio **never resolves a placement conflict silently**: the author is the authority on what their community will adopt, and every proposal is confirmable, provenance-labeled, and overridable (the same *propose → cross-check → confirm* posture as the linguist agent, §8 Phase B).
 
+### 7.7 Gallery output and assignment-map precedence
+
+*Added 2026-06-13 (v1.2.0 hybrid workflow). Full model: [docs/workflow-model.md](docs/workflow-model.md).*
+
+The gallery (Sec 8 Phase C physical, Phase E touch) does not emit one strategy for the keyboard. Its output is a **scoped, multi-valued assignment map** from a key-scope to the mechanism(s) that produce it.
+
+**Scopes and precedence.** Three granularities, resolved most-specific first:
+
+- **keyboard-default** — the strategy the §7.2 selector resolves for the whole inventory; the seed.
+- **character-class** — a named group (e.g. "tone vowels", "nukta consonants") assigned its own mechanism, overriding the default for its members.
+- **individual** — a single character, overriding its class and the default.
+
+Precedence is **individual > character-class > keyboard-default**. A character with no more specific assignment inherits its class's; a class with none inherits the default.
+
+**Multi-valued.** The target→mechanism relation is **many-to-many**: one character may be reachable by several mechanisms at once (e.g. a direct key *and* a deadkey sequence *and* a rota position). This is deliberate, not a conflict — multiple access paths raise discoverability.
+
+**Per modality.** The map is computed **once per modality**. The physical gallery (Phase C) assigns desktop mechanisms (modifiers, dead keys, combos, rotas) and emits `.kmn` rules + `.kvks`; the touch gallery (Phase E), seeded from the locked desktop layout, assigns touch mechanisms (modifiers+layers, long-press, flicks, multitap) and emits `.keyman-touch-layout`. The two maps are independent (see the Phase C/E mechanism-mapping table in Sec 8).
+
+**DISCUS arbitration.** The studio pre-selects a sensible mechanism per scope, ranked by the DISCUS principles already half-encoded in the §7.1 axes ([docs/discus-principles-integration.md](docs/discus-principles-integration.md)): **Simplicity** (A1 scale gates mechanism complexity; warn on key overload / long-press > 8, criterion 18.1), **Consistency** (frequent characters onto easy, script-consistent positions, 18.10), **Discoverability** (rare characters stay findable; flag any reachable only via deep long-press or > 2 modifier hops, 18.6/18.9). Multi-access is the explicit **Discoverability-vs-Simplicity** tension: more paths raise D but cost S, and DISCUS is the arbiter — it *suggests* a second path for a hard-to-reach rare character and *warns* on overload. The heuristics rank; they never gate. The author may override either way.
+
+**Coverage is the dead-end check.** A confirmed-inventory character with **zero** assigned mechanisms is uncoverable — a dead-end. Criterion **18.6 `KM_LINT_INVENTORY_UNCOVERED`** verifies that every inventory character resolves to ≥ 1 reachable mechanism after precedence is applied. The assignment map must cover the inventory.
+
+**Contract status — additive now, breaking redesign deferred.** The *typed* form of this map lands in two steps under the Sec 17 revision policy. **Step one is additive and non-breaking:** an optional `SurveyPhaseResult.assignments?` field carried alongside the existing flat `selectedPatternIds` (a minor contracts bump). As of this amendment that field is **not yet in `packages/contracts`** — `SurveyPhaseResult` still carries only `selectedPatternIds`, and the gallery's output uses it until the additive field lands. **Step two** — collapsing `selectedPatternIds` into the assignment map — is Pattern-schema-adjacent and is **deferred to the joint engine+content session (#5b)** per Sec 17. The full breaking redesign is captured for that session in `docs/proposal-assignment-map-contract.md`.
+
 ---
 
 ## 8. Data flow
 
 *Revised 2026-06-08 (v1.1.0 KeyboardIR import). See [docs/spec-amendment-2026-06-08-keyboardir.md](docs/spec-amendment-2026-06-08-keyboardir.md).*
 *Revised 2026-06-11 (v1.1.1 placement priors). See [docs/spec-amendment-2026-06-11-placement-priors.md](docs/spec-amendment-2026-06-11-placement-priors.md).*
+*Revised 2026-06-13 (v1.2.0 hybrid workflow). Full model: [docs/workflow-model.md](docs/workflow-model.md).*
+*Revised 2026-06-14 (v1.3.0 working-copy spine + two authoring tracks). Extends Decision 9.*
 
-1. **Source selection.** The source-selection browser offers the user one of four sources for the session: the bundled US-English fallback (preselected), any `release/basic/*` layout, any other `keymanapp/keyboards/release/` keyboard, or an uploaded `.kmn`. The user picks exactly one. There is no multi-source merge.
+**Two authoring tracks, one working-copy spine.** Every session is anchored to a single **persistent working copy**: a `KeyboardIR` + `VirtualFS` pair that is instantiated when the keyboard is chosen, mutated by every subsequent step (carve, survey, gallery, OSK edits), and serialized only at output (§12). The OSK is bound to this working copy throughout; it re-renders on every mutation. This reinforces Decision 9 (IR is canonical) and keeps the two teams' work surfaces aligned — the engine reads and writes one object; the content team's survey/gallery calls mutate the same object.
+
+The working copy is reached via **two entry tracks** that converge on a shared spine after instantiation:
+
+- **Track 1 — new keyboard (copy a base and edit):** `instantiateFromBase` copies the chosen base keyboard's IR and resets its identity — the author assigns a new keyboard ID, and version is reset to 1.0. The session then enters the §8 hybrid survey flow (identity-lite → base resolution → prefill → inventory → gallery stages). This is the primary path for authors producing a keyboard from scratch or from a generic base.
+- **Track 2 — adapt an existing keyboard (load and edit):** `instantiateFromExisting` loads an existing keyboard (any `release/` source or uploaded `.kmn`), parses it to IR via the §5a codec, and makes the working copy **that IR with identity preserved** — keyboard ID and existing metadata are retained. Version is bumped in `store(&KEYBOARDVERSION)` and a new `HISTORY.md` entry is staged **at output** (step 15), not at instantiation — so a session that never reaches output leaves the source version untouched. The session enters via the source-picker head UI (§8 step 1 source selection), skipping the identity-lite prompt because the identity is already known. This is the v1.1.0 single-source-adaptation path.
+
+The two tracks differ in their head UI (survey prompt vs. source-picker) and in the instantiation call (`instantiateFromBase` = copy + reset identity; `instantiateFromExisting` = load + preserve identity). After instantiation they share one spine: the carve gallery (step 4), all survey/gallery phases (steps 5–11), live preview (step 13), lint (step 14), and output (step 15) all operate on the same working copy regardless of which track produced it.
+
+**OSK reflects identity as a visible mutation.** KeymanWeb renders the keyboard's display name on the spacebar caption by default (`spacebarTextMode` = `KEYBOARD`); the host may instead show the language, or both (`LANGUAGE_KEYBOARD`). Identity edits (keyboard name, BCP47 tag) therefore produce visible OSK mutations — the spacebar caption changes. Script, base-keyboard, carve, and mechanism (gallery) edits change the key labels. This means the OSK is a live observable of the working copy's full state, not just its rule output.
+
+**Workflow ordering (hybrid).** The phases below are reached in a **hybrid** order: a light identity prompt comes first so the studio can *suggest* a base keyboard, the base then back-fills routing as confirmations, and the engaging character/gallery work precedes the deferred paperwork. The adopted sequence is:
+
+- **Identity-lite** — language autonym, English name, **language subtag** (BCP47, for base language-match), and **target script** (a short subset of Phase A), enough to look up a base. **Language and script are decoupled:** the keyboard's target is a *(language, script) pair*, and script is its own question — not derived from the language's default. Alongside the language's default script(s), identity-lite offers **romanization (Latin)** and **IPA** (`-fonipa`) and "another script" as first-class options, so an alternate-script keyboard (e.g. a `hi-Latn` romanization, or an IPA keyboard) is a normal path. The *chosen* script — carried in the BCP47 tag (`-Latn`, `-fonipa`) — drives routing (§9), A2 (§7.1), base suggestion, and the inventory diff; the language does not.
+- **Base resolution** — suggest a base from [docs/keyboard-index.md](docs/keyboard-index.md) keyed on the *(language, script) pair* (so a romanization suggests a Latin base, not the language's default-script base), else let the user pick one, else start from the bundled US-QWERTY fallback (the "blank" fallback is the bundled `basic_kbdus` layout — the studio starts from *its* IR, not an empty `.kmn`; an empty file would rely on the OS baseline, not emit QWERTY itself). Then **parse to IR**, **scaffold over IR**, and the **carve gallery** (steps 2–4 below).
+- **Base-derived prefill** — routing group, script class (A2), spare-key availability (A7), and BCP47 are pre-filled from the base as confirmations (Sec 5 "Base-derived pre-fill"), not re-asked.
+- **Inventory** — character discovery, diffed against the base output set (step 6 below; the diff is realized by `buildProducedSet` in `packages/contracts/src/ir/producedSet.ts`).
+- **Axis probes** — only the axes the base and discovery did not already settle.
+- **Physical gallery (Phase C)** → **lock the desktop keyboard** → **touch gallery (Phase E)**: the gallery is instantiated once per modality (see "Gallery instantiation" after step 10). The physical desktop layout is fully locked before the touch layout is derived from it.
+- **Documentation + package details** — help docs (Phase F) plus the deferred author/copyright/region/code and provenance metadata, collected last.
+- **Preview, lint, output** (steps 13–15) run throughout (preview/lint) and at the end (output).
+
+This is desktop-first by design (Decision 6, Sec 14): there is no mobile-first path; the touch layout is always derived from the locked desktop. The numbered descriptions below are the canonical detail for each phase; the list above is the order they are reached in.
+
+1. **Source selection.** The source-selection browser offers the user one of four sources for the session: the bundled US-English fallback (preselected), any `release/basic/*` layout, any other `keymanapp/keyboards/release/` keyboard, or an uploaded `.kmn`. The user picks exactly one. There is no multi-source merge. In the hybrid order this step follows identity-lite (above): when a base already covers the entered *(language, script) pair* it is **suggested** here from [docs/keyboard-index.md](docs/keyboard-index.md); the user may accept the suggestion, pick another, or fall through to the US-QWERTY default.
 
 2. **Parse to IR.** The KeyboardIR codec (§5a) parses the chosen source's `.kmn`, `.kvks`, and `.keyman-touch-layout` into a `KeyboardIR`. Unrecognized features (save/set/reset/if option-store, call/return, indexed context(n), outs(), SMP 5-digit literals) become `RawKmnFragment` nodes with `origin: 'imported'` (D8). The pattern recognizer then walks the IR and lifts node clusters matching recognizer rules into `Pattern` instances with `origin: 'recognized'` and back-references via `ownedNodes`. Lifted nodes become survey-editable; unlifted nodes stay opaque. The Layer A' import-fidelity checks (I1-I5, §10) run at this point; a parse failure halts the session and surfaces the codec error to the user.
 
@@ -1028,6 +1086,8 @@ Strategy selection (Sec 7.2) decides **how** characters are entered; this sectio
 4. **Carve gallery.** Before the Phase A identity survey runs, the carve gallery renders every rule, store, group, touch key, and recognized Pattern in the IR as a card. The author can keep, edit (survey-editable cards only — recognized Patterns and scaffolded slots), or delete each card. For a US-English-fallback session the carve gallery is mostly pass-through (the user typically keeps everything). For an imported `cm_qwerty` adapted to one Cameroonian language, carving away the other languages' rules is the bulk of the work. The mechanism is identical in both cases.
 
 5. **Survey — Phase A (Identity + routing).** User enters language name, localized language name (autonym), BCP47 tag (with langtags.json lookup), display name, copyright holder. System detects script group (QWERTY/QWERTZ, AZERTY, or non-Roman) from BCP47 + the IR's structural shape and confirms with the user. This routes all subsequent phases. Phase A also surfaces v1's desktop-first authoring posture (Decision 6, Sec 14) — mobile-primary authors are notified that the survey is anchored to physical-keyboard mental-model answers before they invest survey time. The touch layout is still produced in Phase E. Phase A optionally collects **provenance metadata** (`KeyboardProvenance` in `@keyboard-studio/contracts`) — requester identity and contact, language-community representative, speaker count, language status, regions, existing tools, orthography link, casing notes, and free-form notes (the intake fields carried over from the legacy manual request form). Provenance is **non-gating**: it never blocks a phase exit or the submit button, and is serialized into the package / PR body for attribution and contact at output (Sec 12), never into the `.kmn`. The localized name is the one provenance field that may also feed a build artifact (the `.kps` / `welcome.htm` display). This is metadata capture only — it is distinct from the out-of-scope triage tool (Sec 16) and implies no request queue or assignment workflow.
+
+**Hybrid ordering note.** Only the identity-lite subset (autonym, English name, script — enough to suggest a base) is collected up front. The **script subtag is resolved here, not deferred** — §9 routing and the A2 script class depend on it, so identity-lite's script answer (refined by the base's BCP47 on selection) fixes the BCP47 script subtag before the gallery phases run. Only the **display name, copyright holder, region, and the optional provenance metadata** are deferred to the documentation stage alongside Phase F (see the Workflow ordering preamble), so the engaging character/gallery work is not gated behind paperwork. The scaffolder (step 3) runs before that stage: it propagates `header.bcp47` from the resolved tag and seeds `header.keyboardId` / display name from the English name as a **provisional** value, which the documentation stage finalizes before output (step 15 is gated on documentation-stage completion, so a PR never carries an empty copyright or BCP47). The routing detection in this step is pre-filled from the chosen base as a confirmation (Sec 5 "Base-derived pre-fill"), not asked blank.
 
 6. **Survey — Phase B (Character coverage + strategy axes).** User pastes or lists target characters. Studio diffs against the IR's output set and, for each new character, the user states which key it lives on and under what modifier. Crucially, this phase also **computes the discovery axes** (Sec 7.1): the character count fixes A1 (scale), the diff and a few plain-language follow-ups fix A3 (phonetic intuition), A3a (mark-input order — alphabetic only), A4 (diacritic behavior), and A7 (spare-key availability). The output method is **not** assumed to be simple substitution — Phase B feeds the axis vector to the strategy selector (Sec 7.2), which picks the right strategy. A simple one-key-per-character swap (S-01) is only the result when the inventory is tiny and phonetic; larger or diacritic-heavy inventories route to deadkey composition (S-02), mnemonic spelling (S-05), diacritic cycling (S-07), context-sensitive clusters (S-09), and so on.
 
@@ -1064,6 +1124,18 @@ Answers to Q1 and Q2 are advisory for the placement-prior lookup (§7.6): the pr
 
 10. **Gallery — Phase E (Touch layout).** Touch layout JSON scaffolded from desktop KVK via modifier-to-layer mapping. User sees touch-feature galleries (longpress menus, layer switching, flicks, multitap) as live tappable demos and enables those that fit their language. Output validated against the touch-layout JSON schema.
 
+**Gallery instantiation (physical / touch).** The gallery is a **role**, not one screen — it is instantiated **once per modality** with a different mechanism catalog each time, which is why Phase C (physical) and Phase E (touch) are distinct steps. Phase C operates on the physical key grid (modifiers, dead keys, combos, rotas) and emits `.kmn` rules + `.kvks`; Phase E operates on the **locked** desktop layout re-projected to touch (modifiers + layers, long-press menus, flicks, multitaps) and emits `.keyman-touch-layout`. Both produce a scoped assignment map (Sec 7.7) for their modality. The desktop layout is **fully locked before Phase E runs** — touch is always a derivation of the locked desktop, never authored first (Decision 6). Stage 2's "simplify and make visual" work is concretely a mapping of each physical mechanism to its touch realization, plus the touch-only affordances that have no physical analog:
+
+| Physical mechanism (Phase C) | Touch realization (Phase E) |
+|---|---|
+| modifiers (Shift / AltGr) | shift + extra **layers** (S-13) |
+| rota (repeat-press cycling, A4 replacing-cycling / S-07) | the **same KMN rule fires on touch** (touch keystrokes pass through KMN); **multitap** can add a discrete second-tap variant as an extra affordance |
+| deadkey | **long-press** menu (`sk` subkeys), or a layer |
+| key sequence (context rule) | long-press menu (true simultaneous chords are not a KMN mechanism and are impractical on touch) |
+| — (no physical analog) | **flicks**, long-press menus |
+
+The mapping is not 1:1 — flicks and long-press menus have no physical analog, and KMN has no simultaneous-chord primitive — so Phase E is a second authoring pass over a different mechanism space, constrained by the locked desktop output, not a mechanical conversion. Note the S-07 cycle is **not** a multitap: the desktop cycling rule already fires for touch key events, so it works on touch without a touch-specific mechanism; multitap is an optional discoverability affordance layered on top.
+
 11. **Survey — Phase F (Help docs).** `welcome.htm` generated from template (BCP47 lang attr from Phase A, no version, no copyright). User writes descriptive content; `help/<name>.php` regenerated deterministically from the same content, guaranteeing body+style parity.
 
 12. **Auto — Phase G (Package).** `.kps` pre-populated: `LICENSE.md` as license file (avoids `KM0900A`), "Follow keyboard version" set, language tags from Phase A, Files block matches `targets`.
@@ -1089,6 +1161,10 @@ The survey branches at Phase A based on BCP47 tag, base-keyboard choice, and use
 | Non-Roman | Curated bases per script family (Indic, Arabic, Hebrew, SEA, etc.) | Character mapping, heavy reordering, script-specific OSK conventions | Typically omitted; survey confirms per script (see decision in Sec 14) | Gallery-picked: pre-base vowel, halant/conjunct, tone-mark, subscript stacking |
 
 **Routing decision.** Group is detected automatically from the BCP47 script subtag (from Phase A) and the IR's structural shape (which scripts its rules already emit), then confirmed with the user in a single plain-language step before the survey continues. Non-Roman group is further sub-routed to a script-family branch (Indic, Arabic, SEA, etc.) that controls which reorder patterns are shown in Phase C'.
+
+**Script is the chosen target, not the language's default.** Because language and script are decoupled (§8 identity-lite), the script subtag that drives routing is the *target* script the author selected — which may be an alternate script for the language. A romanization (`hi-Latn`) routes to QWERTY/alphabetic even though Hindi's default script is Devanagari; an IPA keyboard (`-fonipa`) routes to the alphabetic group with postfix-sequence handling (A3a, §7.1). Routing follows the pair's script, never the language's default script.
+
+**No mobile-first routing (Decision 6).** Routing is over script/layout only; there is no touch-first branch. The desktop/mobile target question (`pa_primary_target`) is **advisory** — it never branches the flow into a touch-first variant. A "mobile" answer still runs the desktop-first survey and produces its touch layout in Phase E, derived from the locked desktop (Sec 8 "Gallery instantiation"). Touch-first authoring is a v1.1 candidate (Sec 16).
 
 The three groups are the coarse expression of discovery axis **A2 (script class, Sec 7.1)**: QWERTY/QWERTZ and AZERTY are both *alphabetic*; the Non-Roman group spans *abugida / abjad / syllabary / logographic*, which the strategy selector then refines (e.g. abugida + cluster sensitivity → S-09). Routing narrows the field; the decision tree (Sec 7.2) picks the specific output strategy within it.
 
@@ -1183,12 +1259,12 @@ The 133 criteria in `criteria.md` are classified into four enforcement bands per
 
 | Band | Count | Example criterion | Enforcement |
 |---|---|---|---|
-| scaffolder-bake | 38 | "No leading zeros in version components" — regex-checkable, auto-fixable | Scaffolder resets version to `1.0`; further violations cannot be authored. |
+| scaffolder-bake | 40 | "No leading zeros in version components" — regex-checkable, auto-fixable | Scaffolder resets version to `1.0`; further violations cannot be authored. |
 | layer-c-enforce | 66 | "BCP47 tag well-formed; modifier names consistent across `.kmn`/`.kvks`/`.keyman-touch-layout`" | Layer C lint engine; blocks phase progression on `error`. |
 | yellow-survey | 32 | "BCP47 tag is correct for the language/script" — requires langtags.json lookup and linguistic judgment | Phase A survey asks for the tag; studio cross-checks against langtags.json and flags mismatches for user review. |
 | red-checklist | 10 | "If a third party submits a patch to an existing keyboard, original author was consulted" — requires direct author communication | Final checklist item in PR submission flow; PR body includes a reminder block. |
 
-**Total: 146 entries** (the 7.7a split adds 1 entry relative to the original 145-entry Day-1 catalog).
+**Total: 148 entries** (the 7.7a split adds 1 entry relative to the original 145-entry Day-1 catalog; the two section-19 import-output criteria add 2 more).
 
 Source-of-truth for the band assignments is `packages/contracts/data/criteria.json` (loadable via `import { ALL_CRITERIA } from "@keyboard-studio/contracts"` or the dedicated `/criteria` subpath). The Day-1 triage closed as issue #6.
 
@@ -1197,6 +1273,11 @@ Source-of-truth for the band assignments is `packages/contracts/data/criteria.js
 ## 12. Output artifacts
 
 *Revised 2026-06-08 (v1.1.0 KeyboardIR import). See [docs/spec-amendment-2026-06-08-keyboardir.md](docs/spec-amendment-2026-06-08-keyboardir.md).*
+*Revised 2026-06-14 (v1.3.0 working-copy spine). Extends Decision 9.*
+
+**Working copy as the live edit target.** The `VirtualFS` is instantiated at keyboard selection (Track 1: `instantiateFromBase`; Track 2: `instantiateFromExisting` — see §8 "Two authoring tracks") and is the session's sole live edit target from that point forward. Every subsequent mutation — carve deletions, survey answers, gallery pattern insertions, OSK edits — is applied to this working copy. Assignments and carve deletions are applied as **re-projected layers on top of the IR**: they do not destructively rewrite IR nodes; instead, the emitter projects the current assignment map and carve state over the base IR at render time, so the original IR structure is always recoverable by unwinding the layers. The working copy is serialized to a `.zip` archive or committed as a fork+PR only at output (step 15) — the studio does not write to disk during authoring, and there is no intermediate persistence step between instantiation and output.
+
+**OSK spacebar caption as a visible identity mutation.** KeymanWeb renders the keyboard's display name on the spacebar caption by default (`spacebarTextMode` = `KEYBOARD`; the host may instead select language, or both via `LANGUAGE_KEYBOARD`), drawing on the `KeyboardIdentity` fields `displayName` and `bcp47`. Because the working copy is the live OSK target, identity edits are immediately visible in the OSK as spacebar caption changes. Script, base-keyboard, carve, and mechanism edits change the key labels. The OSK is therefore a complete observable of the working copy's current state.
 
 ### Virtual filesystem (in-memory, emitted at output time)
 

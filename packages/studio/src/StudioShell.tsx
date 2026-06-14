@@ -2,17 +2,26 @@
 //
 // Routes:
 //   #pick-base (default)  — base-keyboard picker + live OSK preview
-//   #survey               — survey flow (stub; not yet implemented)
-//   #gallery              — pattern gallery (stub; not yet implemented)
+//   #survey               — survey flow (hybrid: identity → base → prefill → B → F)
+//   #gallery              — carve gallery (IR review, Phase D)
+//   #mechanisms           — §7.7 physical mechanism-assignment gallery (Phase C)
+//   #touch                — touch layout gallery (spec §8 "Gallery instantiation");
+//                           gated behind desktopLocked === true; full gallery is
+//                           not yet built (unit 3d) — renders a lock-gate stub
 //   #preview              — compiled preview (stub; not yet implemented)
 //   #output               — output / delivery (stub; not yet implemented)
 
 import { useCallback, useEffect, useRef, useState, type ReactNode, type CSSProperties } from "react";
-import type { BaseKeyboard, KeyboardIdentity } from "@keyboard-studio/contracts";
+import type { BaseKeyboard, SurveyPhaseResult } from "@keyboard-studio/contracts";
+import { useSurveyResultsStore } from "./stores/surveyResultsStore.ts";
 import { PreviewShell } from "./components/PreviewShell.tsx";
-import { PhaseA, PhaseB, PhaseF } from "./survey/index.ts";
+import { IdentityLite, Prefill, PhaseB, PhaseF, type IdentityLiteResult } from "./survey/index.ts";
+import { BaseResolution } from "./components/BaseResolution.tsx";
+import { UnsupportedScriptStub } from "./components/UnsupportedScriptStub.tsx";
+import type { SuggestTarget } from "./lib/suggestBase.ts";
 import type { SurveyContext } from "./survey/types.ts";
 import { CarveGallery } from "./components/CarveGallery.tsx";
+import { MechanismGallery } from "./components/MechanismGallery.tsx";
 import { type RouteId } from "./lib/navigate.ts";
 import { useKeyboardArtifact } from "./hooks/useKeyboardArtifact.ts";
 import { OSKFrame } from "./components/OSKFrame.tsx";
@@ -22,6 +31,8 @@ const VALID_ROUTES = new Set<RouteId>([
   "pick-base",
   "survey",
   "gallery",
+  "mechanisms",
+  "touch",
   "preview",
   "output",
 ]);
@@ -86,15 +97,30 @@ const NAV_ITEMS: NavItem[] = [
   { id: "pick-base", label: "Pick Base" },
   { id: "survey", label: "Survey" },
   { id: "gallery", label: "Gallery" },
+  // #mechanisms — §7.7 physical mechanism-assignment gallery (Phase C).
+  // Placement: a dedicated route after the carve gallery (#gallery = Phase D)
+  // and the survey (#survey = Phases A/B). The MechanismGallery reads
+  // session.confirmedInventory (Phase B output) and session.axes (Phase A/B
+  // output) from the survey-results store, so it is naturally sequenced after
+  // the survey completes. A future sprint may inline it as a SurveyView stage
+  // (the store contract is compatible with either mounting point).
+  { id: "mechanisms", label: "Mechanisms" },
+  // #touch — §8 "Gallery instantiation": the touch layout gallery derives from
+  // the locked desktop layout. Gated behind desktopLocked === true.
+  // The full gallery (unit 3d) is not yet built; this nav item exposes the
+  // mount point and the lock-gate stub.
+  { id: "touch", label: "Touch" },
   { id: "preview", label: "Preview" },
   { id: "output", label: "Output" },
 ];
 
 interface NavBarProps {
   active: RouteId;
+  /** When false, the Touch nav item is rendered dimmed and non-navigable. */
+  desktopLocked: boolean;
 }
 
-function NavBar({ active }: NavBarProps) {
+function NavBar({ active, desktopLocked }: NavBarProps) {
   return (
     <nav
       aria-label="Studio navigation"
@@ -112,6 +138,32 @@ function NavBar({ active }: NavBarProps) {
     >
       {NAV_ITEMS.map(({ id, label }) => {
         const isActive = id === active;
+        // The Touch route requires the desktop layout to be locked first.
+        // When unlocked, render it as a non-navigable dimmed item so the author
+        // can see the route exists but knows it is not yet available.
+        const isTouchGated = id === "touch" && !desktopLocked;
+        if (isTouchGated) {
+          return (
+            <span
+              key={id}
+              aria-disabled="true"
+              title="Lock the desktop layout in Mechanisms before accessing Touch"
+              style={{
+                padding: "4px 12px",
+                fontSize: 14,
+                fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+                color: "#4a5568",
+                borderBottom: "2px solid transparent",
+                lineHeight: "40px",
+                whiteSpace: "nowrap",
+                cursor: "not-allowed",
+                userSelect: "none",
+              }}
+            >
+              {label}
+            </span>
+          );
+        }
         return (
           <a
             key={id}
@@ -146,14 +198,29 @@ const SURVEY_LEFT_MIN_PCT = 25;
 const SURVEY_LEFT_MAX_PCT = 65;
 const SURVEY_LEFT_INIT_PCT = 45;
 
-type SurveyPhase = "A" | "B" | "F" | "done";
+// Hybrid flow stage machine (spec §8 "Workflow ordering"): the survey head is
+// identity-lite -> base resolution -> base-derived prefill, then the existing
+// inventory (B) and remaining (F) phases. Gated scripts route to "unsupported".
+type SurveyStage = "identity" | "base" | "prefill" | "B" | "F" | "done" | "unsupported";
+
+/** Build the downstream SurveyContext from the identity-lite result. */
+function contextFromIdentity(identity: IdentityLiteResult): SurveyContext {
+  return {
+    language_name: identity.english || identity.autonym,
+    routing_group: identity.prefill.routingGroup,
+    script_family: identity.prefill.script,
+  };
+}
 
 interface SurveyViewProps {
   baseKeyboard: BaseKeyboard | null;
+  /** Lifts the in-survey base choice up so the preview + scaffold spine see it. */
+  onBaseSelected: (kb: BaseKeyboard) => void;
 }
 
-function SurveyView({ baseKeyboard }: SurveyViewProps) {
-  const [phase, setPhase] = useState<SurveyPhase>("A");
+function SurveyView({ baseKeyboard, onBaseSelected }: SurveyViewProps) {
+  const [stage, setStage] = useState<SurveyStage>("identity");
+  const [identityResult, setIdentityResult] = useState<IdentityLiteResult | null>(null);
   const [surveyContext, setSurveyContext] = useState<SurveyContext>({});
   const [oskMode, setOskMode] = useState<OskMode>("desktop");
   const [leftPct, setLeftPct] = useState(SURVEY_LEFT_INIT_PCT);
@@ -199,38 +266,59 @@ function SurveyView({ baseKeyboard }: SurveyViewProps) {
     };
   }, [onPointerMove, onPointerUp]);
 
-  const { stage, retry } = useKeyboardArtifact(baseKeyboard);
+  const { stage: artifactStage, retry } = useKeyboardArtifact(baseKeyboard);
   const rightPct = 100 - leftPct;
 
-  function handlePhaseAComplete(
-    _result: unknown,
-    identity: KeyboardIdentity | undefined,
-    _provenance: unknown,
-  ) {
-    const ctx: SurveyContext = {};
-    if (identity !== undefined) {
-      ctx["language_name"] = identity.languageName;
-      ctx["routing_group"] = identity.routingGroup;
-      if (identity.scriptFamily !== undefined) {
-        ctx["script_family"] = identity.scriptFamily;
-      }
-    }
-    setSurveyContext(ctx);
-    setPhase("B");
+  // Survey results are persisted into the survey-results store (the data bus the
+  // gallery and §7.2 strategy selector read), not discarded on each phase transition.
+  const recordPhase = useSurveyResultsStore((s) => s.recordPhase);
+  const resetSurvey = useSurveyResultsStore((s) => s.reset);
+
+  // Identity-lite is the hybrid flow's head: it captures the language + the
+  // INDEPENDENT target script, deriving the routing/A2 prefill. Gated scripts
+  // (Ethi/Hani/Hang) end on the "not supported" stage. See spec §8/§9.
+  function handleIdentityComplete(result: SurveyPhaseResult, identity: IdentityLiteResult) {
+    recordPhase(result);
+    setIdentityResult(identity);
+    setSurveyContext(contextFromIdentity(identity));
+    setStage(identity.supported ? "base" : "unsupported");
   }
 
-  // TODO: persist Phase B/F results into a survey store so the gallery and
-  // §7.2 strategy selector can read survey context + answers. Discarding them
-  // is acceptable only while those consumers are scaffolded-not-built.
-  function handlePhaseBComplete(_result: unknown) {
-    // TODO: persist phase B answers to IR store once #141/#142 land
-    setPhase("F");
+  // The base chosen in-survey is lifted to the shell so the preview + scaffold
+  // spine use it; the chosen (language, script) target then back-fills prefill.
+  function handleBaseResolved(base: BaseKeyboard) {
+    onBaseSelected(base);
+    setStage("prefill");
   }
-  function handlePhaseFComplete(_result: unknown) {
-    // TODO: hand off survey results to strategy selector once scaffold-over-IR (#238) lands
-    setPhase("done");
+
+  function handlePhaseBComplete(result: SurveyPhaseResult) {
+    recordPhase(result);
+    setStage("F");
   }
-  function handleStartOver() { setSurveyContext({}); setPhase("A"); }
+  function handlePhaseFComplete(result: SurveyPhaseResult) {
+    recordPhase(result);
+    setStage("done");
+  }
+  function handleStartOver() {
+    resetSurvey();
+    setIdentityResult(null);
+    setSurveyContext({});
+    setStage("identity");
+  }
+
+  // The (language, script) target for base suggestion — keyed on the CHOSEN
+  // script (decoupled from the language; spec §8/§9). The BCP47 tag (e.g.
+  // "ha-Latn", "hi-Deva") enables language-aware ranking in BaseResolution;
+  // an empty bcp47 degrades gracefully to script-match ranking.
+  const suggestTarget: SuggestTarget | null =
+    identityResult !== null
+      ? {
+          script: identityResult.prefill.script,
+          ...(identityResult.bcp47 !== ""
+            ? { bcp47: identityResult.bcp47 }
+            : {}),
+        }
+      : null;
 
   const questionsPaneStyle: CSSProperties = {
     flexBasis: `calc(${leftPct}% - ${SURVEY_DIVIDER_WIDTH / 2}px)`,
@@ -262,8 +350,8 @@ function SurveyView({ baseKeyboard }: SurveyViewProps) {
         Survey complete
       </h2>
       <p style={{ margin: 0, fontSize: 13, color: "#8b949e" }}>
-        All survey phases have been completed. Gallery hand-off is not yet
-        wired up, so your answers are not persisted yet.
+        All survey phases have been completed. Your answers are saved to the
+        survey-results store; the gallery and strategy selector read from there.
       </p>
       <button
         type="button"
@@ -298,22 +386,58 @@ function SurveyView({ baseKeyboard }: SurveyViewProps) {
     >
       {/* Left pane: survey questions */}
       <section aria-label="Survey questions" style={questionsPaneStyle}>
-        {phase === "done" && donePaneContent}
-        {phase === "A" && (
-          <PhaseA context={surveyContext} onComplete={handlePhaseAComplete} />
+        {stage === "done" && donePaneContent}
+        {stage === "identity" && (
+          <IdentityLite context={surveyContext} onComplete={handleIdentityComplete} />
         )}
-        {phase === "B" && (
+        {stage === "unsupported" && identityResult !== null && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, alignItems: "flex-start" }}>
+            <UnsupportedScriptStub script={identityResult.targetScriptRaw} />
+            <button
+              type="button"
+              onClick={handleStartOver}
+              style={{
+                padding: "8px 18px",
+                background: "transparent",
+                border: "1px solid #30363d",
+                borderRadius: 6,
+                color: "#8b949e",
+                fontSize: 13,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              Start over
+            </button>
+          </div>
+        )}
+        {stage === "base" && suggestTarget !== null && (
+          <BaseResolution
+            target={suggestTarget}
+            onResolved={handleBaseResolved}
+            onBack={() => setStage("identity")}
+          />
+        )}
+        {stage === "prefill" && identityResult !== null && baseKeyboard !== null && (
+          <Prefill
+            identity={identityResult}
+            base={baseKeyboard}
+            onConfirm={() => setStage("B")}
+            onBack={() => setStage("base")}
+          />
+        )}
+        {stage === "B" && (
           <PhaseB
             context={surveyContext}
             onComplete={handlePhaseBComplete}
-            onBack={() => setPhase("A")}
+            onBack={() => setStage("prefill")}
           />
         )}
-        {phase === "F" && (
+        {stage === "F" && (
           <PhaseF
             context={surveyContext}
             onComplete={handlePhaseFComplete}
-            onBack={() => setPhase("B")}
+            onBack={() => setStage("B")}
           />
         )}
       </section>
@@ -368,7 +492,7 @@ function SurveyView({ baseKeyboard }: SurveyViewProps) {
               textAlign: "center",
             }}
           >
-            <span style={{ fontSize: 32, opacity: 0.4 }}>⌨</span>
+            <span style={{ fontSize: 32, opacity: 0.4, fontFamily: "monospace" }}>[kb]</span>
             <span>
               Select a base keyboard on the{" "}
               <a href="#pick-base" style={{ color: "#6ea8fe", textDecoration: "none" }}>
@@ -396,12 +520,126 @@ function SurveyView({ baseKeyboard }: SurveyViewProps) {
             <OSKFrame
               baseKeyboard={baseKeyboard}
               oskMode={oskMode}
-              stage={stage}
+              stage={artifactStage}
               retry={retry}
             />
           </>
         )}
       </section>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TouchGate — §8 "Gallery instantiation" lock-gate stub for the touch route.
+//
+// The touch layout gallery (unit 3d) derives from the locked desktop layout.
+// Per spec §8 the author must lock the desktop/physical pass before the touch
+// pass can begin. This component:
+//   - When desktopLocked is false: shows a "Lock your desktop layout first"
+//     message with a link back to #mechanisms.
+//   - When desktopLocked is true: shows a "Touch gallery — coming soon" stub
+//     (the full gallery is not yet built; this is the confirmed mount point).
+//
+// This component is the seam that 3d will replace with the real touch gallery.
+// ---------------------------------------------------------------------------
+
+const TOUCH_GATE_FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+
+/** Exported for unit testing only. */
+export function TouchGate() {
+  const desktopLocked = useSurveyResultsStore((s) => s.desktopLocked);
+
+  const containerStyle: CSSProperties = {
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#0d1117",
+    fontFamily: TOUCH_GATE_FONT,
+    padding: 32,
+    boxSizing: "border-box",
+  };
+
+  const cardStyle: CSSProperties = {
+    maxWidth: 480,
+    background: "#161b22",
+    border: "1px solid #30363d",
+    borderRadius: 10,
+    padding: "28px 32px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    color: "#e6edf3",
+  };
+
+  if (!desktopLocked) {
+    return (
+      <div style={containerStyle}>
+        <div style={cardStyle}>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: "1.1rem",
+              fontWeight: 600,
+              color: "#d29922",
+            }}
+          >
+            Desktop layout not locked
+          </h2>
+          <p style={{ margin: 0, fontSize: 13, color: "#8b949e", lineHeight: 1.6 }}>
+            The touch layout gallery derives from your locked desktop layout.
+            Lock your desktop layout first before starting the touch pass.
+          </p>
+          <a
+            href="#mechanisms"
+            style={{
+              display: "inline-block",
+              padding: "7px 16px",
+              background: "transparent",
+              border: "1px solid #6ea8fe",
+              borderRadius: 6,
+              color: "#6ea8fe",
+              fontSize: 13,
+              textDecoration: "none",
+              fontFamily: TOUCH_GATE_FONT,
+              width: "fit-content",
+            }}
+          >
+            Go to Mechanisms to lock the desktop layout
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // desktopLocked is true — desktop layout is ready; touch gallery is not yet
+  // built (unit 3d). Render the confirmed mount-point stub.
+  return (
+    <div style={containerStyle}>
+      <div style={cardStyle}>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: "1.1rem",
+            fontWeight: 600,
+            color: "#6ea8fe",
+          }}
+        >
+          Touch gallery
+        </h2>
+        <p style={{ margin: 0, fontSize: 13, color: "#8b949e", lineHeight: 1.6 }}>
+          Desktop layout is locked. The touch layout gallery will be built here
+          (coming soon — unit 3d).
+        </p>
+        <p style={{ margin: 0, fontSize: 12, color: "#8b949e" }}>
+          To unlock and continue editing the desktop layout, go back to{" "}
+          <a href="#mechanisms" style={{ color: "#6ea8fe", textDecoration: "none" }}>
+            Mechanisms
+          </a>
+          .
+        </p>
+      </div>
     </div>
   );
 }
@@ -417,16 +655,35 @@ export function StudioShell() {
     setSelectedBaseKeyboard(kb);
   }, []);
 
+  // Read desktopLocked from the survey store so the NavBar can dim the Touch
+  // item when the desktop layout has not been locked yet.
+  const desktopLocked = useSurveyResultsStore((s) => s.desktopLocked);
+
   let content: ReactNode;
   switch (route) {
     case "pick-base":
       content = <PreviewShell onBaseKeyboardSelected={handleBaseKeyboardSelected} />;
       break;
     case "survey":
-      content = <SurveyView baseKeyboard={selectedBaseKeyboard} />;
+      content = (
+        <SurveyView
+          baseKeyboard={selectedBaseKeyboard}
+          onBaseSelected={handleBaseKeyboardSelected}
+        />
+      );
       break;
     case "gallery":
       content = <CarveGallery />;
+      break;
+    case "mechanisms":
+      // §7.7 physical mechanism-assignment gallery. Thread selectedBaseKeyboard
+      // so the gallery can call filterFor(base, axes) and label the base in UI.
+      content = <MechanismGallery selectedBaseKeyboard={selectedBaseKeyboard} />;
+      break;
+    case "touch":
+      // §8 "Gallery instantiation" — touch layout derives from locked desktop.
+      // Gated: desktopLocked must be true. Full gallery (unit 3d) not yet built.
+      content = <TouchGate />;
       break;
     case "preview":
       content = <RoutePlaceholder title="Preview" />;
@@ -447,7 +704,7 @@ export function StudioShell() {
         background: "#0d1117",
       }}
     >
-      <NavBar active={route} />
+      <NavBar active={route} desktopLocked={desktopLocked} />
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
         {content}
       </div>

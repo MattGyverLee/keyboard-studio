@@ -13,17 +13,20 @@ import type { DiscoveryAxisVector } from "./axes";
 // ---------------------------------------------------------------------------
 
 describe("SurveySession interface", () => {
-  it("requires axes, irAxes, phaseResults, selectedPatternIds", () => {
+  it("requires axes, irAxes, phaseResults, selectedPatternIds, confirmedInventory", () => {
     const s: SurveySession = {
       axes: {},
       irAxes: {},
       phaseResults: [],
       selectedPatternIds: [],
+      assignments: [],
+      confirmedInventory: [],
     };
     expect(s.axes).toEqual({});
     expect(s.irAxes).toEqual({});
     expect(s.phaseResults).toHaveLength(0);
     expect(s.selectedPatternIds).toHaveLength(0);
+    expect(s.confirmedInventory).toEqual([]);
   });
 
   it("axes accepts a Partial<DiscoveryAxisVector> with a subset of fields", () => {
@@ -32,6 +35,8 @@ describe("SurveySession interface", () => {
       irAxes: {},
       phaseResults: [],
       selectedPatternIds: [],
+      assignments: [],
+      confirmedInventory: [],
     };
     expect(s.axes.scriptClass).toBe("abugida");
     expect(s.axes.scale).toBe("small");
@@ -44,11 +49,62 @@ describe("SurveySession interface", () => {
 // ---------------------------------------------------------------------------
 
 describe("mergePhaseResults()", () => {
-  it("empty phases with empty irAxes yields axes={} and selectedPatternIds=[]", () => {
+  it("empty phases with empty irAxes yields axes={}, selectedPatternIds=[], assignments=[]", () => {
     const session = mergePhaseResults({}, []);
     expect(session.axes).toEqual({});
     expect(session.selectedPatternIds).toEqual([]);
+    expect(session.assignments).toEqual([]);
     expect(session.phaseResults).toHaveLength(0);
+  });
+
+  it("collects assignments across phases, last-wins per modality+scope+target", () => {
+    const phaseC: SurveyPhaseResult = {
+      phase: "C",
+      answers: [],
+      assignments: [
+        {
+          scope: "keyboard-default",
+          target: "",
+          modality: "physical",
+          mechanisms: [{ patternId: "latin_deadkey_acute_single", strategyId: "S-02" }],
+        },
+        {
+          scope: "individual",
+          target: "ŋ",
+          modality: "physical",
+          mechanisms: [{ patternId: "direct_key_swap" }],
+        },
+      ],
+    };
+    // A later gallery re-pass overrides the default and adds a touch assignment.
+    const phaseE: SurveyPhaseResult = {
+      phase: "E",
+      answers: [],
+      assignments: [
+        {
+          scope: "keyboard-default",
+          target: "",
+          modality: "physical",
+          mechanisms: [{ patternId: "latin_deadkey_acute_single", strategyId: "S-02" }, { patternId: "ralt_layer" }],
+        },
+        {
+          scope: "keyboard-default",
+          target: "",
+          modality: "touch",
+          mechanisms: [{ patternId: "longpress_alternates", strategyId: "S-13" }],
+        },
+      ],
+    };
+    const session = mergePhaseResults({}, [phaseC, phaseE]);
+    // physical default replaced by the later phase (2 mechanisms), individual kept, touch added.
+    expect(session.assignments).toHaveLength(3);
+    const physDefault = session.assignments.find(
+      (a) => a.modality === "physical" && a.scope === "keyboard-default"
+    );
+    expect(physDefault?.mechanisms).toHaveLength(2);
+    expect(
+      session.assignments.some((a) => a.modality === "touch")
+    ).toBe(true);
   });
 
   it("irAxes baseline appears in axes when no phases override it", () => {
@@ -136,6 +192,61 @@ describe("mergePhaseResults()", () => {
     };
     const session = mergePhaseResults({}, [phaseA, phaseB]);
     expect(session.axes.scriptClass).toBe("alphabetic");
+  });
+
+  it("confirmedInventory is [] when no phase carries inventory", () => {
+    const session = mergePhaseResults({}, [{ phase: "A", answers: [] }]);
+    expect(session.confirmedInventory).toEqual([]);
+  });
+
+  it("confirmedInventory unions across phases preserving first-appearance order", () => {
+    const phaseB: SurveyPhaseResult = {
+      phase: "B",
+      answers: [],
+      confirmedInventory: ["é", "ŋ", "ɛ"],
+    };
+    const phaseC: SurveyPhaseResult = {
+      phase: "C",
+      answers: [],
+      confirmedInventory: ["ɔ", "ŋ"], // ŋ is a duplicate
+    };
+    const session = mergePhaseResults({}, [phaseB, phaseC]);
+    expect(session.confirmedInventory).toEqual(["é", "ŋ", "ɛ", "ɔ"]);
+  });
+
+  it("confirmedInventory deduplicates within a single phase", () => {
+    const phaseB: SurveyPhaseResult = {
+      phase: "B",
+      answers: [],
+      confirmedInventory: ["a", "b", "a", "c"],
+    };
+    const session = mergePhaseResults({}, [phaseB]);
+    expect(session.confirmedInventory).toEqual(["a", "b", "c"]);
+  });
+
+  it("confirmedInventory drops empty strings and whitespace-only entries", () => {
+    const phaseB: SurveyPhaseResult = {
+      phase: "B",
+      answers: [],
+      confirmedInventory: ["ŋ", "", "  ", "ɛ"],
+    };
+    const session = mergePhaseResults({}, [phaseB]);
+    expect(session.confirmedInventory).toEqual(["ŋ", "ɛ"]);
+  });
+
+  it("confirmedInventory NFC-normalises entries and dedupes after normalisation", () => {
+    // NFD form of "é" (e + combining acute) should normalise to NFC precomposed "é"
+    const nfd = "é"; // e + combining acute accent = é in NFD
+    const nfc = "é"; // é precomposed in NFC
+    const phaseB: SurveyPhaseResult = {
+      phase: "B",
+      answers: [],
+      confirmedInventory: [nfd, nfc],
+    };
+    const session = mergePhaseResults({}, [phaseB]);
+    // Both normalise to the same NFC form; dedupe keeps only one
+    expect(session.confirmedInventory).toEqual([nfc]);
+    expect(session.confirmedInventory[0]).toBe(nfc);
   });
 
   it("phaseResults field on returned session equals the passed array", () => {

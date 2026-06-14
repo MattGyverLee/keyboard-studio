@@ -1,0 +1,35 @@
+{
+  "name": "@keymanapp/keyboard-lint",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Layer C hygiene lint checks (section-18 DISCUS heuristics) for keyboard-studio.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean",
+    "typecheck": "tsc --noEmit",
+    "pretest": "pnpm --filter @keyboard-studio/contracts build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@keyboard-studio/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
+  }
+}

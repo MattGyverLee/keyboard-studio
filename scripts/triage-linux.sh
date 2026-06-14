@@ -24,7 +24,11 @@ TL_EMAIL="${KM_TRIAGE_TL_EMAIL:-matthew_lee@sil.org}"
 TL_LOGIN="${KM_TRIAGE_TL_LOGIN:-MattGyverLee}"
 TRIAGE_OWNERS_JSON='["MattGyverLee","gboltono","coopabla","KevinPNG","dhigby","myczka"]'
 CLAUDE="${CLAUDE_BIN:-/home/lee2mr/.local/bin/claude}"
-MODEL="${KM_TRIAGE_MODEL:-haiku}"
+# Server-track orchestrator model. Override with KM_TRIAGE_MODEL.
+# Review specialists keep `model: sonnet` from their agent frontmatter; only
+# the orchestrator is set here. Personal/interactive runs use sonnet by
+# convention — see the Personal mode section in .claude/commands/km-triage.md.
+MODEL="${KM_TRIAGE_MODEL:-opus}"
 
 INBOX_DIR=".tech-lead-inbox"
 AUDIT_LOG="$INBOX_DIR/audit-log.jsonl"
@@ -82,8 +86,11 @@ post_conflict_notice() {
 spawn_claude_for_pr() {
   local pr_num="$1"
   set +e
+  # stdin from /dev/null: claude -p reads stdin when it isn't a TTY. Inside the
+  # per-PR while-read loop that would drain the jq stream of remaining PRs and
+  # feed the wrong PR's JSON to this process. Keep it deaf to the loop's stdin.
   CLAUDECODE="" "$CLAUDE" -p "/km-triage $pr_num" --dangerously-skip-permissions --output-format text \
-    >> "$LOG" 2>&1
+    < /dev/null >> "$LOG" 2>&1
   local exit_code=$?
   set -e
   if [[ "$exit_code" -ne 0 ]]; then
@@ -179,7 +186,9 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   # Gates mirror km-triage Phase 2 exactly.  Any PR that passes all gates
   # gets a fresh claude -p "/km-triage $NUM" with no prior-PR context.
 
-  while IFS= read -r PR; do
+  # Read PR records on fd 3, not stdin, so any subprocess spawned in the loop
+  # body (notably claude -p) cannot consume the stream and truncate the sweep.
+  while IFS= read -r PR <&3; do
     NUM=$(echo "$PR" | jq -r '.number')
     TITLE=$(echo "$PR" | jq -r '.title')
     HEAD_SHA=$(echo "$PR" | jq -r '.headRefOid // "unknown"')
@@ -322,15 +331,17 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     echo "  -> spawning claude for PR #$NUM" | tee -a "$LOG"
     n_review=$((n_review + 1))
     set +e
+    # stdin from /dev/null — see spawn_claude_for_pr: prevents claude from
+    # draining the loop's PR stream (fd 3) and being fed the next PR's JSON.
     CLAUDECODE="" "$CLAUDE" -p "/km-triage $NUM" --model "$MODEL" --dangerously-skip-permissions --output-format text \
-      >> "$LOG" 2>&1
+      < /dev/null >> "$LOG" 2>&1
     CLAUDE_EXIT=$?
     set -e
     if [[ "$CLAUDE_EXIT" -ne 0 ]]; then
       echo "  [WARN] claude exited $CLAUDE_EXIT for PR #$NUM" | tee -a "$LOG"
     fi
 
-  done < <(echo "$PRS_JSON" | jq -c '.[]')
+  done 3< <(echo "$PRS_JSON" | jq -c '.[]')
 
   # ── Retry deferred UNKNOWN-mergeability PRs ──────────────────────────────
   # Processing the other PRs buys enough time for GitHub to resolve mergeability.

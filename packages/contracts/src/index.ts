@@ -3,6 +3,7 @@
 // compiler / output pipeline pass between phases. Each module re-exports its
 // own factory (makeX) and any related Init type. Alphabetized within group.
 // ---------------------------------------------------------------------------
+export * from "./assignmentMap";
 export * from "./axes";
 export * from "./baseKeyboard";
 export * from "./compileResult";
@@ -14,6 +15,7 @@ export * from "./lintFinding";
 export * from "./pattern";
 export * from "./patternMatch";
 export * from "./provenance";
+export * from "./simulation";
 export * from "./strategy";
 export * from "./surveyPhaseResult";
 export * from "./surveySession";
@@ -32,6 +34,12 @@ export * from "./outputService";
 export * from "./patternLibrary";
 export * from "./scaffolder";
 export * from "./validator";
+
+// ---------------------------------------------------------------------------
+// IR utilities — shared helpers that operate on KeyboardIR at the contracts
+// layer (both engine and keyboard-lint consume these; lint cannot import engine).
+// ---------------------------------------------------------------------------
+export * from "./ir/producedSet";
 
 // ---------------------------------------------------------------------------
 // Loader / data — modules that load checked-in data files (criteria.json) and

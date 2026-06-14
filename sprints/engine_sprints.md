@@ -83,7 +83,7 @@ Live interactive preview. Needs the codec (#233) emitting a clean `.kmn` for the
 **#183** `feat(compiler): Deterministic simulate() API for tests, fixtures, and docs` — *todo*
 Successor to the closed #18. Powers reproducible preview output for test fixtures and the §7.5 self-check table.
 
-**#156** `feat(engine): Section-18 DISCUS design-heuristic lint checks + TouchLayout type` — *todo*
+**#156** `feat(engine): Section-18 DISCUS design-heuristic lint checks + TouchLayout type` — *in PR #352 by @gboltono*
 12 DISCUS heuristic checks from criteria.json §18. Layers on top of #44.
 
 ---
