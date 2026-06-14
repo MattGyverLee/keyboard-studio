@@ -52,3 +52,9 @@ utilities/kbgen/data/cldr/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+
+# Diagnostic probe output (Playwright screenshots, ad-hoc dumps)
+# Probes write to tmp/ by convention; never commit captures.
+tmp/
+probe-*.png
+probe-*.log
