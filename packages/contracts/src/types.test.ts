@@ -28,6 +28,7 @@ import type {
   StrategyRecommendation,
   PrimaryRuleNumber,
 } from "./strategy";
+import type { TouchLayoutIR, TouchKeyIR, IRNodeRef } from "./keyboard-ir";
 import { makeMockVirtualFS } from "./mocks/mockVirtualFS";
 import criteriaJsonRaw from "../data/criteria.json";
 import { ALL_CRITERIA, CRITERIA_BY_BAND } from "./criteriaData";
@@ -663,5 +664,153 @@ describe("StrategyRecommendation interface", () => {
     };
     expect(r.secondaries).toContain("S-10");
     expect(r.secondaries).toContain("S-08");
+  });
+});
+
+// -----------------------------------------------------------------------------
+// TouchKeyIR (spec §5, keyboard-ir.ts)
+// -----------------------------------------------------------------------------
+
+describe("TouchKeyIR interface", () => {
+  it("accepts a minimal key with only required fields (nodeId + id)", () => {
+    const key: TouchKeyIR = { nodeId: "k-1", id: "K_A" };
+    expect(key.nodeId).toBe("k-1");
+    expect(key.id).toBe("K_A");
+    expect("sp" in key).toBe(false);
+    expect("width" in key).toBe(false);
+  });
+
+  it("accepts sp as a number (key class: 0 letter, 1 special, 2 active-special, 8 spacer)", () => {
+    const letter: TouchKeyIR = { nodeId: "k-1", id: "K_A", sp: 0 };
+    const special: TouchKeyIR = { nodeId: "k-2", id: "K_BKSP", sp: 1 };
+    const activeSpecial: TouchKeyIR = { nodeId: "k-3", id: "K_SHIFT", sp: 2 };
+    const spacer: TouchKeyIR = { nodeId: "k-4", id: "K_SP", sp: 8 };
+    expect(letter.sp).toBe(0);
+    expect(special.sp).toBe(1);
+    expect(activeSpecial.sp).toBe(2);
+    expect(spacer.sp).toBe(8);
+  });
+
+  it("accepts width as a number (relative percent)", () => {
+    const key: TouchKeyIR = { nodeId: "k-1", id: "K_A", width: 100 };
+    expect(key.width).toBe(100);
+  });
+
+  it("sp and width are optional and can both be omitted (exactOptionalPropertyTypes)", () => {
+    const key: TouchKeyIR = { nodeId: "k-1", id: "K_A" };
+    expect("sp" in key).toBe(false);
+    expect("width" in key).toBe(false);
+  });
+
+  it("sp and width can both be set independently", () => {
+    const key: TouchKeyIR = { nodeId: "k-1", id: "K_BKSP", sp: 1, width: 150 };
+    expect(key.sp).toBe(1);
+    expect(key.width).toBe(150);
+  });
+
+  it("accepts sk (longpress sub-keys) as a TouchKeyIR array", () => {
+    const sk: TouchKeyIR[] = [
+      { nodeId: "k-sk-1", id: "K_B" },
+      { nodeId: "k-sk-2", id: "K_C" },
+    ];
+    const key: TouchKeyIR = { nodeId: "k-1", id: "K_A", sk };
+    expect(key.sk).toHaveLength(2);
+    expect(key.sk?.[0]?.id).toBe("K_B");
+  });
+
+  it("accepts nextlayer as a string", () => {
+    const key: TouchKeyIR = { nodeId: "k-1", id: "K_SYM", nextlayer: "symbols" };
+    expect(key.nextlayer).toBe("symbols");
+  });
+});
+
+// -----------------------------------------------------------------------------
+// TouchLayoutIR (spec §5, keyboard-ir.ts)
+// -----------------------------------------------------------------------------
+
+describe("TouchLayoutIR interface", () => {
+  it("accepts a minimal layout with one platform, one layer, one row", () => {
+    const ir: TouchLayoutIR = {
+      platforms: [
+        {
+          id: "phone",
+          layers: [
+            {
+              id: "default",
+              rows: [{ keys: [{ nodeId: "k-1", id: "K_A" }] }],
+            },
+          ],
+        },
+      ],
+      nodeIds: [],
+    };
+    expect(ir.platforms).toHaveLength(1);
+    expect(ir.platforms[0]?.id).toBe("phone");
+    expect(ir.platforms[0]?.layers[0]?.id).toBe("default");
+    expect(ir.nodeIds).toEqual([]);
+  });
+
+  it("accepts all three platform id literals (phone, tablet, desktop)", () => {
+    const platforms: Array<"phone" | "tablet" | "desktop"> = ["phone", "tablet", "desktop"];
+    for (const id of platforms) {
+      const ir: TouchLayoutIR = {
+        platforms: [{ id, layers: [] }],
+        nodeIds: [],
+      };
+      expect(ir.platforms[0]?.id).toBe(id);
+    }
+  });
+
+  it("accepts optional font on a platform", () => {
+    const ir: TouchLayoutIR = {
+      platforms: [{ id: "phone", font: "Noto Sans", layers: [] }],
+      nodeIds: [],
+    };
+    expect(ir.platforms[0]?.font).toBe("Noto Sans");
+  });
+
+  it("keys inside rows carry optional sp and width (spacer exclusion contract)", () => {
+    // A row containing one normal key (sp:0), one special key (sp:1),
+    // and one spacer key (sp:8) — exercising the sp values used by check-18-3.
+    const ir: TouchLayoutIR = {
+      platforms: [
+        {
+          id: "phone",
+          layers: [
+            {
+              id: "default",
+              rows: [
+                {
+                  keys: [
+                    { nodeId: "k-1", id: "K_A", sp: 0, width: 100 },
+                    { nodeId: "k-2", id: "K_BKSP", sp: 1, width: 120 },
+                    { nodeId: "k-3", id: "K_SP", sp: 8, width: 50 },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      nodeIds: [],
+    };
+    const keys = ir.platforms[0]?.layers[0]?.rows[0]?.keys ?? [];
+    expect(keys).toHaveLength(3);
+    expect(keys[2]?.sp).toBe(8);
+    expect(keys[2]?.width).toBe(50);
+  });
+
+  it("nodeIds holds Array<[string, IRNodeRef]> and can be non-empty", () => {
+    // IRNodeRef is { kind: ...; nodeId: string } (keyboard-ir.ts).
+    // The array is typically empty for layouts parsed by parseTouchLayout (deferred
+    // consolidation, #354), but the type allows a populated index.
+    const ref: IRNodeRef = { kind: "touchKey", nodeId: "key-1" };
+    const ir: TouchLayoutIR = {
+      platforms: [],
+      nodeIds: [["phone:default:K_A", ref]],
+    };
+    expect(ir.nodeIds).toHaveLength(1);
+    expect(ir.nodeIds[0]?.[0]).toBe("phone:default:K_A");
+    expect(ir.nodeIds[0]?.[1].kind).toBe("touchKey");
   });
 });
