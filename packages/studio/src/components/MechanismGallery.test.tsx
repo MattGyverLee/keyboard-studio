@@ -431,6 +431,92 @@ describe("MechanismGallery — preview ready state", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Desktop layout lock UI
+// ---------------------------------------------------------------------------
+
+describe("MechanismGallery — desktop lock", () => {
+  it("Lock button is disabled when there are no assignments", async () => {
+    seedInventory(["á"]);
+    await act(async () => {
+      render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
+    });
+    const lockBtn = screen.getByRole("button", { name: /Lock desktop layout/i });
+    expect(lockBtn).toBeTruthy();
+    // disabled attribute present
+    expect((lockBtn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("Lock button is enabled when there is at least one assignment", async () => {
+    seedInventory(["á"]);
+    await act(async () => {
+      render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
+    });
+    // Apply a mechanism first.
+    fireEvent.click(screen.getByRole("button", { name: /configure/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Apply$/i }));
+
+    const lockBtn = screen.getByRole("button", { name: /Lock desktop layout/i });
+    expect((lockBtn as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("clicking Lock button sets desktopLocked and renders the locked banner", async () => {
+    seedInventory(["á"]);
+    await act(async () => {
+      render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
+    });
+    // Apply, then lock.
+    fireEvent.click(screen.getByRole("button", { name: /configure/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Apply$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Lock desktop layout/i }));
+
+    // Store reflects locked state.
+    expect(useSurveyResultsStore.getState().desktopLocked).toBe(true);
+    // Banner rendered with role=status and correct text.
+    const banner = screen.getByRole("status", { name: /Desktop layout locked/i });
+    expect(banner).toBeTruthy();
+    // Lock button disappears; unlock button appears.
+    expect(screen.queryByRole("button", { name: /Lock desktop layout/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /Unlock to edit/i })).toBeTruthy();
+  });
+
+  it("controls inside MechanismCard are disabled when locked", async () => {
+    seedInventory(["á"]);
+    await act(async () => {
+      render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
+    });
+    // Apply, lock.
+    fireEvent.click(screen.getByRole("button", { name: /configure/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Apply$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Lock desktop layout/i }));
+
+    // The Apply button inside the expanded card is disabled.
+    const applyBtn = screen.getByRole("button", { name: /^Apply$/i });
+    expect((applyBtn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("clicking Unlock restores editing (desktopLocked becomes false)", async () => {
+    seedInventory(["á"]);
+    await act(async () => {
+      render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
+    });
+    // Apply, lock, then unlock.
+    fireEvent.click(screen.getByRole("button", { name: /configure/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^Apply$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Lock desktop layout/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Unlock to edit/i }));
+
+    // Store unlocked.
+    expect(useSurveyResultsStore.getState().desktopLocked).toBe(false);
+    // Banner gone; lock button back.
+    expect(screen.queryByRole("status", { name: /Desktop layout locked/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /Lock desktop layout/i })).toBeTruthy();
+    // Apply button enabled again.
+    const applyBtn = screen.getByRole("button", { name: /^Apply$/i });
+    expect((applyBtn as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Preview wiring — vfsTransform calls applyAssignmentsToVfs
 // ---------------------------------------------------------------------------
 

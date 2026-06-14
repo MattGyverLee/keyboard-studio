@@ -5,6 +5,9 @@
 //   #survey               — survey flow (hybrid: identity → base → prefill → B → F)
 //   #gallery              — carve gallery (IR review, Phase D)
 //   #mechanisms           — §7.7 physical mechanism-assignment gallery (Phase C)
+//   #touch                — touch layout gallery (spec §8 "Gallery instantiation");
+//                           gated behind desktopLocked === true; full gallery is
+//                           not yet built (unit 3d) — renders a lock-gate stub
 //   #preview              — compiled preview (stub; not yet implemented)
 //   #output               — output / delivery (stub; not yet implemented)
 
@@ -29,6 +32,7 @@ const VALID_ROUTES = new Set<RouteId>([
   "survey",
   "gallery",
   "mechanisms",
+  "touch",
   "preview",
   "output",
 ]);
@@ -101,6 +105,11 @@ const NAV_ITEMS: NavItem[] = [
   // the survey completes. A future sprint may inline it as a SurveyView stage
   // (the store contract is compatible with either mounting point).
   { id: "mechanisms", label: "Mechanisms" },
+  // #touch — §8 "Gallery instantiation": the touch layout gallery derives from
+  // the locked desktop layout. Gated behind desktopLocked === true.
+  // The full gallery (unit 3d) is not yet built; this nav item exposes the
+  // mount point and the lock-gate stub.
+  { id: "touch", label: "Touch" },
   { id: "preview", label: "Preview" },
   { id: "output", label: "Output" },
 ];
@@ -486,6 +495,119 @@ function SurveyView({ baseKeyboard, onBaseSelected }: SurveyViewProps) {
 }
 
 // ---------------------------------------------------------------------------
+// TouchGate — §8 "Gallery instantiation" lock-gate stub for the touch route.
+//
+// The touch layout gallery (unit 3d) derives from the locked desktop layout.
+// Per spec §8 the author must lock the desktop/physical pass before the touch
+// pass can begin. This component:
+//   - When desktopLocked is false: shows a "Lock your desktop layout first"
+//     message with a link back to #mechanisms.
+//   - When desktopLocked is true: shows a "Touch gallery — coming soon" stub
+//     (the full gallery is not yet built; this is the confirmed mount point).
+//
+// This component is the seam that 3d will replace with the real touch gallery.
+// ---------------------------------------------------------------------------
+
+const TOUCH_GATE_FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+
+function TouchGate() {
+  const desktopLocked = useSurveyResultsStore((s) => s.desktopLocked);
+
+  const containerStyle: CSSProperties = {
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#0d1117",
+    fontFamily: TOUCH_GATE_FONT,
+    padding: 32,
+    boxSizing: "border-box",
+  };
+
+  const cardStyle: CSSProperties = {
+    maxWidth: 480,
+    background: "#161b22",
+    border: "1px solid #30363d",
+    borderRadius: 10,
+    padding: "28px 32px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    color: "#e6edf3",
+  };
+
+  if (!desktopLocked) {
+    return (
+      <div style={containerStyle}>
+        <div style={cardStyle}>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: "1.1rem",
+              fontWeight: 600,
+              color: "#d29922",
+            }}
+          >
+            Desktop layout not locked
+          </h2>
+          <p style={{ margin: 0, fontSize: 13, color: "#8b949e", lineHeight: 1.6 }}>
+            The touch layout gallery derives from your locked desktop layout.
+            Lock your desktop layout first before starting the touch pass.
+          </p>
+          <a
+            href="#mechanisms"
+            style={{
+              display: "inline-block",
+              padding: "7px 16px",
+              background: "transparent",
+              border: "1px solid #6ea8fe",
+              borderRadius: 6,
+              color: "#6ea8fe",
+              fontSize: 13,
+              textDecoration: "none",
+              fontFamily: TOUCH_GATE_FONT,
+              width: "fit-content",
+            }}
+          >
+            Go to Mechanisms to lock the desktop layout
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // desktopLocked is true — desktop layout is ready; touch gallery is not yet
+  // built (unit 3d). Render the confirmed mount-point stub.
+  return (
+    <div style={containerStyle}>
+      <div style={cardStyle}>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: "1.1rem",
+            fontWeight: 600,
+            color: "#6ea8fe",
+          }}
+        >
+          Touch gallery
+        </h2>
+        <p style={{ margin: 0, fontSize: 13, color: "#8b949e", lineHeight: 1.6 }}>
+          Desktop layout is locked. The touch layout gallery will be built here
+          (coming soon — unit 3d).
+        </p>
+        <p style={{ margin: 0, fontSize: 12, color: "#8b949e" }}>
+          To unlock and continue editing the desktop layout, go back to{" "}
+          <a href="#mechanisms" style={{ color: "#6ea8fe", textDecoration: "none" }}>
+            Mechanisms
+          </a>
+          .
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // StudioShell — top-level layout: nav bar + route content
 // ---------------------------------------------------------------------------
 
@@ -516,6 +638,11 @@ export function StudioShell() {
       // §7.7 physical mechanism-assignment gallery. Thread selectedBaseKeyboard
       // so the gallery can call filterFor(base, axes) and label the base in UI.
       content = <MechanismGallery selectedBaseKeyboard={selectedBaseKeyboard} />;
+      break;
+    case "touch":
+      // §8 "Gallery instantiation" — touch layout derives from locked desktop.
+      // Gated: desktopLocked must be true. Full gallery (unit 3d) not yet built.
+      content = <TouchGate />;
       break;
     case "preview":
       content = <RoutePlaceholder title="Preview" />;
