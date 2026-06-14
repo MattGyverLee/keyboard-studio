@@ -78,19 +78,28 @@ export function BaseResolution({
   );
 
   const suggestions = useMemo(
-    () => {
-      const result = suggestBases(bases, target, { languagesById });
-      // Debug: open browser console to diagnose language-match issues
-      const ewoKeyboards = bases.filter((b) =>
-        (languagesById[b.id] ?? []).some((t) => t.startsWith("ewo")),
-      );
-      console.debug("[BaseResolution] target:", target);
-      console.debug("[BaseResolution] ewo keyboards in catalog:", ewoKeyboards.map((b) => b.id));
-      console.debug("[BaseResolution] suggestion reasons:", result.map((s) => `${s.base.id}:${s.reason}`));
-      return result;
-    },
+    () => suggestBases(bases, target, { languagesById }),
     [bases, target, languagesById],
   );
+
+  // Debug: visible on-screen so mobile users can diagnose without a console.
+  // Shows target BCP47, total keyboards loaded, and how many have a language
+  // tag matching the target primary subtag.
+  const debugInfo = useMemo(() => {
+    const targetLang = target.bcp47?.split("-")[0] ?? "(none)";
+    const langMatches = bases.filter((b) =>
+      (languagesById[b.id] ?? []).some(
+        (t) => t.split("-")[0] === targetLang,
+      ),
+    );
+    return {
+      bcp47: target.bcp47 ?? "(not set)",
+      script: target.script,
+      totalBases: bases.length,
+      langMatchCount: langMatches.length,
+      langMatchIds: langMatches.slice(0, 5).map((b) => b.id),
+    };
+  }, [bases, target, languagesById]);
 
   const heading: React.CSSProperties = {
     margin: "0 0 8px 0",
@@ -110,6 +119,12 @@ export function BaseResolution({
         Based on your language and chosen script, here are the closest starting
         points. Pick one, or choose another below.
       </p>
+
+      {/* Temporary debug panel — remove once language-match is confirmed working */}
+      <details style={{ marginBottom: 12, fontSize: 11, color: "#8b949e", border: "1px solid #30363d", borderRadius: 6, padding: "6px 10px" }}>
+        <summary style={{ cursor: "pointer" }}>Debug info</summary>
+        <pre style={{ margin: "6px 0 0 0", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{JSON.stringify(debugInfo, null, 2)}</pre>
+      </details>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
         {suggestions.map(({ base, reason }) => (
