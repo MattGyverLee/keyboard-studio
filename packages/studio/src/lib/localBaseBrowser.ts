@@ -9,27 +9,44 @@ import type {
 } from "@keyboard-studio/contracts";
 
 const LIST_ENDPOINT = "/local-kbd-api/list";
+const LANGUAGES_ENDPOINT = "/local-kbd-api/languages";
 
 let _cached: Promise<BaseKeyboard[]> | null = null;
 
 async function fetchCatalog(): Promise<BaseKeyboard[]> {
   if (_cached !== null) return _cached;
   _cached = (async () => {
-    const r = await fetch(LIST_ENDPOINT);
-    if (!r.ok) {
-      _cached = null; // allow retry on next call
+    const [listRes, langRes] = await Promise.all([
+      fetch(LIST_ENDPOINT),
+      fetch(LANGUAGES_ENDPOINT).catch(() => null),
+    ]);
+    if (!listRes.ok) {
+      _cached = null;
       throw new Error(
-        `${LIST_ENDPOINT} returned HTTP ${r.status} — is the local-keyboards Vite plugin loaded?`,
+        `${LIST_ENDPOINT} returned HTTP ${listRes.status} — is the local-keyboards Vite plugin loaded?`,
       );
     }
-    const data = (await r.json()) as unknown;
+    const data = (await listRes.json()) as unknown;
     if (!Array.isArray(data)) {
       _cached = null;
       throw new Error(
         `${LIST_ENDPOINT} returned non-array payload: ${JSON.stringify(data).slice(0, 200)}`,
       );
     }
-    return data as BaseKeyboard[];
+    // Merge fresh language data from the dedicated endpoint.  This bypasses
+    // the catalog cache in the Vite plugin so language-match ranking always
+    // reflects the current .kps files regardless of catalog cache state.
+    let langMap: Record<string, string[]> = {};
+    if (langRes !== null && langRes.ok) {
+      try { langMap = (await langRes.json()) as Record<string, string[]>; } catch { /* ignore */ }
+    }
+    return (data as BaseKeyboard[]).map((kb) => {
+      const langs = langMap[kb.id];
+      if (langs !== undefined && langs.length > 0 && (kb.languages === undefined || kb.languages.length === 0)) {
+        return { ...kb, languages: langs };
+      }
+      return kb;
+    });
   })();
   return _cached;
 }

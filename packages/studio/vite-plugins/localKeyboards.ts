@@ -171,6 +171,47 @@ export function localKeyboardsPlugin(opts: LocalKeyboardsOptions): Plugin {
         res.end(JSON.stringify(catalogCache));
       });
 
+      // Returns a fresh {id: string[]} language map on every request —
+      // no catalog cache involved, so it always reflects the current .kps
+      // files.  Called by localBaseBrowser to augment base entries that
+      // came back without a languages field.
+      server.middlewares.use("/local-kbd-api/languages", (_req, res) => {
+        if (!exists) {
+          res.statusCode = 404;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({}));
+          return;
+        }
+        const releaseDir = path.join(root, "release");
+        const map: Record<string, string[]> = {};
+        if (fs.existsSync(releaseDir)) {
+          for (const vendor of fs.readdirSync(releaseDir)) {
+            const vendorDir = path.join(releaseDir, vendor);
+            try { if (!fs.statSync(vendorDir).isDirectory()) continue; } catch { continue; }
+            let kbDirs: string[];
+            try { kbDirs = fs.readdirSync(vendorDir); } catch { continue; }
+            for (const id of kbDirs) {
+              const kpsPath = path.join(vendorDir, id, "source", `${id}.kps`);
+              if (!fs.existsSync(kpsPath)) continue;
+              try {
+                const xml = fs.readFileSync(kpsPath, "utf8");
+                const ids: string[] = [];
+                // Flexible regex — handles any attribute ordering
+                const re = /Language[^>]+ID="([^"]+)"/g;
+                let m: RegExpExecArray | null;
+                while ((m = re.exec(xml)) !== null) {
+                  if (m[1] !== undefined && m[1].length > 0) ids.push(m[1]);
+                }
+                if (ids.length > 0) map[id] = ids;
+              } catch { /* skip unreadable */ }
+            }
+          }
+        }
+        res.setHeader("content-type", "application/json");
+        res.setHeader("cache-control", "no-cache");
+        res.end(JSON.stringify(map));
+      });
+
       server.middlewares.use("/local-kbd-proxy", (req, res, next) => {
         const url = (req.url ?? "").split("?")[0] ?? "";
         if (url === "" || url === "/") {
