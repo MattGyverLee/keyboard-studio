@@ -1,12 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
 import { parseKvksFontFamily } from "./parseKvksFontFamily.js";
 
-// Real .kvks content from the sil_cameroon_azerty keyboard.
-const kvksText = readFileSync(
-  "/home/user/keyboards/release/sil/sil_cameroon_azerty/source/sil_cameroon_azerty.kvks",
-  "utf8",
-);
+// Representative snippet of the real sil_cameroon_azerty.kvks, inlined so the test
+// is hermetic: CI checks out only keyboard-studio, not the sibling keymanapp/keyboards
+// repo, so reading an absolute path into ../keyboards fails (ENOENT) in CI.
+const kvksText = `<?xml version="1.0" encoding="utf-8"?>
+<visualkeyboard>
+  <encoding name="unicode" fontname="Andika Afr" fontsize="-12">
+    <layer/>
+  </encoding>
+</visualkeyboard>`;
 
 describe("parseKvksFontFamily", () => {
   it('extracts "Andika Afr" from the real sil_cameroon_azerty.kvks', () => {

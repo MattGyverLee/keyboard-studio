@@ -1,12 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
 import { parseKpsFonts } from "./parseKpsFonts.js";
 
-// Real .kps content from the sil_cameroon_azerty keyboard.
-const kpsText = readFileSync(
-  "/home/user/keyboards/release/sil/sil_cameroon_azerty/source/sil_cameroon_azerty.kps",
-  "utf8",
-);
+// Representative snippet of the real sil_cameroon_azerty.kps, inlined so the test
+// is hermetic: CI checks out only keyboard-studio, not the sibling keymanapp/keyboards
+// repo, so reading an absolute path into ../keyboards fails (ENOENT) in CI.
+const kpsText = `<?xml version="1.0" encoding="utf-8"?>
+<Package>
+  <Options>
+    <OSKFont>fonts\\AndikaAfr-R.ttf</OSKFont>
+  </Options>
+  <Files>
+    <File>
+      <Name>fonts\\AndikaAfr-R.ttf</Name>
+      <FileType>.ttf</FileType>
+    </File>
+  </Files>
+</Package>`;
 
 describe("parseKpsFonts", () => {
   describe("real sil_cameroon_azerty.kps", () => {
