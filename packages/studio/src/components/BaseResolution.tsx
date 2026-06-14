@@ -78,7 +78,17 @@ export function BaseResolution({
   );
 
   const suggestions = useMemo(
-    () => suggestBases(bases, target, { languagesById }),
+    () => {
+      const result = suggestBases(bases, target, { languagesById });
+      // Debug: open browser console to diagnose language-match issues
+      const ewoKeyboards = bases.filter((b) =>
+        (languagesById[b.id] ?? []).some((t) => t.startsWith("ewo")),
+      );
+      console.debug("[BaseResolution] target:", target);
+      console.debug("[BaseResolution] ewo keyboards in catalog:", ewoKeyboards.map((b) => b.id));
+      console.debug("[BaseResolution] suggestion reasons:", result.map((s) => `${s.base.id}:${s.reason}`));
+      return result;
+    },
     [bases, target, languagesById],
   );
 
