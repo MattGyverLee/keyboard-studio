@@ -4,5 +4,7 @@
 export { substituteSlots } from "./substitute.js";
 export type { SubstituteResult } from "./substitute.js";
 
-export { applyAssignments } from "./applyAssignments.js";
+export { applyAssignments, resolveRenderableMechanisms } from "./applyAssignments.js";
 export type { ApplyAssignmentsResult } from "./applyAssignments.js";
+
+export { applyAssignmentsToVfs } from "./applyAssignmentsToVfs.js";
