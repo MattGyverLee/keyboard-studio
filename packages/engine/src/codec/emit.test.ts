@@ -447,3 +447,56 @@ describe("emit — target-selector prefix", () => {
     expect(out).not.toMatch(/\$keyman(web|only)?:\s*\+ \[K_X\]/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// emitRule — group.usingKeys gate on the auto-prepended `+`
+//
+// kmcmplib::ProcessKeyLineImpl has two rule-syntax modes based on whether
+// fk->currentGroup->fUsingKeys is true:
+//
+//   using keys     →  <lookahead> + <key> > <output>   (the `+` is required)
+//   without keys   →  <context>           > <output>   (the `+` is forbidden)
+//
+// Rules inside `group(deadkeys)` (no `using keys` clause) such as
+//   dk(003b) any(dkf003b) > index(dkt003b, 2)
+// in sil_cameroon_qwerty must round-trip WITHOUT a leading `+`, or kmcmplib
+// rejects with KM_ERROR_KMCMP_InvalidToken on the rule line.
+// ---------------------------------------------------------------------------
+
+describe("emit — group.usingKeys controls the auto-prepended +", () => {
+  it("does NOT prepend + for rules in a non-keys group", () => {
+    const base = makeIR();
+    base.groups.push({
+      nodeId: "group#deadkeys",
+      name: "deadkeys",
+      usingKeys: false,
+      rules: [
+        {
+          nodeId: "rule#dk",
+          context: [
+            { kind: "deadkey", id: 0x3b },
+            { kind: "any", storeRef: "dkf003b" },
+          ],
+          output: [{ kind: "index", storeRef: "dkt003b", offset: 2 }],
+        },
+      ],
+      readonly: false,
+    });
+    const out = emit(base);
+    expect(out).toContain("group(deadkeys)");
+    expect(out).toContain("dk(003b) any(dkf003b) > index(dkt003b, 2)");
+    expect(out).not.toMatch(/\+\s+dk\(003b\)\s+any\(dkf003b\)\s*>/);
+  });
+
+  it("still prepends + for rules in a using-keys group (regression)", () => {
+    const base = makeIR();
+    base.groups[0]?.rules.push({
+      nodeId: "rule#keys",
+      context: [{ kind: "vkey", name: "K_A", modifiers: [] }],
+      output: [{ kind: "char", value: "a" }],
+    });
+    expect(base.groups[0]?.usingKeys).toBe(true);
+    const out = emit(base);
+    expect(out).toContain("+ [K_A] > U+0061");
+  });
+});

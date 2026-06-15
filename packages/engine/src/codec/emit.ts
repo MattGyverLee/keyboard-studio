@@ -110,7 +110,7 @@ function fmtStoreItem(item: StoreItem): string {
 // Rule emitter
 // ---------------------------------------------------------------------------
 
-function emitRule(rule: IRRule): string {
+function emitRule(rule: IRRule, groupUsingKeys: boolean): string {
   const ctx = rule.context.map(fmtContextElement).join(" ");
   const out = rule.output.map(fmtOutputElement).join(" ");
 
@@ -118,16 +118,25 @@ function emitRule(rule: IRRule): string {
   // is structural; bare `> output` is an Invalid Token in kmcmplib.
   // rule.context is empty for these.
   //
-  // Otherwise: when context already contains a raw `+` token (parser captures
-  // the structural `+` between pre-context and the matched key — e.g.
-  // `platform('touch') any(word) any(final) + [K_SPACE]`), do NOT prepend
-  // another `+`. Two `+`s in the same rule are an Invalid Token in kmcmplib.
-  // Otherwise prepend `+` (covers both vkey and non-vkey context rules).
+  // For rules inside a `using keys` group (kmcmplib::ProcessKeyLineImpl,
+  // fk->fUsingKeys = true), the syntax is `<lookahead> + <key> > <output>`;
+  // emit prepends `+` so a vkey-only rule renders as `+ [K_A] > ...`. When
+  // the context already contains a raw `+` token (parser captures the
+  // structural `+` between pre-context and the matched key — e.g.
+  // `platform('touch') any(word) any(final) + [K_SPACE]`), DO NOT prepend
+  // another one; two `+`s in the same rule are an Invalid Token.
+  //
+  // For rules inside a NON-keys group (e.g. `group(deadkeys)` in
+  // sil_cameroon_qwerty), the syntax is `<context> > <output>` with NO `+`.
+  // Prepending `+` here trips ProcessKeyLineImpl's `+`-less branch and the
+  // lexer rejects it. Hence the groupUsingKeys gate.
   let line: string;
   if (rule.matchKind !== undefined) {
     line = `${rule.matchKind} > ${out}`;
   } else if (ctx === "") {
     line = `> ${out}`;
+  } else if (!groupUsingKeys) {
+    line = `${ctx} > ${out}`;
   } else {
     const hasInlinePlus = rule.context.some(
       (el) => el.kind === "raw" && el.text.trim() === "+",
@@ -354,7 +363,7 @@ export function emit(ir: KeyboardIR): string {
     // Rules.
     for (const rule of group.rules) {
       pushLeadingComments(rule.nodeId, commentMap, lines);
-      lines.push(emitRule(rule));
+      lines.push(emitRule(rule, group.usingKeys));
     }
   }
 
