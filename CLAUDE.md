@@ -156,6 +156,16 @@ The point: an issue with half its checkboxes flipped is more honest than one clo
 
 Review cycles on spec or code changes; coordinated multi-specialist refactors; anything that benefits from parallel specialist perspectives. `docs/spec-signoff.md` is the model for what a completed cycle looks like.
 
+## Spec-kit (spec-driven feature loop)
+
+[spec-kit](https://github.com/github/spec-kit) provides the **per-feature** generative loop that sits *below* the monolithic [spec.md](spec.md). It is installed in `.specify/` (templates, scripts, `memory/constitution.md`) with the skills under `.claude/skills/speckit-*`. The CLI version is pinned in [scripts/spec-kit-version.json](scripts/spec-kit-version.json) — re-run `specify init --here` only after deliberately bumping that pin.
+
+**`spec.md` stays authoritative; spec-kit governs new feature work.** Do not migrate `spec.md` into `specs/NNN/`. New features get a `specs/NNN-<slug>/` folder whose `spec.md` **cites the governing `spec.md §X`** rather than re-deriving scope.
+
+- **`.specify/memory/constitution.md`** restates the locked gates (Pattern schema, KeyboardIR spine, working-copy spine, validator layering, VirtualFS, team boundaries, out-of-scope, conventions) so `/speckit-plan`'s Constitution Check enforces them mechanically. It does **not** amend the spec — on conflict `spec.md` + [docs/spec-signoff.md](docs/spec-signoff.md) win.
+- **Workflow:** `/speckit-specify` (+ `/speckit-clarify`) → `/speckit-plan` (Constitution Check) → `/speckit-tasks` → `/speckit-taskstoissues`, then `/km-lead` dispatches the crew against the tasks. `/speckit-analyze` runs as a `km-doc`/`km-synthesis` review check before `/speckit-implement`.
+- **Drift split:** `utilities/spec-trace` owns textual drift of the monolith `spec.md`; `/speckit-analyze` owns feature `spec ↔ plan ↔ tasks` consistency. Do **not** install spec-kit's "Spec Trace" community extension — it duplicates the existing utility.
+
 ## Conventions
 
 - Windows environment: no emoji in console output (global CLAUDE.md rule). Use `[OK]`, `[ERROR]`, `[WARN]` etc.
@@ -191,3 +201,8 @@ Adopted from [keymanapp/keyman](https://github.com/keymanapp/keyman/issues). For
 - `maint(contracts): rename PatternQuestion.required → optional`
 
 Keep `bug` and `fix` separate — `bug(...)` issues link to `fix(...)` PRs via `closes #N`. Mixing the two blurs the issue/PR relationship.
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->
