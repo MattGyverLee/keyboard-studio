@@ -99,7 +99,8 @@ export async function serializeWorkingCopy(): Promise<SerializeWorkingCopyResult
   // carries &KEYBOARDVERSION on import (codec/parse prefers it over &VERSION) and the
   // scaffolder's keyboard release version on a fresh base. Fall back to "1.0" if absent —
   // never the &VERSION file-format version (e.g. "14.0").
-  const version = baseIr.header.version || "1.0";
+  const rawVersion = baseIr.header.version?.trim() || "1.0";
+  const version = rawVersion.replace(/[^\w.\-]/g, "_");
 
   // 2. Collect physical assignments from phaseResults (mirrors useWorkingCopyTransform).
   //    projectWorkingCopyVfs also filters physical defensively, so this pre-filter is

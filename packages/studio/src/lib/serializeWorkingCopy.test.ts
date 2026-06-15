@@ -140,6 +140,15 @@ describe("serializeWorkingCopy — happy path", () => {
     expect(result!.version).toBe("1.0");
   });
 
+  it("version sanitises filesystem-unsafe chars (spaces, parens) to underscores", async () => {
+    const { serializeWorkingCopy } = await import("./serializeWorkingCopy.ts");
+    const { ir } = seedStore();
+    ir.header.version = "1.0 (beta)";
+    const result = await serializeWorkingCopy();
+    // "1.0 (beta)" → trim → "1.0 (beta)" → replace /[^\w.\-]/g → "1.0__beta_"
+    expect(result!.version).toBe("1.0__beta_");
+  });
+
   it("calls projectWorkingCopyVfs with baseIr, deletedNodeIds, identity from store", async () => {
     const { serializeWorkingCopy } = await import("./serializeWorkingCopy.ts");
     const { ir } = seedStore();
