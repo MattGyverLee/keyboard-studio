@@ -27,6 +27,7 @@
   ],
   "scripts": {
     "build": "tsc -b",
+    "dev": "tsc -b --watch --preserveWatchOutput",
     "clean": "tsc -b --clean",
     "typecheck": "tsc --noEmit",
     "pretest": "pnpm --filter @keyboard-studio/contracts build",
