@@ -46,7 +46,7 @@ export function BaseResolution({
   useEffect(() => {
     let live = true;
     getBaseBrowserService()
-      .listAll()
+      .then((svc) => svc.listAll())
       .then(
         (kbs) => {
           if (!live) return;
@@ -90,8 +90,14 @@ export function BaseResolution({
   };
   const subtle: React.CSSProperties = { margin: "0 0 20px 0", fontSize: 13, color: "#8b949e" };
 
-  if (loading) return <div style={{ color: "#8b949e" }}>Loading base keyboards…</div>;
+  if (loading) return <div role="status" style={{ color: "#8b949e" }}>Loading base keyboards...</div>;
   if (error !== null) return <div style={{ color: "#f85149" }}>{error}</div>;
+  if (bases.length === 0)
+    return (
+      <div role="status" style={{ color: "#8b949e", fontSize: 13 }}>
+        No base keyboards found. Check your connection and try again.
+      </div>
+    );
 
   return (
     <div style={{ color: "#e6edf3", fontFamily: "system-ui, sans-serif" }}>
@@ -180,7 +186,7 @@ export function BaseResolution({
             fontFamily: "inherit",
           }}
         >
-          ← Back
+          &larr; Back
         </button>
       )}
     </div>
