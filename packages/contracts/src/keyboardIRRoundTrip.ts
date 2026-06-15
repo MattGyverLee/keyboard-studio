@@ -196,9 +196,11 @@ function compareStoreItems(
     return;
   }
   for (let i = 0; i < a.length; i++) {
-    const ka = storeItemKey(a[i]);
-    const kb = storeItemKey(b[i]);
-    if (ka !== kb) push(diffs, `${path}[${i}]`, a[i], b[i], "store item differs");
+    const ai = a[i]!;
+    const bi = b[i]!;
+    const ka = storeItemKey(ai);
+    const kb = storeItemKey(bi);
+    if (ka !== kb) push(diffs, `${path}[${i}]`, ai, bi, "store item differs");
   }
 }
 
@@ -219,8 +221,8 @@ function compareStores(
   }
 
   for (let i = 0; i < sortedA.length; i++) {
-    const sa = sortedA[i];
-    const sb = sortedB[i];
+    const sa = sortedA[i]!;
+    const sb = sortedB[i]!;
     const path = `stores[name=${JSON.stringify(sa.name)}]`;
     if (sa.name !== sb.name) {
       push(diffs, path, sa.name, sb.name, "store name differs after sorting");
@@ -291,9 +293,11 @@ function compareRule(
     push(diffs, `${path}.context`, a.context, b.context, "context element count differs");
   } else {
     for (let i = 0; i < a.context.length; i++) {
-      const ka = contextElementKey(a.context[i]);
-      const kb = contextElementKey(b.context[i]);
-      if (ka !== kb) push(diffs, `${path}.context[${i}]`, a.context[i], b.context[i],
+      const aci = a.context[i]!;
+      const bci = b.context[i]!;
+      const ka = contextElementKey(aci);
+      const kb = contextElementKey(bci);
+      if (ka !== kb) push(diffs, `${path}.context[${i}]`, aci, bci,
         "context element differs");
     }
   }
@@ -303,9 +307,11 @@ function compareRule(
     push(diffs, `${path}.output`, a.output, b.output, "output element count differs");
   } else {
     for (let i = 0; i < a.output.length; i++) {
-      const ka = outputElementKey(a.output[i]);
-      const kb = outputElementKey(b.output[i]);
-      if (ka !== kb) push(diffs, `${path}.output[${i}]`, a.output[i], b.output[i],
+      const aoi = a.output[i]!;
+      const boi = b.output[i]!;
+      const ka = outputElementKey(aoi);
+      const kb = outputElementKey(boi);
+      if (ka !== kb) push(diffs, `${path}.output[${i}]`, aoi, boi,
         "output element differs");
     }
   }
@@ -345,7 +351,7 @@ function compareRules(
     return;
   }
   for (let i = 0; i < a.length; i++) {
-    compareRule(a[i], b[i], `${groupPath}.rules[${i}]`, diffs);
+    compareRule(a[i]!, b[i]!, `${groupPath}.rules[${i}]`, diffs);
   }
 }
 
@@ -368,8 +374,8 @@ function compareGroups(
     return;
   }
   for (let i = 0; i < a.length; i++) {
-    const ga = a[i];
-    const gb = b[i];
+    const ga = a[i]!;
+    const gb = b[i]!;
     const path = `groups[${i}](name=${JSON.stringify(ga.name)})`;
 
     if (ga.name !== gb.name) push(diffs, `${path}.name`, ga.name, gb.name, "group name differs");
@@ -403,8 +409,8 @@ function compareRaw(
     return;
   }
   for (let i = 0; i < sortedA.length; i++) {
-    const ra = sortedA[i];
-    const rb = sortedB[i];
+    const ra = sortedA[i]!;
+    const rb = sortedB[i]!;
     if (ra.sourceText !== rb.sourceText) {
       push(diffs, `raw[${i}].sourceText`, ra.sourceText, rb.sourceText,
         "raw fragment source text differs");
@@ -483,8 +489,10 @@ function compareRecognizedPatterns(
     return;
   }
   for (let i = 0; i < sortedA.length; i++) {
-    if (sortedA[i].id !== sortedB[i].id) {
-      push(diffs, `recognizedPatterns[${i}].id`, sortedA[i].id, sortedB[i].id,
+    const pa = sortedA[i]!;
+    const pb = sortedB[i]!;
+    if (pa.id !== pb.id) {
+      push(diffs, `recognizedPatterns[${i}].id`, pa.id, pb.id,
         "recognized pattern id differs");
     }
   }
