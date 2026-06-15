@@ -86,3 +86,56 @@ export interface AnswerStackEntry {
   questionId: string;
   value: string | string[] | undefined;
 }
+
+/**
+ * Result of a per-question validate() call.
+ * ok:true — value passes; ok:false — code is the stable machine-readable
+ * identifier (e.g. "required", "too_long", "invalid_bcp47") asserted by tests;
+ * message is the human-readable form surfaced in the editor gutter.
+ */
+export type ValidationResult =
+  | { ok: true }
+  | { ok: false; code: string; message: string };
+
+/**
+ * Per-question module shape (see packages/studio/src/survey/questions/).
+ *
+ * Each question module exports:
+ *   - definition  : the FlowQuestion node (id, type, prompt, next, …)
+ *   - validate    : optional client-side validator (called in the 300 ms cycle)
+ *   - mutate      : optional IR mutation hook — stub comment only for now;
+ *                   KeyboardIR mutation surface is not yet a real contract.
+ *   - fixtures    : test vectors consumed by colocated vitest specs
+ */
+export interface QuestionModule {
+  /** The static FlowQuestion definition, including routing in definition.next. */
+  definition: FlowQuestion;
+
+  /**
+   * Optional synchronous validator.
+   * Runs on the UI thread within the 300 ms debounce cycle.
+   * Must complete in <5 ms to stay inside budget.
+   */
+  validate?: (value: string | string[] | undefined) => ValidationResult;
+
+  /**
+   * Optional IR mutation hook.
+   * STUB: KeyboardIR mutation surface is not yet a real API.
+   * Signature reserved for fan-out cycle. Do not call.
+   */
+  // mutate?: (value, ctx) => Partial<KeyboardIR>;
+  // Eventual consumer: SurveyAnswer in packages/contracts/src/surveyPhaseResult.ts
+  // → KeyboardIR mutation in packages/contracts/src/keyboard-ir.ts
+  // Currently surfaceless; do NOT implement until the engine has a real mutation seam.
+
+  /** Test vectors exercised by the colocated vitest spec. */
+  fixtures: {
+    valid: Array<{ value: string | string[] | undefined; note?: string }>;
+    invalid: Array<{
+      value: string | string[] | undefined;
+      note?: string;
+      /** Asserts against ValidationResult.code (stable machine-readable id), not message text. */
+      expectedCode?: string;
+    }>;
+  };
+}

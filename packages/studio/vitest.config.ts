@@ -6,5 +6,9 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: false,
+    // Playwright specs under e2e/ use the @playwright/test runner — exclude
+    // them from vitest discovery so the default *.spec.ts glob doesn't pull
+    // them in and fail with "describe is not defined".
+    exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],
   },
 });
