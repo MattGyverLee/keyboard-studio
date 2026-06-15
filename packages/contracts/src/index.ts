@@ -41,6 +41,7 @@ export * from "./validator";
 // layer (both engine and keyboard-lint consume these; lint cannot import engine).
 // ---------------------------------------------------------------------------
 export * from "./ir/producedSet";
+export * from "./keyboardIRRoundTrip";
 
 // ---------------------------------------------------------------------------
 // Loader / data — modules that load checked-in data files (criteria.json) and
