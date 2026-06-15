@@ -104,13 +104,20 @@ function splitTokens(text: string): string[] {
     }
     // bare token — read until whitespace, but keep parenthesised sub-groups
     // intact (e.g. index(store, N), dk(XXXX), any(store)).
+    // ALSO stop at top-level quote and bracket characters so that adjacent
+    // tokens such as `dk(1)" "` (deadkey followed by a quoted literal, no
+    // whitespace required by kmcmplib) tokenise as two tokens rather than
+    // one malformed run.
     let j = i;
     let depth = 0;
     while (j < text.length) {
       const c = text[j] ?? "";
       if (c === "(") { depth++; j++; continue; }
       if (c === ")") { depth--; j++; continue; }
-      if (depth === 0 && (c === " " || c === "\t")) break;
+      if (depth === 0) {
+        if (c === " " || c === "\t") break;
+        if (c === "'" || c === '"' || c === "[") break;
+      }
       j++;
     }
     result.push(text.slice(i, j));
@@ -160,9 +167,12 @@ function parseVkeyBracket(tok: string): { name: string; modifiers: string[] } | 
 // KMN store/group identifiers are more permissive than C-style: they allow
 // hyphens, dots, colons, and non-ASCII letters (e.g. `store(non-subdot)`,
 // `store(hamis-E:key)`, `store(a-ሳድስ)` in real released keyboards).
-// We require the first char to be a letter/underscore (no leading digit) and
-// allow any subsequent non-whitespace, non-paren character.
-const KMN_IDENT = String.raw`[^\s\d\(\)\,][^\s\(\)\,]*`;
+// kmcmplib's Validation::ValidateIdentifier only rejects empty names,
+// over-length names, control chars, spaces, commas, parens, and Unicode
+// non-characters — it does NOT reject leading digits, so `store(1)`,
+// `store(12)` (malar_braille) are valid. Match that exactly: any sequence
+// of one or more chars that are not whitespace, parens, or commas.
+const KMN_IDENT = String.raw`[^\s\(\)\,]+`;
 
 /** Returns a parser for keyword(storeName) → storeName. */
 function makeStoreParser(keyword: string): (tok: string) => string | null {
@@ -669,12 +679,14 @@ export function parse(text: string, keyboardId: string): ParseResult {
               reason: OPAQUE_REASONS.SMP_LITERAL,
             });
           } else {
-            stores.push({
+            const sysStore: IRStore = {
               nodeId: storeNodeId,
               name: parsed.name,
               items,
               isSystem: true,
-            });
+            };
+            if (tok.targetSelector !== undefined) sysStore.targetSelector = tok.targetSelector;
+            stores.push(sysStore);
           }
         } else {
           // User store — may belong to current group or be global.
@@ -695,6 +707,7 @@ export function parse(text: string, keyboardId: string): ParseResult {
               items,
               isSystem: false,
             };
+            if (tok.targetSelector !== undefined) irStore.targetSelector = tok.targetSelector;
             stores.push(irStore);
           }
         }
@@ -721,25 +734,25 @@ export function parse(text: string, keyboardId: string): ParseResult {
 
       case "match":
       case "nomatch": {
-        // match > use(group) / nomatch > use(group)
-        // These are group-transition rules. We represent them as raw fragments
-        // unless we want typed match/nomatch — for now, emit as raw to be safe,
-        // since IRRule doesn't have a "match" concept. Actually we can store
-        // them as IRRule with a special `use(...)` output element (kind: "raw").
+        // match > use(group) / nomatch > use(group) — group-transition rules.
+        // The leading keyword is preserved via rule.matchKind so emit can
+        // reconstruct `match > ...` / `nomatch > ...` (a bare `>` line is an
+        // Invalid Token in kmcmplib).
         flushCommentsFreestanding();
         const split = splitOnArrow(tok.text);
         if (!split) {
           throw new Error(`Malformed ${tok.kind} at line ${tok.line}:${tok.col}`);
         }
         const ruleNodeId = minter.mint("rule");
-        // context is empty for match/nomatch
         const ctxEl: ContextElement[] = [];
         const outEl: OutputElement[] = [{ kind: "raw", text: split.rhs.trim() }];
         const rule: IRRule = {
           nodeId: ruleNodeId,
           context: ctxEl,
           output: outEl,
+          matchKind: tok.kind,
         };
+        if (tok.targetSelector !== undefined) rule.targetSelector = tok.targetSelector;
         if (currentGroup) {
           currentGroup.rules.push(rule);
         }
@@ -815,6 +828,7 @@ export function parse(text: string, keyboardId: string): ParseResult {
                 context: ctxElements,
                 output: outElements,
               };
+          if (tok.targetSelector !== undefined) rule.targetSelector = tok.targetSelector;
           if (currentGroup) {
             currentGroup.rules.push(rule);
           }

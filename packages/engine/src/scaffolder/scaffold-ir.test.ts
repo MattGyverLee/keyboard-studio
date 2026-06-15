@@ -55,6 +55,60 @@ describe("scaffoldIR — IR-native scaffolder operations", () => {
     expect(kbVersion?.items.map((i) => (i.kind === "char" ? i.value : "")).join("")).toBe("1.0");
   });
 
+  it("resetIdentity rewrites &VISUALKEYBOARD / &LAYOUTFILE / &KMW_EMBEDCSS to match the new keyboardId", () => {
+    const SOURCE_WITH_PATH_STORES = `store(&NAME) 'Old'
+store(&COPYRIGHT) 'C'
+store(&VERSION) '14.0'
+store(&KEYBOARDVERSION) '1.0'
+store(&TARGETS) 'any'
+store(&VISUALKEYBOARD) 'sil_cameroon_qwerty.kvks'
+store(&LAYOUTFILE) 'sil_cameroon_qwerty.keyman-touch-layout'
+store(&KMW_EMBEDCSS) 'sil_cameroon_qwerty.css'
+store(&BITMAP) 'Cameroon.ico'
+begin Unicode > use(main)
+group(main) using keys
++ [K_A] > 'a'
+`;
+    const { ir } = parse(SOURCE_WITH_PATH_STORES, "sil_cameroon_qwerty");
+    resetIdentity(ir, { keyboardId: "ewondo", displayName: "Ewondo" });
+
+    const readStore = (n: string): string =>
+      ir.stores
+        .find((s) => s.isSystem && s.name.toUpperCase() === n)!
+        .items.map((i) => (i.kind === "char" ? i.value : ""))
+        .join("");
+
+    expect(readStore("VISUALKEYBOARD")).toBe("ewondo.kvks");
+    expect(readStore("LAYOUTFILE")).toBe("ewondo.keyman-touch-layout");
+    expect(readStore("KMW_EMBEDCSS")).toBe("ewondo.css");
+    // &BITMAP is preserved — typical bases use a non-id-named icon
+    // (sil_cameroon_qwerty uses `Cameroon.ico`) and kmc-copy upstream
+    // leaves &BITMAP alone too.
+    expect(readStore("BITMAP")).toBe("Cameroon.ico");
+  });
+
+  it("resetIdentity also rewrites &KMW_EMBEDJS and &KMW_HELPFILE when present", () => {
+    const SOURCE = `store(&NAME) 'Old'
+store(&VERSION) '14.0'
+store(&KEYBOARDVERSION) '1.0'
+store(&TARGETS) 'any'
+store(&KMW_EMBEDJS) 'old_id.js'
+store(&KMW_HELPFILE) 'old_id.htm'
+begin Unicode > use(main)
+group(main) using keys
++ [K_A] > 'a'
+`;
+    const { ir } = parse(SOURCE, "old_id");
+    resetIdentity(ir, { keyboardId: "new_id", displayName: "New" });
+    const read = (n: string): string =>
+      ir.stores
+        .find((s) => s.isSystem && s.name.toUpperCase() === n)!
+        .items.map((i) => (i.kind === "char" ? i.value : ""))
+        .join("");
+    expect(read("KMW_EMBEDJS")).toBe("new_id.js");
+    expect(read("KMW_HELPFILE")).toBe("new_id.htm");
+  });
+
   it("stripCapsRules removes IRRule nodes whose context has a CAPS or NCAPS modifier", () => {
     const { ir } = parse(US_BASE_KMN, "us_english");
     const beforeCount = ir.groups[0]!.rules.length;

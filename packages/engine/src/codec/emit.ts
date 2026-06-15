@@ -110,15 +110,47 @@ function fmtStoreItem(item: StoreItem): string {
 // Rule emitter
 // ---------------------------------------------------------------------------
 
-function emitRule(rule: IRRule): string {
+function emitRule(rule: IRRule, groupUsingKeys: boolean): string {
   const ctx = rule.context.map(fmtContextElement).join(" ");
   const out = rule.output.map(fmtOutputElement).join(" ");
 
-  // Emit bare `> output` when context is empty (match/nomatch style);
-  // otherwise prefix with `+` (covers both vkey and non-vkey context rules).
-  let line = ctx === "" ? `> ${out}` : `+ ${ctx} > ${out}`;
+  // Group-transition rule (match/nomatch > use(group)) — the leading keyword
+  // is structural; bare `> output` is an Invalid Token in kmcmplib.
+  // rule.context is empty for these.
+  //
+  // For rules inside a `using keys` group (kmcmplib::ProcessKeyLineImpl,
+  // fk->fUsingKeys = true), the syntax is `<lookahead> + <key> > <output>`;
+  // emit prepends `+` so a vkey-only rule renders as `+ [K_A] > ...`. When
+  // the context already contains a raw `+` token (parser captures the
+  // structural `+` between pre-context and the matched key — e.g.
+  // `platform('touch') any(word) any(final) + [K_SPACE]`), DO NOT prepend
+  // another one; two `+`s in the same rule are an Invalid Token.
+  //
+  // For rules inside a NON-keys group (e.g. `group(deadkeys)` in
+  // sil_cameroon_qwerty), the syntax is `<context> > <output>` with NO `+`.
+  // Prepending `+` here trips ProcessKeyLineImpl's `+`-less branch and the
+  // lexer rejects it. Hence the groupUsingKeys gate.
+  let line: string;
+  if (rule.matchKind !== undefined) {
+    line = `${rule.matchKind} > ${out}`;
+  } else if (ctx === "") {
+    line = `> ${out}`;
+  } else if (!groupUsingKeys) {
+    line = `${ctx} > ${out}`;
+  } else {
+    const hasInlinePlus = rule.context.some(
+      (el) => el.kind === "raw" && el.text.trim() === "+",
+    );
+    line = hasInlinePlus ? `${ctx} > ${out}` : `+ ${ctx} > ${out}`;
+  }
   if (rule.trailingComment !== undefined) {
     line = `${line} c ${rule.trailingComment}`;
+  }
+  // Target-selector prefix (`$keyman:`, `$keymanweb:`, `$keymanonly:`) — the
+  // source-line prefix that scopes a rule to a specific compile target. Must
+  // come first on the line per kmcmplib::GetLinePrefixType.
+  if (rule.targetSelector !== undefined) {
+    line = `$${rule.targetSelector}: ${line}`;
   }
   return line;
 }
@@ -128,35 +160,89 @@ function emitRule(rule: IRRule): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Collapse a run of consecutive char StoreItems into a single quoted string.
- * Non-char items (vkey, deadkey, any, raw) are emitted as bare tokens.
- * This produces human-readable output for stores like &NAME and &COPYRIGHT
- * while preserving technical tokens in stores like &CasedKeys.
+ * True when `ch` can sit inside a kmcmplib string literal without breaking it.
+ *
+ * Unsafe characters are emitted as standalone `U+XXXX` tokens instead — the
+ * convention real `.kmn` sources use:
+ *   - control / DEL (< U+0020, U+007F) — would terminate the lexer's line scan
+ *   - combining marks (\p{M}) — would attach to surrounding chars in source
+ *     view and round-trip through the parser as a different visible run
+ *   - SMP codepoints (> U+FFFF) — fmtCodepoint handles these via single-quote
+ *     literals individually; never bundle them into a charRun string
+ *
+ * The two quote characters (' and ") are NOT excluded here — delimiter
+ * selection in flushBuf picks whichever the buffer doesn't contain.
+ */
+function isStringSafeChar(ch: string): boolean {
+  const cp = ch.codePointAt(0) ?? 0;
+  if (cp < 0x20 || cp === 0x7f) return false;
+  if (cp > 0xffff) return false;
+  if (/\p{M}/u.test(ch)) return false;
+  return true;
+}
+
+/**
+ * Collapse a run of consecutive char StoreItems into one or more quoted string
+ * literals interleaved with U+XXXX tokens. Non-char items (vkey, deadkey, any,
+ * raw) are emitted as bare tokens. This produces human-readable output for
+ * stores like &NAME and &COPYRIGHT while preserving technical tokens in stores
+ * like &CasedKeys, and correctly handles stores like &word that contain
+ * literal apostrophes followed by combining marks (e.g. sil_cameroon_qwerty).
+ *
+ * Quote-selection strategy when flushing a string-safe buffer:
+ *   - prefer single quotes
+ *   - if the buffer contains ' but not ", use double quotes
+ *   - if the buffer contains both, split on " and emit U+0022 between pieces
  */
 function emitStoreItems(items: StoreItem[]): string {
   const parts: string[] = [];
-  let charRun = "";
+  let buf = "";
+
+  const flushBuf = (): void => {
+    if (buf === "") return;
+    const hasSingle = buf.includes("'");
+    const hasDouble = buf.includes('"');
+    if (!hasSingle) {
+      parts.push(`'${buf}'`);
+    } else if (!hasDouble) {
+      parts.push(`"${buf}"`);
+    } else {
+      const pieces = buf.split('"');
+      for (let i = 0; i < pieces.length; i++) {
+        if (pieces[i] !== "") parts.push(`"${pieces[i]}"`);
+        if (i < pieces.length - 1) parts.push("U+0022");
+      }
+    }
+    buf = "";
+  };
+
   for (const item of items) {
     if (item.kind === "char") {
-      charRun += item.value;
-    } else {
-      if (charRun !== "") {
-        parts.push(`'${charRun}'`);
-        charRun = "";
+      for (const ch of item.value) {
+        if (isStringSafeChar(ch)) {
+          buf += ch;
+        } else {
+          flushBuf();
+          parts.push(fmtCodepoint(ch));
+        }
       }
+    } else {
+      flushBuf();
       parts.push(fmtStoreItem(item));
     }
   }
-  if (charRun !== "") {
-    parts.push(`'${charRun}'`);
-  }
+  flushBuf();
   return parts.join(" ");
 }
 
 function emitStore(store: IRStore): string {
   const nameToken = store.isSystem ? `&${store.name}` : store.name;
   const items = emitStoreItems(store.items);
-  return `store(${nameToken}) ${items}`;
+  const line = `store(${nameToken}) ${items}`;
+  // Target-selector prefix — same convention as emitRule.
+  return store.targetSelector !== undefined
+    ? `$${store.targetSelector}: ${line}`
+    : line;
 }
 
 // ---------------------------------------------------------------------------
@@ -277,7 +363,7 @@ export function emit(ir: KeyboardIR): string {
     // Rules.
     for (const rule of group.rules) {
       pushLeadingComments(rule.nodeId, commentMap, lines);
-      lines.push(emitRule(rule));
+      lines.push(emitRule(rule, group.usingKeys));
     }
   }
 

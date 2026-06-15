@@ -74,6 +74,71 @@ function hasSystemStore(ir: KeyboardIR, name: string): boolean {
   );
 }
 
+/** Read a system store's char-run value back into a plain string, or null. */
+function getSystemStoreString(ir: KeyboardIR, name: string): string | null {
+  const upper = name.toUpperCase();
+  const store = ir.stores.find(
+    (s) => s.isSystem && s.name.toUpperCase() === upper
+  );
+  if (store === undefined) return null;
+  // Only collapse contiguous char items; bail when we see anything structural.
+  let out = "";
+  for (const item of store.items) {
+    if (item.kind === "char") {
+      out += item.value;
+    } else if (item.kind === "raw") {
+      out += item.text;
+    } else {
+      return null; // vkey / deadkey / any in a path store — not our case
+    }
+  }
+  return out;
+}
+
+/**
+ * Rewrite the sibling-file path stores so their filenames match the new
+ * keyboardId. These stores carry literal filenames like
+ * `sil_cameroon_qwerty.kvks` that point at sibling files which
+ * `renameFilesInVfs` is about to rename to `<keyboardId>.kvks` etc.
+ * Without this update kmcmplib emits KM_WARNING_KMCMP_5253388 ("File ...
+ * was not found") and the build fails.
+ *
+ * Covered stores (per kmcmplib's kmw-compiler.ts store sweep):
+ *   - VISUALKEYBOARD  — .kvks (TSS_VISUALKEYBOARD)
+ *   - LAYOUTFILE      — .keyman-touch-layout (TSS_LAYOUTFILE)
+ *   - KMW_EMBEDCSS    — embedded .css (TSS_KMW_EMBEDCSS)
+ *   - KMW_EMBEDJS     — embedded .js  (TSS_KMW_EMBEDJS)
+ *   - KMW_HELPFILE    — KeymanWeb help .htm (TSS_KMW_HELPFILE)
+ *
+ * Strategy: preserve the extension exactly (handles compound extensions like
+ * `.keyman-touch-layout`); replace just the basename with the new keyboardId.
+ * Bail out when the existing value doesn't look like a sibling filename
+ * (no extension, or a bare absolute path), leaving it untouched.
+ *
+ * &BITMAP is intentionally NOT in the list — it points at an icon that is
+ * usually NOT base-id-named (e.g. `Cameroon.ico` in sil_cameroon_qwerty)
+ * and kmc-copy upstream leaves it alone too.
+ */
+function rewriteSiblingPathStores(ir: KeyboardIR, keyboardId: string): void {
+  const PATH_STORES = [
+    "VISUALKEYBOARD",
+    "LAYOUTFILE",
+    "KMW_EMBEDCSS",
+    "KMW_EMBEDJS",
+    "KMW_HELPFILE",
+  ];
+  for (const name of PATH_STORES) {
+    const value = getSystemStoreString(ir, name);
+    if (value === null) continue;
+    const trimmed = value.trim();
+    // Sibling-filename detection: must contain a `.` and no `/` or `\`.
+    if (!trimmed.includes(".") || /[\\/]/.test(trimmed)) continue;
+    const dotIdx = trimmed.indexOf(".");
+    const extension = trimmed.slice(dotIdx); // includes leading dot
+    setSystemStore(ir, name, `${keyboardId}${extension}`);
+  }
+}
+
 /**
  * Reset the IR's identity fields to the new keyboard's identity. Operates on
  * `ir.header` (the typed propagation point) and also rewrites the matching
@@ -101,6 +166,7 @@ export function resetIdentity(ir: KeyboardIR, identity: ScaffoldIRIdentity): voi
   setSystemStore(ir, "COPYRIGHT", kmnStringEscape(copyright));
   setSystemStore(ir, "VERSION", fileFormatVersion);
   setSystemStore(ir, "KEYBOARDVERSION", keyboardVersion);
+  rewriteSiblingPathStores(ir, identity.keyboardId);
 }
 
 function ruleHasModifier(rule: IRRule, modifier: string): boolean {

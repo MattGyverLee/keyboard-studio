@@ -58,9 +58,70 @@ function detectGroup(base: BaseKeyboard): RoutingGroup {
   return "qwerty-qwertz";
 }
 
+// Escape regex metacharacters in a literal string so it can be used as a token.
+function escapeForRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Rewrite file-path references in .kps XML text.
+ * Mirrors kmc-copy's copyKpsSourceFile (../keyman/developer/src/kmc-copy/src/KeymanProjectCopier.ts):
+ * only <Name> values that look like file paths (contain "/" or ".") and exact-
+ * match <ID> values are rewritten. Free-text fields — <Info><Name>, <Author>,
+ * <Copyright>, <Description> — are left untouched because they do not look
+ * like file paths. Word-boundary anchors prevent partial-token rewrites.
+ */
+function rewriteKpsFilePaths(xml: string, baseId: string, keyboardId: string): string {
+  const escaped = escapeForRegex(baseId);
+  const tokenRe = new RegExp(`(?<![\\w])${escaped}(?![\\w])`, "g");
+  let out = xml.replace(
+    /(<Name\b[^>]*>)([^<]*)(<\/Name>)/gi,
+    (m, open: string, value: string, close: string) => {
+      if (!value.includes("/") && !value.includes(".")) return m;
+      return `${open}${value.replace(tokenRe, keyboardId)}${close}`;
+    }
+  );
+  out = out.replace(
+    new RegExp(`(<ID\\b[^>]*>)${escaped}(<\\/ID>)`, "gi"),
+    `$1${keyboardId}$2`
+  );
+  return out;
+}
+
+/**
+ * Rewrite the <kbdname> element in .kvks XML text.
+ * kmc-copy does NOT rewrite .kvks content at all (copySourceFile = generic copy).
+ * We scope to <kbdname> only because our generated stubs and the original kvks
+ * place the keyboard ID there. Free text in <encoding fontname="...">, layer
+ * names, and key contents is preserved.
+ */
+function rewriteKvksKbdname(xml: string, baseId: string, keyboardId: string): string {
+  const escaped = escapeForRegex(baseId);
+  return xml.replace(
+    new RegExp(`(<kbdname\\b[^>]*>)${escaped}(<\\/kbdname>)`, "gi"),
+    `$1${keyboardId}$2`
+  );
+}
+
 /** @internal Exported for unit testing only. */
 export function renameFilesInVfs(vfs: VirtualFS, baseId: string, keyboardId: string): void {
-  const extensions = [".kmn", ".kps", ".kvks", ".keyman-touch-layout", ".ico"];
+  // Sibling-file extensions that conventionally use the keyboard id as
+  // their basename in keymanapp/keyboards. The rename is gated on the
+  // path actually existing at `source/<baseId><ext>` so unrelated files
+  // in subdirectories (e.g. source/welcome/welcome.htm) are not touched.
+  // `.css`, `.htm`, and `.js` mirror the path-bearing system stores
+  // (&KMW_EMBEDCSS, &KMW_HELPFILE, &KMW_EMBEDJS) so the renamed file path
+  // matches the rewritten store reference.
+  const extensions = [
+    ".kmn",
+    ".kps",
+    ".kvks",
+    ".keyman-touch-layout",
+    ".ico",
+    ".css",
+    ".htm",
+    ".js",
+  ];
   for (const ext of extensions) {
     const oldPath = `source/${baseId}${ext}`;
     const entry = vfs.get(oldPath);
@@ -69,8 +130,10 @@ export function renameFilesInVfs(vfs: VirtualFS, baseId: string, keyboardId: str
       const newPath = `source/${keyboardId}${ext}`;
       let content = entry.content;
       if (!entry.isBinary && typeof content === "string") {
-        if (ext === ".kps" || ext === ".kvks") {
-          content = content.replaceAll(baseId, keyboardId);
+        if (ext === ".kps") {
+          content = rewriteKpsFilePaths(content, baseId, keyboardId);
+        } else if (ext === ".kvks") {
+          content = rewriteKvksKbdname(content, baseId, keyboardId);
         }
       }
       vfs.set(newPath, content, entry.isBinary);
@@ -87,6 +150,8 @@ export function renameFilesInVfs(vfs: VirtualFS, baseId: string, keyboardId: str
   // Rewrite `.kmw-keyboard-<baseId>` selectors in every *.css entry.
   // Word-boundary anchor ensures we don't rewrite substrings that start with
   // the base id followed by additional alphanumerics (e.g. `base_id_extra`).
+  // Iterated AFTER the file-rename pass so the matched *.css files already
+  // live at their new <keyboardId>.css paths.
   const cssBaseClassRe = new RegExp(`kmw-keyboard-${baseId}\\b`, "g");
   for (const cssPath of vfs.list("").filter((p) => p.endsWith(".css"))) {
     const cssEntry = vfs.get(cssPath);

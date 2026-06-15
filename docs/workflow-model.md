@@ -66,12 +66,20 @@ Every session is anchored to a single **persistent working copy**: a `KeyboardIR
 subsequent step, and serialized only at output. Two entry tracks converge on a shared
 spine after instantiation:
 
-- **Track 1 — new keyboard from a base** (`instantiateFromBase`): copies the base
-  keyboard's IR, resets the identity, and enters the hybrid survey flow below.
-- **Track 2 — adapt an existing keyboard** (`instantiateFromExisting`): loads the
-  existing keyboard's IR with identity preserved, enters via a source-picker, and
-  skips identity-lite (identity is already known). Both tracks converge on the same
-  spine at the carve gallery.
+- **Track 1 — new keyboard from a base** (`instantiateFromBase`): after identity-lite
+  and base resolution, the user picks Track 1 to derive a new keyboard from the base.
+  A **project-name step** collects the new display name and auto-derives the
+  keyboardId (via `slugifyKeyboardId`); the scaffolder then copies the base's IR,
+  rewrites identity-bearing fields, and enters the shared spine at prefill.
+- **Track 2 — adapt an existing keyboard** (`instantiateFromExisting`): after
+  identity-lite and base resolution, the user picks Track 2 to adapt the chosen base
+  in place. Identity is preserved from the base; the project-name step is skipped.
+  Both tracks converge at base-derived prefill.
+
+Identity-lite runs **first** for both tracks (user override of spec §8 line 1063):
+its answers (autonym, English name, ISO 639 code, target script) feed the ranked
+base suggestions on the next step. Gated scripts (Ethi/Hani/Hang) end on the
+"not supported" stage before base resolution.
 
 The OSK is bound to the working copy throughout; it re-renders on every mutation.
 Identity edits (language name, script) are visible as OSK mutations on the spacebar
@@ -79,18 +87,21 @@ caption. Script, base selection, carve deletions, and mechanism changes alter ke
 glyphs. Assignments and carve deletions are re-projected layers — not destructive IR
 edits.
 
-### The hybrid flow diagram (Track 1)
+### The hybrid flow diagram (Track 1 and Track 2)
 
 ```mermaid
 graph TD
-  Entry([app load]) --> ID["Identity-lite: language (autonym + English) + TARGET SCRIPT (independent choice: default / romanization-Latn / IPA-fonipa / other)"]
+  Entry([app load]) --> ID["Identity-lite: autonym + English name + ISO 639 code + TARGET SCRIPT (independent choice: default / romanization-Latn / IPA-fonipa / other)"]
   ID --> LOOKUP{"base in keyboard-index for this (language, script) pair?"}
   LOOKUP -->|match| SUGGEST[Suggest base - confirm]
   LOOKUP -->|no match| MANUAL[Pick base manually]
   LOOKUP -->|none wanted| BLANK["Start from US QWERTY base (a 'blank' KM keyboard IS QWERTY)"]
-  SUGGEST --> PREFILL
-  MANUAL --> PREFILL
-  BLANK --> PREFILL
+  SUGGEST --> TRACK{Track choice}
+  MANUAL --> TRACK
+  BLANK --> TRACK
+  TRACK -->|Track 1: new keyboard from base| PROJNAME["Project-name: display name + auto-derived keyboardId"]
+  TRACK -->|Track 2: adapt existing keyboard| PREFILL
+  PROJNAME --> PREFILL
   PREFILL[Base-derived prefill: routing_group, A2, BCP47, existing inventory, A7 diff - shown as confirmations]
   PREFILL --> INV[Inventory: discovery diffed against base, seeded by identity]
   INV --> PROBE[Axis probes: only the still-unresolved A1/A3/A3a/A4]
@@ -108,9 +119,13 @@ graph TD
 
 ### Rationale
 
-- **Identity-lite first** (3 questions) is the cheap disambiguator that enables base
-  suggestion via [keyboard-index.md](keyboard-index.md) — the lookup substrate
-  already exists.
+- **Identity-lite first** (autonym, English name, ISO 639 code, target script) is
+  the cheap disambiguator that enables base suggestion via
+  [keyboard-index.md](keyboard-index.md) — the lookup substrate already exists.
+- **Track choice follows base resolution.** The author evaluates the suggested
+  base on its merits (script match, language match) and then decides whether to
+  copy it under a new identity (Track 1) or adapt it in place (Track 2). Track 1
+  adds a project-name step before prefill; Track 2 skips it.
 - **Language and script are decoupled.** The keyboard's target is a **(language,
   script) pair**, and the script is an *independent* choice — not derived from the
   language's default. The motivating cases are **romanizations** (a Latin keyboard for
