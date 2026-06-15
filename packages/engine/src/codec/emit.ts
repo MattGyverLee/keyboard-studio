@@ -114,23 +114,25 @@ function emitRule(rule: IRRule): string {
   const ctx = rule.context.map(fmtContextElement).join(" ");
   const out = rule.output.map(fmtOutputElement).join(" ");
 
-  // Emit bare `> output` when context is empty (match/nomatch style);
-  // otherwise prefix with `+` (covers both vkey and non-vkey context rules).
+  // Group-transition rule (match/nomatch > use(group)) — the leading keyword
+  // is structural; bare `> output` is an Invalid Token in kmcmplib.
+  // rule.context is empty for these.
   //
-  // BUT: when context already contains a raw `+` token (parser captures the
-  // structural `+` between pre-context and the matched key — e.g.
+  // Otherwise: when context already contains a raw `+` token (parser captures
+  // the structural `+` between pre-context and the matched key — e.g.
   // `platform('touch') any(word) any(final) + [K_SPACE]`), do NOT prepend
   // another `+`. Two `+`s in the same rule are an Invalid Token in kmcmplib.
-  const hasInlinePlus = rule.context.some(
-    (el) => el.kind === "raw" && el.text.trim() === "+",
-  );
+  // Otherwise prepend `+` (covers both vkey and non-vkey context rules).
   let line: string;
-  if (ctx === "") {
+  if (rule.matchKind !== undefined) {
+    line = `${rule.matchKind} > ${out}`;
+  } else if (ctx === "") {
     line = `> ${out}`;
-  } else if (hasInlinePlus) {
-    line = `${ctx} > ${out}`;
   } else {
-    line = `+ ${ctx} > ${out}`;
+    const hasInlinePlus = rule.context.some(
+      (el) => el.kind === "raw" && el.text.trim() === "+",
+    );
+    line = hasInlinePlus ? `${ctx} > ${out}` : `+ ${ctx} > ${out}`;
   }
   if (rule.trailingComment !== undefined) {
     line = `${line} c ${rule.trailingComment}`;

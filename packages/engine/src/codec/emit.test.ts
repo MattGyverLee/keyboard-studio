@@ -329,3 +329,52 @@ describe("emit — inline + in rule context", () => {
     expect(out).toContain("+ [K_Q] > U+0071");
   });
 });
+
+// ---------------------------------------------------------------------------
+// emitRule — match/nomatch keyword preservation
+//
+// Group-transition rules of the form `match > use(g)` lose their leading
+// keyword on round-trip if rule.matchKind is dropped, producing a bare `>`
+// line that kmcmplib rejects (KM_ERROR_KMCMP_InvalidToken on line N where
+// only `> use(...)` appears). 179 of 914 release keyboards hit this.
+// ---------------------------------------------------------------------------
+
+describe("emit — match/nomatch group-transition rules", () => {
+  it("emits `match > use(deadkeys)` when matchKind=match", () => {
+    const base = makeIR();
+    base.groups[0]?.rules.push({
+      nodeId: "rule#match",
+      context: [],
+      output: [{ kind: "raw", text: "use(deadkeys)" }],
+      matchKind: "match",
+    });
+    const out = emit(base);
+    expect(out).toContain("match > use(deadkeys)");
+    expect(out).not.toMatch(/^\s*> use\(deadkeys\)\s*$/m);
+  });
+
+  it("emits `nomatch > use(main)` when matchKind=nomatch", () => {
+    const base = makeIR();
+    base.groups[0]?.rules.push({
+      nodeId: "rule#nomatch",
+      context: [],
+      output: [{ kind: "raw", text: "use(main)" }],
+      matchKind: "nomatch",
+    });
+    const out = emit(base);
+    expect(out).toContain("nomatch > use(main)");
+  });
+
+  it("falls through to bare `>` when matchKind is unset (legacy path)", () => {
+    const base = makeIR();
+    base.groups[0]?.rules.push({
+      nodeId: "rule#bare",
+      context: [],
+      output: [{ kind: "raw", text: "use(somewhere)" }],
+    });
+    const out = emit(base);
+    // The legacy bare-arrow path remains for any caller that constructs
+    // empty-context rules manually; the parser now sets matchKind to avoid it.
+    expect(out).toContain("> use(somewhere)");
+  });
+});

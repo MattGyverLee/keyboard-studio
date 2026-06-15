@@ -151,6 +151,13 @@ export interface IRRule {
   trailingComment?: string;
   /** ID of the Pattern that owns this node; set by the pattern recognizer. */
   ownedByPattern?: string;
+  /**
+   * Set for group-transition rules of the form `match > use(g)` or
+   * `nomatch > use(g)`. Preserved structurally so the codec can round-trip
+   * the leading keyword — emit-without-this-field produces a bare `>`,
+   * which kmcmplib rejects as KM_ERROR_KMCMP_InvalidToken.
+   */
+  matchKind?: "match" | "nomatch";
 }
 
 /** A KMN comment node. */

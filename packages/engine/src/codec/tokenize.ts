@@ -52,13 +52,18 @@ export function tokenize(source: string): Token[] {
   const physicalLines = clean.split(/\r?\n/);
 
   // Step 1: join continuation lines.
+  // A backslash at the end of a physical line — optionally followed by
+  // trailing whitespace — joins the next physical line. The trailing
+  // whitespace is tolerated because real keyboard sources sometimes ship
+  // `\ ` or `\  ` (e.g. basic_kbdoldit line 92, store(unused) continuation).
+  const CONTINUATION_RE = /\\\s*$/;
   const logicalLines: Array<{ text: string; line: number }> = [];
   let i = 0;
   while (i < physicalLines.length) {
     let text = physicalLines[i] ?? "";
     const startLine = i + 1; // 1-based
-    while (text.endsWith("\\") && i + 1 < physicalLines.length) {
-      text = text.slice(0, -1); // remove trailing backslash
+    while (CONTINUATION_RE.test(text) && i + 1 < physicalLines.length) {
+      text = text.replace(CONTINUATION_RE, ""); // drop backslash + trailing ws
       i++;
       text = text + (physicalLines[i] ?? "").trimStart();
     }
