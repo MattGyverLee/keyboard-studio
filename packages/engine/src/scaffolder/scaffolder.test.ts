@@ -342,7 +342,7 @@ describe("scaffold — displayName sanitization", () => {
 });
 
 describe("renameFilesInVfs — CSS selector rewriting", () => {
-  it("rewrites .kmw-keyboard-<baseId> selectors in .css files", () => {
+  it("rewrites .kmw-keyboard-<baseId> selectors in .css files and renames the file", () => {
     const vfs = createVirtualFS();
     // One matching selector; one near-miss that shares the base prefix but has
     // extra alphanumerics (word-boundary anchor must prevent rewriting it).
@@ -351,7 +351,9 @@ describe("renameFilesInVfs — CSS selector rewriting", () => {
 
     renameFilesInVfs(vfs, "sil_cameroon_qwerty", "my_new_keyboard");
 
-    const entry = vfs.get("source/sil_cameroon_qwerty.css");
+    // The id-named .css file is now at the new path; the old path is gone.
+    expect(vfs.get("source/sil_cameroon_qwerty.css")).toBeUndefined();
+    const entry = vfs.get("source/my_new_keyboard.css");
     expect(entry).toBeDefined();
     const out = entry!.content as string;
     // Exact match replaced.

@@ -105,7 +105,23 @@ function rewriteKvksKbdname(xml: string, baseId: string, keyboardId: string): st
 
 /** @internal Exported for unit testing only. */
 export function renameFilesInVfs(vfs: VirtualFS, baseId: string, keyboardId: string): void {
-  const extensions = [".kmn", ".kps", ".kvks", ".keyman-touch-layout", ".ico"];
+  // Sibling-file extensions that conventionally use the keyboard id as
+  // their basename in keymanapp/keyboards. The rename is gated on the
+  // path actually existing at `source/<baseId><ext>` so unrelated files
+  // in subdirectories (e.g. source/welcome/welcome.htm) are not touched.
+  // `.css`, `.htm`, and `.js` mirror the path-bearing system stores
+  // (&KMW_EMBEDCSS, &KMW_HELPFILE, &KMW_EMBEDJS) so the renamed file path
+  // matches the rewritten store reference.
+  const extensions = [
+    ".kmn",
+    ".kps",
+    ".kvks",
+    ".keyman-touch-layout",
+    ".ico",
+    ".css",
+    ".htm",
+    ".js",
+  ];
   for (const ext of extensions) {
     const oldPath = `source/${baseId}${ext}`;
     const entry = vfs.get(oldPath);
@@ -134,6 +150,8 @@ export function renameFilesInVfs(vfs: VirtualFS, baseId: string, keyboardId: str
   // Rewrite `.kmw-keyboard-<baseId>` selectors in every *.css entry.
   // Word-boundary anchor ensures we don't rewrite substrings that start with
   // the base id followed by additional alphanumerics (e.g. `base_id_extra`).
+  // Iterated AFTER the file-rename pass so the matched *.css files already
+  // live at their new <keyboardId>.css paths.
   const cssBaseClassRe = new RegExp(`kmw-keyboard-${baseId}\\b`, "g");
   for (const cssPath of vfs.list("").filter((p) => p.endsWith(".css"))) {
     const cssEntry = vfs.get(cssPath);

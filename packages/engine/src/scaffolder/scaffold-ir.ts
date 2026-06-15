@@ -96,12 +96,19 @@ function getSystemStoreString(ir: KeyboardIR, name: string): string | null {
 }
 
 /**
- * Rewrite the sibling-file path stores (&VISUALKEYBOARD, &LAYOUTFILE,
- * &KMW_EMBEDCSS) so their filenames match the new keyboardId. These stores
- * carry literal filenames like `sil_cameroon_qwerty.kvks` that point at
- * sibling files which `renameFilesInVfs` is about to rename to
- * `<keyboardId>.kvks` etc. Without this update kmcmplib emits
- * KM_WARNING_KMCMP_5253388 ("File ... was not found") and the build fails.
+ * Rewrite the sibling-file path stores so their filenames match the new
+ * keyboardId. These stores carry literal filenames like
+ * `sil_cameroon_qwerty.kvks` that point at sibling files which
+ * `renameFilesInVfs` is about to rename to `<keyboardId>.kvks` etc.
+ * Without this update kmcmplib emits KM_WARNING_KMCMP_5253388 ("File ...
+ * was not found") and the build fails.
+ *
+ * Covered stores (per kmcmplib's kmw-compiler.ts store sweep):
+ *   - VISUALKEYBOARD  — .kvks (TSS_VISUALKEYBOARD)
+ *   - LAYOUTFILE      — .keyman-touch-layout (TSS_LAYOUTFILE)
+ *   - KMW_EMBEDCSS    — embedded .css (TSS_KMW_EMBEDCSS)
+ *   - KMW_EMBEDJS     — embedded .js  (TSS_KMW_EMBEDJS)
+ *   - KMW_HELPFILE    — KeymanWeb help .htm (TSS_KMW_HELPFILE)
  *
  * Strategy: preserve the extension exactly (handles compound extensions like
  * `.keyman-touch-layout`); replace just the basename with the new keyboardId.
@@ -113,7 +120,13 @@ function getSystemStoreString(ir: KeyboardIR, name: string): string | null {
  * and kmc-copy upstream leaves it alone too.
  */
 function rewriteSiblingPathStores(ir: KeyboardIR, keyboardId: string): void {
-  const PATH_STORES = ["VISUALKEYBOARD", "LAYOUTFILE", "KMW_EMBEDCSS"];
+  const PATH_STORES = [
+    "VISUALKEYBOARD",
+    "LAYOUTFILE",
+    "KMW_EMBEDCSS",
+    "KMW_EMBEDJS",
+    "KMW_HELPFILE",
+  ];
   for (const name of PATH_STORES) {
     const value = getSystemStoreString(ir, name);
     if (value === null) continue;

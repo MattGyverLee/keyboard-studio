@@ -101,4 +101,42 @@ describe("renameFilesInVfs — scoped content rewriting", () => {
       expect(out).toContain("source/base_id_extra.kmn");
     });
   });
+
+  describe("sibling-file renames (.css, .htm, .js)", () => {
+    it("renames source/<baseId>.css to source/<keyboardId>.css and rewrites selectors", () => {
+      const vfs = createVirtualFS();
+      vfs.set(
+        "source/base_id.css",
+        ".kmw-keyboard-base_id { color: red; }",
+      );
+      renameFilesInVfs(vfs, "base_id", "my_keyboard");
+      expect(vfs.get("source/base_id.css")).toBeUndefined();
+      const renamed = vfs.get("source/my_keyboard.css");
+      expect(renamed).not.toBeUndefined();
+      expect(renamed!.content).toBe(
+        ".kmw-keyboard-my_keyboard { color: red; }",
+      );
+    });
+
+    it("renames source/<baseId>.htm and source/<baseId>.js when present", () => {
+      const vfs = createVirtualFS();
+      vfs.set("source/base_id.htm", "<html>help</html>");
+      vfs.set("source/base_id.js", "var x = 1;");
+      renameFilesInVfs(vfs, "base_id", "my_keyboard");
+      expect(vfs.get("source/my_keyboard.htm")).not.toBeUndefined();
+      expect(vfs.get("source/my_keyboard.js")).not.toBeUndefined();
+      expect(vfs.get("source/base_id.htm")).toBeUndefined();
+      expect(vfs.get("source/base_id.js")).toBeUndefined();
+    });
+
+    it("leaves non-id-named htm/js/css in subdirs untouched", () => {
+      const vfs = createVirtualFS();
+      vfs.set("source/welcome/welcome.htm", "<html>welcome</html>");
+      vfs.set("source/help/kb.css", ".help { padding: 4px; }");
+      renameFilesInVfs(vfs, "base_id", "my_keyboard");
+      // Untouched: paths that don't match `source/<baseId>.<ext>`.
+      expect(vfs.get("source/welcome/welcome.htm")).not.toBeUndefined();
+      expect(vfs.get("source/help/kb.css")).not.toBeUndefined();
+    });
+  });
 });

@@ -87,6 +87,28 @@ group(main) using keys
     expect(readStore("BITMAP")).toBe("Cameroon.ico");
   });
 
+  it("resetIdentity also rewrites &KMW_EMBEDJS and &KMW_HELPFILE when present", () => {
+    const SOURCE = `store(&NAME) 'Old'
+store(&VERSION) '14.0'
+store(&KEYBOARDVERSION) '1.0'
+store(&TARGETS) 'any'
+store(&KMW_EMBEDJS) 'old_id.js'
+store(&KMW_HELPFILE) 'old_id.htm'
+begin Unicode > use(main)
+group(main) using keys
++ [K_A] > 'a'
+`;
+    const { ir } = parse(SOURCE, "old_id");
+    resetIdentity(ir, { keyboardId: "new_id", displayName: "New" });
+    const read = (n: string): string =>
+      ir.stores
+        .find((s) => s.isSystem && s.name.toUpperCase() === n)!
+        .items.map((i) => (i.kind === "char" ? i.value : ""))
+        .join("");
+    expect(read("KMW_EMBEDJS")).toBe("new_id.js");
+    expect(read("KMW_HELPFILE")).toBe("new_id.htm");
+  });
+
   it("stripCapsRules removes IRRule nodes whose context has a CAPS or NCAPS modifier", () => {
     const { ir } = parse(US_BASE_KMN, "us_english");
     const beforeCount = ir.groups[0]!.rules.length;
