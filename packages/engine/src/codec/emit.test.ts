@@ -290,3 +290,42 @@ describe("emit — quoted store values", () => {
     expect(out).toContain("store(ctrl) 'a' U+0009 'b'");
   });
 });
+
+// ---------------------------------------------------------------------------
+// emitRule — inline `+` handling (platform() / pre-context rules)
+//
+// Original sources like sil_cameroon_qwerty contain rules of the form
+//   platform('touch') any(word) any(final) + [K_SPACE] > ...
+// Parser captures the `+` between any(final) and [K_SPACE] as a raw context
+// element. emitRule must NOT prepend its own `+` in that case, or kmcmplib
+// rejects with KM_ERROR_KMCMP_InvalidToken (two `+`s in one rule).
+// ---------------------------------------------------------------------------
+
+describe("emit — inline + in rule context", () => {
+  it("does not double the + when context already contains a raw + element", () => {
+    const base = makeIR();
+    base.groups[0]?.rules.push({
+      nodeId: "rule#plat",
+      context: [
+        { kind: "raw", text: "platform('touch')" },
+        { kind: "raw", text: "+" },
+        { kind: "vkey", name: "K_SPACE", modifiers: [] },
+      ],
+      output: [{ kind: "char", value: " " }],
+    });
+    const out = emit(base);
+    expect(out).toContain("platform('touch') + [K_SPACE] > U+0020");
+    expect(out).not.toContain("+ platform('touch') + [K_SPACE]");
+  });
+
+  it("still prepends + when context has no raw + token", () => {
+    const base = makeIR();
+    base.groups[0]?.rules.push({
+      nodeId: "rule#plain",
+      context: [{ kind: "vkey", name: "K_Q", modifiers: [] }],
+      output: [{ kind: "char", value: "q" }],
+    });
+    const out = emit(base);
+    expect(out).toContain("+ [K_Q] > U+0071");
+  });
+});

@@ -116,7 +116,22 @@ function emitRule(rule: IRRule): string {
 
   // Emit bare `> output` when context is empty (match/nomatch style);
   // otherwise prefix with `+` (covers both vkey and non-vkey context rules).
-  let line = ctx === "" ? `> ${out}` : `+ ${ctx} > ${out}`;
+  //
+  // BUT: when context already contains a raw `+` token (parser captures the
+  // structural `+` between pre-context and the matched key — e.g.
+  // `platform('touch') any(word) any(final) + [K_SPACE]`), do NOT prepend
+  // another `+`. Two `+`s in the same rule are an Invalid Token in kmcmplib.
+  const hasInlinePlus = rule.context.some(
+    (el) => el.kind === "raw" && el.text.trim() === "+",
+  );
+  let line: string;
+  if (ctx === "") {
+    line = `> ${out}`;
+  } else if (hasInlinePlus) {
+    line = `${ctx} > ${out}`;
+  } else {
+    line = `+ ${ctx} > ${out}`;
+  }
   if (rule.trailingComment !== undefined) {
     line = `${line} c ${rule.trailingComment}`;
   }
