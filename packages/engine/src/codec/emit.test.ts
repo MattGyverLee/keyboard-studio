@@ -209,3 +209,84 @@ describe("emit: SMP codepoints", () => {
     expect(out).not.toContain("U+11701");
   });
 });
+
+// ---------------------------------------------------------------------------
+// emitStoreItems — quote selection + unsafe-char splitting
+//
+// Real keyboards (e.g. sil_cameroon_qwerty) contain user stores whose char
+// runs include both literal apostrophes and combining marks. A naive emit
+// would wrap the run in '...' and break the lexer (KM_ERROR_KMCMP_InvalidToken,
+// reported as 5251082 in the studio's recompile pipeline).
+// ---------------------------------------------------------------------------
+
+describe("emit — quoted store values", () => {
+  function makeUserStoreIR(name: string, chars: string[]): KeyboardIR {
+    const base = makeIR();
+    base.stores.push({
+      nodeId: `store#user-${name}`,
+      name,
+      items: chars.map((c) => ({ kind: "char", value: c })),
+      isSystem: false,
+    });
+    // emit only renders user stores referenced by a rule in the group — add
+    // a synthetic rule that uses any(<name>) so the store is emitted.
+    base.groups[0]?.rules.push({
+      nodeId: `rule#use-${name}`,
+      context: [{ kind: "any", storeRef: name }],
+      output: [{ kind: "index", storeRef: name, offset: 1 }],
+    });
+    return base;
+  }
+
+  it("wraps a plain ASCII run in single quotes", () => {
+    const out = emit(makeUserStoreIR("word", ["a", "b", "c"]));
+    expect(out).toContain("store(word) 'abc'");
+  });
+
+  it("switches to double quotes when the run contains an apostrophe", () => {
+    const out = emit(makeUserStoreIR("word", ["a", "'", "b"]));
+    expect(out).toContain(`store(word) "a'b"`);
+  });
+
+  it("uses single quotes when the run contains a double-quote", () => {
+    const out = emit(makeUserStoreIR("word", ["a", '"', "b"]));
+    expect(out).toContain(`store(word) 'a"b'`);
+  });
+
+  it("splits on U+0022 when the run contains both quote characters", () => {
+    const out = emit(makeUserStoreIR("word", ["a", "'", '"', "b"]));
+    // Two pieces separated by U+0022 (escape for the literal double-quote).
+    expect(out).toContain(`store(word) "a'" U+0022 "b"`);
+  });
+
+  it("emits combining marks as separate U+XXXX tokens, not inside the string", () => {
+    // sil_cameroon_qwerty &dia: literal combining marks should round-trip as
+    // bare U+xxxx tokens, never embedded in a quoted literal.
+    const out = emit(
+      makeUserStoreIR("dia", ["̀", "̄", "́"]),
+    );
+    expect(out).toContain("store(dia) U+0300 U+0304 U+0301");
+  });
+
+  it("handles the sil_cameroon_qwerty &word pattern (apostrophe + combining marks)", () => {
+    // Excerpted shape: "...-'" followed by ten combining marks. The naive
+    // emit would produce '...-'̧̰̀...' which the kmcmplib lexer rejects.
+    const out = emit(
+      makeUserStoreIR("word", [
+        "a", "b", "-", "'",
+        "̀", "̄", "́", "̌", "̂",
+      ]),
+    );
+    // Apostrophe segment uses double quotes; combining marks are bare U+XXXX.
+    expect(out).toContain(
+      `store(word) "ab-'" U+0300 U+0304 U+0301 U+030C U+0302`,
+    );
+    // Critical: no naked combining mark sits inside any quoted literal.
+    expect(out).not.toMatch(/['"][^'"]*[̀-ͯ][^'"]*['"]/);
+  });
+
+  it("emits control characters as standalone U+XXXX tokens", () => {
+    const out = emit(makeUserStoreIR("ctrl", ["a", "	", "b"]));
+    expect(out).toContain("store(ctrl) 'a' U+0009 'b'");
+  });
+});
