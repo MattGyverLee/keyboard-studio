@@ -521,5 +521,13 @@ group(main) using keys
       const kpsUnd = await scaffoldKps(BASE_KMN, baseKeyboard, "kb_und");
       expect(kpsUnd).toContain('<Language ID="und">');
     });
+
+    it("propagates base.version into <Keyboard><Version> instead of hardcoding 1.0", async () => {
+      const v2Base: BaseKeyboard = { ...baseKeyboard, version: "2.0" };
+      const kps = await scaffoldKps(BASE_KMN, v2Base, "my_keyboard");
+      // Version must appear inside <Keyboards><Keyboard>, not as the hardcoded "1.0".
+      expect(kps).toContain("<Version>2.0</Version>");
+      expect(kps).not.toContain("<Version>1.0</Version>");
+    });
   });
 });

@@ -4,7 +4,7 @@ import type {
   ScaffoldResult,
   RoutingGroup,
 } from "@keyboard-studio/contracts";
-import type { BaseKeyboard, VirtualFS } from "@keyboard-studio/contracts";
+import type { BaseKeyboard, KeymanPlatformTarget, VirtualFS } from "@keyboard-studio/contracts";
 import {
   createVirtualFS,
   validateScaffolderKeyboardId as contractsValidateKeyboardId,
@@ -221,22 +221,6 @@ function applyTouchLayoutCleanup(vfs: VirtualFS, keyboardId: string): void {
   vfs.set(path, JSON.stringify(data, null, 2));
 }
 
-// &TARGETS tokens for which kmcmplib emits a KeymanWeb `.js` artifact. Desktop-only
-// tokens (windows/macosx/linux/desktop) produce no `.js`, so referencing one in the
-// package `<Files>` would make kmc fail with KM04003 (file not found); conversely a
-// web/touch target with no `.js` in the package warns KM0401A (fatal under
-// CompilerWarningsAsErrors). The list must therefore mirror what the build emits.
-const KMW_JS_TARGETS = new Set([
-  "any",
-  "web",
-  "mobile",
-  "tablet",
-  "iphone",
-  "ipad",
-  "androidphone",
-  "androidtablet",
-]);
-
 /**
  * Build a package (`.kps`) that Keyman Developer can compile to a `.kmp`.
  *
@@ -247,16 +231,18 @@ const KMW_JS_TARGETS = new Set([
  * `<Files>` list derived from what the build actually produces — `.kmx` always,
  * `.js` only for web/touch targets, `.kvk` only when a visual keyboard exists.
  * `languages` are the base keyboard's BCP47 tags; `und` stands in when unknown.
+ * `version` propagates from the base keyboard into `<Keyboards><Keyboard><Version>`
+ * so Track 2 import does not silently downgrade a 2.0 keyboard to 1.0.
  */
 function buildKpsContent(
   keyboardId: string,
   displayName: string,
   kmnText: string,
   languages: string[],
+  targets: KeymanPlatformTarget[],
+  version = "1.0",
 ): string {
-  const targetsMatch = /store\s*\(\s*&TARGETS\s*\)\s*'([^']*)'/i.exec(kmnText);
-  const targetTokens = (targetsMatch?.[1] ?? "").toLowerCase().split(/[\s,]+/).filter(Boolean);
-  const emitsJs = targetTokens.some((t) => KMW_JS_TARGETS.has(t));
+  const emitsJs = targets.some((t) => t === "web" || t === "mobile" || t === "tablet");
   const hasVisualKeyboard = /store\s*\(\s*&VISUALKEYBOARD\s*\)/i.test(kmnText);
 
   const files = [`..\\build\\${keyboardId}.kmx`];
@@ -284,9 +270,9 @@ function buildKpsContent(
     `<Package>\n` +
     `  <System>\n    <KeymanDeveloperVersion>17.0.0.0</KeymanDeveloperVersion>\n    <FileVersion>7.0</FileVersion>\n  </System>\n` +
     `  <Options>\n    <ReadMeFile>readme.htm</ReadMeFile>\n    <WelcomeFile>welcome.htm</WelcomeFile>\n    <FollowKeyboardVersion/>\n  </Options>\n` +
-    `  <Info>\n    <Name URL="">${name}</Name>\n    <Description URL="">${description}</Description>\n    <Version URL=""></Version>\n  </Info>\n` +
+    `  <Info>\n    <Name URL="">${name}</Name>\n    <Description URL="">${description}</Description>\n  </Info>\n` +
     `  <Files>\n${fileEntries}\n  </Files>\n` +
-    `  <Keyboards>\n    <Keyboard>\n      <Name>${name}</Name>\n      <ID>${escapeHtml(keyboardId)}</ID>\n      <Version>1.0</Version>\n      <Languages>\n${langEntries}\n      </Languages>\n    </Keyboard>\n  </Keyboards>\n` +
+    `  <Keyboards>\n    <Keyboard>\n      <Name>${name}</Name>\n      <ID>${escapeHtml(keyboardId)}</ID>\n      <Version>${escapeHtml(version)}</Version>\n      <Languages>\n${langEntries}\n      </Languages>\n    </Keyboard>\n  </Keyboards>\n` +
     `</Package>\n`
   );
 }
@@ -296,6 +282,8 @@ function generateStubs(
   keyboardId: string,
   displayName: string,
   languages: string[],
+  targets: KeymanPlatformTarget[],
+  version: string,
 ): void {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -363,7 +351,7 @@ function generateStubs(
     const kmnEntry = vfs.get(`source/${keyboardId}.kmn`);
     const kmnText =
       kmnEntry !== undefined && typeof kmnEntry.content === "string" ? kmnEntry.content : "";
-    vfs.set(kpsPath, buildKpsContent(keyboardId, displayName, kmnText, languages), false);
+    vfs.set(kpsPath, buildKpsContent(keyboardId, displayName, kmnText, languages, targets, version), false);
   }
 }
 
@@ -437,7 +425,7 @@ export function createScaffolderService(opts?: ScaffolderServiceOptions): Scaffo
 
       renameFilesInVfs(vfs, actualBaseId, keyboardId);
       applyTouchLayoutCleanup(vfs, keyboardId);
-      generateStubs(vfs, keyboardId, displayName, base.languages ?? []);
+      generateStubs(vfs, keyboardId, displayName, base.languages ?? [], base.targets, base.version ?? "1.0");
 
       return { vfs, warnings, fonts: loaderFonts, stylesheets: loaderStylesheets };
     },
