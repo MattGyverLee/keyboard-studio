@@ -12,6 +12,8 @@
 1. [Elevator pitch](#1-elevator-pitch)
 2. [Why this exists](#2-why-this-exists)
 3. [Target user](#3-target-user)
+3a. [What the user brings (skill envelope)](#3a-what-the-user-brings-skill-envelope)
+3b. [What success looks like (outcome envelope)](#3b-what-success-looks-like-outcome-envelope)
 4. [System overview](#4-system-overview)
 5. [Pattern schema](#5-pattern-schema)
 5a. [KeyboardIR (keyboard intermediate representation)](#5a-keyboardir-keyboard-intermediate-representation)
@@ -80,6 +82,61 @@ What they do not have:
 The studio teaches keyboard interaction patterns through live mini-keyboards the user can tap and type into, translating their linguistic intent into validated KMN rules.
 
 A secondary user-mode the studio explicitly supports: an **adapting author** who is starting from an existing `release/` keyboard rather than from the US-English base. They may be a community member taking a country-wide keyboard down to a single language, or an original author returning to update their own keyboard. They have the same linguistic knowledge as the primary user; what they additionally have is an existing `.kmn` they want to keep most of. The studio's import path treats this case as the same authoring flow — only the source of the initial in-memory project differs.
+
+---
+
+## 3a. What the user brings (skill envelope)
+
+*Added 2026-06-15. Companion to §3.*
+
+This subsection makes explicit what the studio assumes the user *can* and *cannot* do, so downstream decisions can resolve back to it.
+
+**The studio assumes the user can:**
+
+- Recognize their language's characters by sight; correct an inventory when shown one.
+- Answer **comparative questions** ("does this sound like that?", "does the mark come before or after?") by example, even when they could not answer the equivalent abstract question ("how many tones does your language have?", "what is mark-input order?"). This is the **research-by-pairs** pattern: many small comparisons converge on a map the user could not have stated directly. The survey is built around this.
+- Recognize behaviour from a live preview and decide if it matches their intent, without needing to name the mechanism.
+- Defer answers. "Not yet" is a valid answer; the studio remembers gaps and resumes.
+
+**The studio assumes the user cannot:**
+
+- Read or write `.kmn`, `.kvks`, or any other Keyman source format (already in §3).
+- Navigate GitHub workflows — branches, PRs, conflicts, review threads. **The studio manages the tech side; the user manages only linguistics.** A GitHub login is acceptable; a GitHub workflow is not.
+- Read English-language Keyman documentation. Concepts are learned by show-and-tell.
+- Maintain the keyboard over years (see §3b).
+- Adjudicate multilingual-tradeoff design (anchors §7's monolingual scope).
+
+**User-variation envelope.** The user spread runs **community activist → field linguist → PhD researcher**. All are "language experts" in the §3 sense; their patience for design tradeoffs, English-language UI, and pattern abstraction varies. **The studio targets the broadest of these** — operable by a community activist with no software background — and higher-skill users complete the same flow faster, not differently.
+
+**Collaborator.** The user's primary partner is the **linguist agent** (LLM that proposes, cross-checks, and confirms — §7.6, §8 Phase B, §7.7). The user is solo with the agent, not solo with a form. Remote human collaboration (a Keyman reviewer, a fellow linguist) is not in the studio's surface; reviewers see the PR, they do not see the session.
+
+**User behaviour patterns the studio designs for.**
+
+- **Naive users accept reasonable defaults and do not question them.** A default that gets the user 80% of the way will be shipped as-is; the remaining 20% will not be challenged. This is the **opposite** of Keyman Developer's blank-canvas posture, where the user originates every decision. **The studio's value sits in the defaults, not in the override controls** — the corpus-prior placements (§7.6), the strategy-selector primary (§7.2), the script-class axis fills (§7.2 input contract), the DISCUS-arbitrated mechanism rankings (§7.7), the base-derived prefill (§5), and the carve-gallery starting state are all instances of this principle. A weak default is a user-visible failure regardless of whether override controls exist.
+- **Power users want full control.** Every default must be visibly overridable. Naive-user defaults and power-user controls are not in tension — they share the same surface; the naive user accepts, the power user changes. A studio that forces choice on naive users to please power users has failed the broader cohort §3 targets.
+
+---
+
+## 3b. What success looks like (outcome envelope)
+
+*Added 2026-06-15. Companion to §3.*
+
+Success for the studio is **a working keyboard committed to `keymanapp/keyboards` by a user who could not have produced one without the studio.** Any narrower measure misses authors we serve; any broader measure (community adoption, downstream impact) is mostly outside the studio's influence and inside Keyman's promotion surface.
+
+**Success is:**
+
+- A user who has never seen `.kmn` ships a keyboard whose `kmc build` exit code is 0, whose Layer C lint is green, and whose PR lands in the user's chosen delivery path (`.zip` download or OAuth fork+PR).
+- That keyboard reflects the user's **linguistic intent** — not just any valid keyboard, but the one the user meant to build. The live preview and linguist-agent cross-checks (§7.6, §8 Phase B) are the user-side guarantee of this.
+
+**Success is not:**
+
+- *Not* "the community adopts the keyboard." Adoption depends on promotion, OS support, font availability, and Keyman's distribution channels — all downstream of submission and outside the studio's influence. Promotion is Keyman's surface; the studio surfaces the submission.
+- *Not* "the user understands what they shipped well enough to maintain it over years." Maintenance is rare for monolingual keyboards (most are one-time submissions); MML keyboards are out of scope for new authoring (§7). When maintenance is needed, the same studio session re-opens the same working copy and re-enters the same flow.
+- *Not* "constructive user feedback returns to the studio." Real-world feedback is mostly the unhelpful "keyboard doesn't work" form. The studio optimises for *successful submission*, not iterative improvement driven by users.
+
+**Submission posture.** A **monolingual keyboard is typically a one-time submission** — the studio is sized for this: ship-it-and-leave with the option to re-open, not a multi-year project IDE. A **massively multilingual keyboard is a multi-year affair**, out of scope for new authoring; supported only as a Track 1 base (§7).
+
+**Licensing posture.** All submissions are MIT-licensed; the studio surfaces this in the documentation phase. Content-change rights remain with the original author or their successor by Keyman policy; others fork and submit their own. The studio makes a Keyman-repo-level fork easy; within-studio forks are not a separate concept.
 
 ---
 
