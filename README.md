@@ -14,15 +14,17 @@ Language experts know their language's phonology, orthography, and character inv
 
 ## Status
 
-**Day-1 contract lock landed (as of 2026-06-03).** The v1.0 spec is signed off (with v1.0.2 amendments) and the shared `packages/contracts` package is built and tested (101 vitest specs passing). The seven service interfaces (validator / compiler / scaffolder / baseBrowser / patternLibrary / lintEngine / outputService), seven mock implementations, sample fixtures, and the 133-entry triaged criteria catalog are all in place. The Day-1 contract-lock session (issues #5, #6, #8) closed; engine + content teams can now build in parallel against the locked surface. Remaining packages (`engine`, real service implementations, the SPA shell) are next-up.
+**Day-1 contract locked; engine + studio now built.** The v1.3.0 spec is signed off. `packages/contracts` holds the locked shared contract — the seven service interfaces (validator / compiler / scaffolder / baseBrowser / patternLibrary / lintEngine / outputService), their mocks, fixtures, and the 148-row triaged criteria catalog. Beyond contracts, the engine (`packages/engine` — codec, scaffolder, validator, compiler, simulator, recognizer, output, …), the Layer-C lint engine (`@keymanapp/keyboard-lint`), the LLM client (`@keyboard-studio/llm`), and the React + Vite studio SPA (`packages/studio`) are all built and under active development. See [`CLAUDE.md`](CLAUDE.md) for the current per-package inventory and the build/test commands.
 
 ## Repository layout
 
 | Path | What it is |
 |------|------------|
-| [`spec.md`](spec.md) | **The source of truth.** The signed-off v1.0 spec (19 sections): system overview, the `Pattern` schema, the strategy-selection engine (§7), data flow, the validator/lint architecture, team boundaries, and resolved decisions. |
-| [`docs/spec-signoff.md`](docs/spec-signoff.md) | The review-cycle log and the baked-in decisions (D1–D6). |
+| [`spec.md`](spec.md) | **The source of truth.** The signed-off v1.3.0 spec (19 sections): system overview, the `Pattern` schema, the strategy-selection engine (§7), data flow, the validator/lint architecture, team boundaries, and resolved decisions. |
+| [`docs/spec-signoff.md`](docs/spec-signoff.md) | The review-cycle log and the baked-in decisions (D1–D9). |
 | [`packages/contracts/`](packages/contracts/) | The locked Day-1 shared TypeScript contract: types, service interfaces, mocks, fixtures, and the triaged criteria catalog. Consumers import via `@keyboard-studio/contracts` (or the `./mocks`, `./fixtures`, `./criteria` subpaths). |
+| [`packages/engine/`](packages/engine/) | The engine: codec (`.kmn` ↔ KeyboardIR), scaffolder, validator (Layer A/A'/B), compiler (kmcmplib wrapper), simulator, recognizer, output (VirtualFS → zip), and the strategy selector. |
+| [`packages/studio/`](packages/studio/) | The React + Vite authoring SPA (three-pane gallery / editor / preview). (`packages/studio-poc` is a throwaway prototype — don't build on it.) |
 | [`utilities/Template Cleanup/`](utilities/Template%20Cleanup/) | Python tooling for the template-cleanup pipeline (NCAPS strip, `[CAPS]` deletion, `&CasedKeys` insertion, touch-layout cleanup). Run against a `keymanapp/keyboards` checkout. |
 | [`Agents/`](Agents/) | Dispatcher stubs for the **LEX crew** — the subagent team (lead, domain expert, programmer, QC, verification, …) used to author and review the design. |
 | [`strategy tree/`](strategy%20tree/) | The original standalone `.kmn` strategy reference — now **merged into [`spec.md` §7](spec.md#7-strategy-selection)** and retained only as a stub. |
@@ -34,4 +36,4 @@ Language experts know their language's phonology, orthography, and character inv
 
 ## Scope (v1)
 
-In scope: physical + touch keyboard layouts, package generation (`.kps`/`.kvks`/`.keyman-touch-layout`), the QWERTY/QWERTZ, AZERTY, and Non-Roman script groups. Out of scope for v1: CJK and Ethiopic reorder patterns, LDML output, predictive-text wordlists, and editing existing keyboards. See [`spec.md` §16](spec.md#16-out-of-scope) for the full list.
+In scope: physical + touch keyboard layouts, package generation (`.kps`/`.kvks`/`.keyman-touch-layout`), the QWERTY/QWERTZ, AZERTY, and Non-Roman script groups, and single-source adaptation of an existing keyboard (the v1.1.0 amendment). Out of scope for v1: CJK and Ethiopic reorder patterns, LDML output, predictive-text wordlists, and multi-source merge. See [`spec.md` §16](spec.md#16-out-of-scope) for the full list.
