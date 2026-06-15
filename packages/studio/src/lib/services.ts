@@ -6,20 +6,25 @@
 // packages/studio/src/.
 import type { BaseBrowserService, PatternLibraryService, ScaffolderService, VirtualFS } from "@keyboard-studio/contracts";
 import { mockBaseBrowser, mockOutputService, mockScaffolder } from "@keyboard-studio/contracts/mocks";
-import { localBaseBrowser, LOCAL_PROXY_BASE } from "./localBaseBrowser.ts";
 import { getPatternLibraryService as getBrowserPatternLibraryService } from "./browserPatternLibrary.ts";
 import { mockPatternLibrary } from "@keyboard-studio/contracts/mocks";
 
 export const USE_REAL = import.meta.env.VITE_USE_REAL_ENGINE !== "false";
 
-// Re-export the proxy base for callers that need it.
-export { LOCAL_PROXY_BASE };
-
-// BaseBrowserService: in dev, the Vite plugin-backed local browser is the
-// real implementation. In production this would be createBaseBrowser() from
-// the engine pointing at the GitHub API.
-export function getBaseBrowserService(): BaseBrowserService {
-  return USE_REAL ? localBaseBrowser : mockBaseBrowser;
+// BaseBrowserService: lazily import createBaseBrowser from the engine so that
+// (a) tests/CI using USE_REAL=false never import the engine barrel (which pulls
+// WASM) and (b) the real path hits the GitHub API client, not the dev-only
+// local plugin. The cache is module-level so only one instance is created per
+// page load.
+let baseBrowserCache: BaseBrowserService | null = null;
+export async function getBaseBrowserService(): Promise<BaseBrowserService> {
+  if (!USE_REAL) return mockBaseBrowser;
+  if (baseBrowserCache !== null) return baseBrowserCache;
+  const { createBaseBrowser } = await import(
+    /* @vite-ignore */ "@keyboard-studio/engine"
+  );
+  baseBrowserCache = createBaseBrowser();
+  return baseBrowserCache;
 }
 
 // ScaffolderService: when USE_REAL is false returns the mock scaffolder so
@@ -32,7 +37,7 @@ export async function getScaffolderService(): Promise<ScaffolderService> {
   const { createScaffolderService } = await import(
     /* @vite-ignore */ "@keyboard-studio/engine"
   );
-  scaffolderCache = createScaffolderService({ proxyBase: LOCAL_PROXY_BASE });
+  scaffolderCache = createScaffolderService();
   return scaffolderCache;
 }
 
