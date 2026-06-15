@@ -2,7 +2,10 @@
 // Both loadFlow.ts and loadModularFlow.ts import from here to prevent
 // phase-set drift during the fan-out period when both loaders coexist.
 
-export const VALID_PHASES = new Set([
+// Set<string> (not Set<"A"|"B"|...>) so .has(arbitraryString) typechecks at call
+// sites where the input is an untyped YAML field. The literal-tuple narrowing is
+// not useful here.
+export const VALID_PHASES: ReadonlySet<string> = new Set([
   "A",
   "B",
   "C",
@@ -11,4 +14,4 @@ export const VALID_PHASES = new Set([
   "E",
   "F",
   "G",
-] as const);
+]);

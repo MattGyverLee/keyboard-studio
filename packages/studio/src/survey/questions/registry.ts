@@ -1,16 +1,19 @@
-// Question module registry.
+// Question module registry — consolidated entry point.
 //
-// Maps question IDs to their QuestionModule objects via static imports.
-// Static imports (not dynamic) keep the registry synchronous so loadModularFlow
-// never needs to await a per-question lookup — the FlowDef is assembled on the
-// call stack, not behind a microtask queue.
+// Maps every question ID across all phases to its QuestionModule via static
+// imports (synchronous; loadModularFlow assembles FlowDef on the call stack).
 //
-// Fan-out rule: when a new question module lands in questions/<phase>/<id>.ts,
-// add one import + one entry here. The ID key MUST match definition.id exactly.
+// Per-phase sub-registries (registry.a.ts, registry.b.ts, registry.f.ts) own
+// the actual import lists — one file per phase keeps merge conflicts off the
+// hot path during parallel migration cycles. This file just merges them.
+//
+// Fan-out rule: a new question lands in questions/<phase>/<id>.ts AND its phase
+// sub-registry. This file does not need editing unless a NEW phase is added.
 
 import type { QuestionModule } from "../types.ts";
-
-import languageNameAutonymMod from "./a/language_name_autonym.ts";
+import { phaseARegistry } from "./registry.a.ts";
+import { phaseBRegistry } from "./registry.b.ts";
+import { phaseFRegistry } from "./registry.f.ts";
 
 /**
  * Synchronous registry: { [questionId]: QuestionModule }
@@ -20,5 +23,7 @@ import languageNameAutonymMod from "./a/language_name_autonym.ts";
  * than silently skipping the question.
  */
 export const questionRegistry: Readonly<Record<string, QuestionModule>> = {
-  language_name_autonym: languageNameAutonymMod,
+  ...phaseARegistry,
+  ...phaseBRegistry,
+  ...phaseFRegistry,
 } as const;
