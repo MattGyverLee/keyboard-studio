@@ -1,0 +1,17 @@
+# Thin modular YAML for Phase F.
+# Each question's definition lives in packages/studio/src/survey/questions/f/<id>.ts.
+# This file contains only the flow metadata and ordered question ID list.
+# The original phase_f_helpdocs.yaml is preserved — do NOT delete it.
+
+flow_id: phase_f_helpdocs
+phase: "F"
+
+questions:
+  - pf_welcome_paragraph
+  - pf_usage_tip_1
+  - pf_usage_tip_2
+  - pf_usage_tip_3
+  - pf_usage_tip_4
+  - pf_usage_tip_5
+  - pf_credits
+  - pf_contact_info
