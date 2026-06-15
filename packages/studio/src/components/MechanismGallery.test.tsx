@@ -60,7 +60,6 @@ const mockSvc: PatternLibraryService = {
 vi.mock("../lib/services.ts", () => ({
   getPatternLibraryService: () => mockSvc,
   USE_REAL: false,
-  LOCAL_PROXY_BASE: "",
 }));
 
 // ---------------------------------------------------------------------------
