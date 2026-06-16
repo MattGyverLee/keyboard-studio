@@ -23,4 +23,5 @@
 # Conformance-gate config itself — changing a gate should be a conscious,
 # reviewed act (the amendment ritual), not a drive-by.
 /eslint.config.mjs                       @MattGyverLee
+/.dependency-cruiser.cjs                 @MattGyverLee
 /utilities/spec-trace/                   @MattGyverLee

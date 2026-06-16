@@ -136,14 +136,18 @@ isn't gated falls back on human review.
 | **ESLint** flat config ([`eslint.config.mjs`](../eslint.config.mjs)) | lint-only defects; the home for module-boundary fitness functions | `pnpm lint` / CI |
 | **spec-trace** ([`utilities/spec-trace`](../utilities/spec-trace/)) | spec / architecture *text* drift + declared coverage gaps | `node utilities/spec-trace check` |
 | **Constitution Check** (`/speckit-plan`) | a plan that violates a locked invariant | plan time |
+| **dependency-cruiser** ([`.dependency-cruiser.cjs`](../.dependency-cruiser.cjs)) | architecture boundary violations — layering, team split, dependency-root, runtime circulars | `pnpm lint` / CI |
 | **CODEOWNERS** | changes to the locked contract / constitution / architecture without architect review | PR |
 
-> **Planned — architecture fitness functions.** dependency-cruiser / eslint
-> module boundaries that assert the §10 layering and §12/§13 team split in CI
-> (e.g. `keyboard-lint` must not import `engine`; `engine` must not import
-> `studio`; authoring touches `KeyboardIR`, not raw `.kmn`). Several invariants
-> in [CLAUDE.md](../CLAUDE.md) are prose today; promoting them to gates is the
-> highest-leverage next step. Until then they rely on review.
+> **Architecture fitness functions (landed).**
+> [`.dependency-cruiser.cjs`](../.dependency-cruiser.cjs) asserts the
+> cross-package boundaries as CI gates (run via `pnpm lint` / `pnpm depcruise`):
+> `keyboard-lint ↛ engine`, `engine ↛ studio`, `contracts` imports no workspace
+> package, nothing imports the `studio-poc` throwaway, and no runtime circular
+> deps (type-only cycles are allowed — TS erases them). Further CLAUDE.md
+> invariants (authoring touches `KeyboardIR` not raw `.kmn`; no second debounce
+> timer) are promotion candidates as they prove mechanically checkable; until
+> then they rely on review.
 
 ## Changing the plan (amendment ritual)
 
