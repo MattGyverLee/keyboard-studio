@@ -156,7 +156,7 @@
     },
     "§12": {
       "title": "12. Output artifacts",
-      "hash": "sha256:b2e4681ffb3c3c61",
+      "hash": "sha256:3703e1020c30217c",
       "status": "partial",
       "implements": [
         "packages/contracts/src/virtualFS.ts",
@@ -313,7 +313,7 @@
     },
     "docs/architecture.md": {
       "title": "Keyboard Studio — architecture & meta-flow",
-      "hash": "sha256:d464dcc5f43f4acc",
+      "hash": "sha256:3380b86b95d4a8a7",
       "status": "reference",
       "implements": [],
       "decisions": [],

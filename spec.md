@@ -671,6 +671,10 @@ Compiled artifacts (`.kmx`, `.kvk`, `.js`) are produced by the in-browser compil
 - Provenance metadata (when supplied): requester and language-community contact, speaker count, language status, regions, orthography link, and notes — rendered for reviewer context. Non-gating; never written into the `.kmn` source.
 - Import attribution (when supplied): the source keyboard the session adapted (e.g. `release/c/cm_qwerty`), the round-trip status, and the `ImportReport.opaqueFeatureInventory` for reviewer context. Non-gating.
 
+### Read substrate and concurrency (deferred)
+
+The three substrates the tool composes from are kept distinct: **authoring** is the in-memory `VirtualFS` working copy (above); **reading** (base browse / index / source hydration) is a separate substrate; **committing** is the transactional delivery path. Reading currently runs off a **local base catalog** (dev: a Vite plugin over the sibling `keymanapp/keyboards` clone; prod: a build-time static index snapshot), which is rate-limit-free and workable for testing. Its planned successor is a **server-side mirror** of the public `keymanapp/keyboards` (fast-forwarded to `master`; serves tree listing + raw blobs with no credentials), with sessions pinned to the mirror's `master` SHA at hydration so the working-copy spine insulates them from upstream churn. For concurrent multi-user delivery, the model is **ephemeral per-session clones with `--reference` object alternates** against that mirror — not shared `git` worktrees. This substrate split, the credential model (read = no auth; Option A = user token; Option B = GitHub App, production-scoped, single-repo), and the multi-tenancy rationale are a **deferred feature**, designed in [docs/github_flow.md](docs/github_flow.md#read-substrate--multi-tenancy-deferred-feature) and not yet built.
+
 ---
 
 ## 13. Team boundaries

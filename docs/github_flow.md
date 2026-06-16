@@ -129,6 +129,91 @@ exactly.
 
 ---
 
+## Read substrate & multi-tenancy (deferred feature)
+
+> **Status: design only — not started. The current local base catalog (status
+> table below) is workable for testing, so this is a later feature.** This
+> section records the agreed shape so nobody reaches for the wrong primitive
+> when it is built.
+
+The studio composes from **three distinct substrates**. Keeping them separate is
+what lets authoring stay rate-limit-free and concurrency-safe without a heavy
+backend:
+
+| Concern | Substrate | Status |
+|---|---|---|
+| **Authoring** (concurrency-isolated by construction) | In-browser `VirtualFS` working copy (spec §11/§12) | Done |
+| **Reading** browse/index/hydrate (no GitHub rate limits) | Local base catalog now → **server-side mirror** later | Local catalog done; mirror not started |
+| **Committing / PR** (transactional, isolated) | Option A user token now → ephemeral per-session clone later | Option A engine done; backend not started |
+
+### Why a server-side read mirror
+
+The motivating problem is **GitHub rate limiting**: the Trees-API base browser
+(`GET /repos/keymanapp/keyboards/git/trees/master?recursive=1`) burns the 60/hr
+unauthenticated (5000/hr authenticated) REST quota, and bulk raw fetches over
+`raw.githubusercontent.com` are throttled. The local catalog sidesteps this for
+testing; a deployed web app needs the same property at runtime.
+
+`keymanapp/keyboards` is a **public** repo, so the mirror needs **no
+credentials**: a bare clone, fast-forwarded to `master` on a cron, serves the
+tree listing (`git ls-tree -r master`) and raw blobs (`git cat-file blob
+master:<path>`) — or a single working checkout served as files. The only thing
+touching github.com is one `git fetch`, on one connection, regardless of how
+many users are browsing. The base browser and loader already have the seam for
+this (injectable `proxyBase`; the local catalog proves the pattern).
+
+### Freshness boundary
+
+"Always fresh from `master`" is safe because the **working-copy spine insulates
+each session**: once a base is hydrated into the session's `VirtualFS`, upstream
+changes can't shift it. So freshness only matters *at hydration time* — pin each
+session to the mirror's then-current `master` SHA at hydration, let the cron
+advance the mirror freely, and new sessions pick up newer content. No
+mid-session surprises, no reproducibility loss.
+
+### Multi-tenancy — clones, not shared worktrees
+
+For concurrent users editing different keyboards, **`git worktree` is the wrong
+primitive**: worktrees share one object DB, one refs namespace, one config, and
+a single global `git gc`/`prune`, so N concurrent writers contend on shared
+mutable state (and no multi-tenant Git host uses them for user work). Authoring
+doesn't need server-side git at all — the in-browser `VirtualFS` isolates
+sessions for free. When server-side git *is* needed (history/rebase for
+Option B), use **ephemeral per-session clones with `--reference` / object
+alternates** against the mirror: shared object store (worktree-level disk
+savings) **plus** isolated refs/HEAD/index/config/gc (clone-level isolation).
+User commits land in the borrowing clone, never polluting the mirror.
+
+### Credential model
+
+| Path | Credential | Exposure |
+|---|---|---|
+| **Read mirror** | **None** — public repo, unauthenticated `git fetch` | Nothing to leak |
+| **Option A** (user fork) | The **user's own** OAuth token (`public_repo`), used transiently | Not the org's keys; user-scoped, short-lived |
+| **Option B** (org-mediated) | A **GitHub App** private key → short-lived (~1 h) installation tokens, **production-scoped**, installed on **one** fork repo only | Leaked installation token dies in ~1 h; key is rotatable; blast radius = one repo |
+
+Guardrails for the eventual Option B backend:
+
+- **Never ship a server-held secret to client code** (watch Next.js `NEXT_PUBLIC_*` — it bundles into the browser; a plain env var does not).
+- **Scope the secret to production only** — Vercel preview/PR deployments are a classic exfiltration vector for anyone who can open a PR.
+- **Prefer a GitHub App over a static PAT** — short-lived installation tokens + a rotatable private key beat a long-lived token; a fine-grained PAT scoped to the single fork repo is the lighter-weight fallback.
+- **While testing, hold no org secret anywhere** — run any write path locally with a personal fine-grained PAT (gitignored `.env`) against a throwaway test fork.
+
+### Read-mirror status
+
+| Step | Status | Notes |
+|---|---|---|
+| Local base catalog (dev + build-time snapshot) | **Done** | #457 — the rate-limit-free substrate for testing (see status table) |
+| Server-side mirror (bare clone + cron fast-forward) | Not started | Serves tree listing + raw blobs; no credentials |
+| Mirror-backed read endpoints (base list + hydration) | Not started | Promote `proxyBase` / `/local-kbd-api` to point at the mirror in deployed builds |
+| Ephemeral `--reference` delivery clone | Not started | Only when Option B server-side git lands; alternates against the mirror |
+
+> When this graduates from design to build, it gets its own
+> `specs/NNN-read-mirror/` feature folder citing spec §12 + this section, per the
+> spec-kit convention in [CLAUDE.md](../CLAUDE.md).
+
+---
+
 ## Status
 
 > Keep this section up to date as work lands. Update it whenever a delivery
@@ -139,7 +224,8 @@ exactly.
 
 | Service | Status | Notes |
 |---|---|---|
-| Base-browser (`BaseBrowserService`) | **Done** | Issue #20 — `packages/engine/src/base-browser/`; Trees API client, `.kps` parser, 10-min TTL cache, offline fallback |
+| Base-browser (`BaseBrowserService`) | **Done** | Issue #20 — `packages/engine/src/base-browser/`; GitHub Trees-API client, `.kps` parser, 10-min TTL cache, offline fallback. **Retained, but not the runtime default** — it hit GitHub API rate limits when browsing/indexing the full repo. |
+| Base catalog — local (current runtime path) | **Done** | Issue #457 — `packages/studio/src/lib/localBaseBrowser.ts` is the `BaseBrowserService` the SPA actually uses (`services.ts` `getBaseBrowserService()`). Dev: the `localKeyboards` Vite plugin serves `/local-kbd-api/list` + `/local-kbd-proxy` from the sibling `keymanapp/keyboards` clone. Prod: `build-keyboards-index.mjs` materialises a static `dist/local-kbd-api/list` snapshot at deploy time. **Never touches the GitHub API at runtime** — this is the rate-limit-free substrate that keeps `main` testable. The deployed snapshot is static (freshens only on rebuild); the server-side mirror below is its live successor. |
 | Validator — TS-portable checks | **Done** | Issues #14–15 — `packages/engine/src/validator/checks/` (9 checks) |
 | Validator — WASM oracle | **Done** | Issue #16 — `packages/engine/src/validator/oracle.ts` + `wasmLoader.ts` |
 | Compiler service | **Done** | Issue #17 — `packages/engine/src/compiler/` |

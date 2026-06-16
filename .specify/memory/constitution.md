@@ -47,6 +47,16 @@ layout. The studio **never writes to host disk during authoring**. Output is
 serialized only at the end, to a `.zip` (`engine/src/output`) or via GitHub
 OAuth fork+PR.
 
+Reading (base browse / index / hydration) and committing are **separate
+substrates** from authoring (spec §12 · [docs/github_flow.md](../../docs/github_flow.md#read-substrate--multi-tenancy-deferred-feature)). Where delivery touches GitHub
+credentials, plans MUST honour the credential model: the public-repo read path
+uses **no credentials**; Option A uses the **user's own** OAuth token; the
+Option B backend uses a **GitHub App** (short-lived installation tokens),
+**production-scoped** and installed on a **single** fork repo. A server-held
+secret MUST NOT reach client code or non-production (preview) deployments. For
+concurrent multi-user server-side git, use ephemeral per-session clones with
+`--reference` alternates — **never** shared `git` worktrees.
+
 ### VI. Team boundaries (spec §12 / §13)
 Engine owns the SPA, scaffolder, compiler service, validator, and output paths.
 Content owns the pattern library, survey text, gallery ordering, LLM prompts,

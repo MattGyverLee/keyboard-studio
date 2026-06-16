@@ -111,6 +111,7 @@ not a number maintained by hand here.)
 | Compiler (kmcmplib) | spec §4 | `packages/engine/src/compiler/`, `packages/compiler/` |
 | Simulator | spec §4 | `packages/engine/src/simulator/` |
 | Output / scaffolder | spec §11 / §12 | `packages/engine/src/{output,scaffolder}/` |
+| Read substrate (base catalog) | spec §12 / [github_flow.md](github_flow.md#read-substrate--multi-tenancy-deferred-feature) | `packages/studio/src/lib/localBaseBrowser.ts`, `vite-plugins/localKeyboards.ts`, `packages/engine/src/base-browser/` |
 | Studio SPA | spec §4 | `packages/studio/` |
 | Criteria compliance | spec §11 | `packages/contracts/data/criteria.json` (+ `criteria-summary.md`) |
 
