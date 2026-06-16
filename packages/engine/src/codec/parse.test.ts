@@ -94,4 +94,37 @@ describe("parse", () => {
     const bad = "begin GARBAGE\n";
     expect(() => parse(bad, "bad")).toThrow();
   });
+
+  describe("named deadkey in a store body (#266)", () => {
+    const KMN = `store(&VERSION) '10.0'
+store(&NAME) 'NDK Test'
+store(&TARGETS) 'any'
+store(errmark) dk(a_err)
+store(numdk) dk(007e)
+begin Unicode > use(main)
+group(main) using keys
++ [K_A] > U+0061
+`;
+
+    it("classifies a store body with a named deadkey as opaque NAMED_DEADKEY (not silently raw, not SMP_LITERAL)", () => {
+      const { ir, opaqueFeatures } = parse(KMN, "ndk");
+      // The errmark store is wrapped as a raw fragment with the correct reason…
+      const frag = ir.raw.find((f) => f.sourceText.includes("errmark"));
+      expect(frag).toBeDefined();
+      expect(frag?.reason).toBe("named-deadkey");
+      // …counted under the right feature, not mislabelled as smp-literal.
+      expect(opaqueFeatures).toContainEqual({ feature: "named-deadkey", count: 1 });
+      expect(opaqueFeatures.some((f) => f.feature === "smp-literal")).toBe(false);
+      // …and NOT emitted as a normal parsed store.
+      expect(ir.stores.some((s) => s.name === "errmark")).toBe(false);
+    });
+
+    it("still parses a numeric dk(NNNN) store as a normal deadkey store (regression guard)", () => {
+      const { ir } = parse(KMN, "ndk");
+      const numStore = ir.stores.find((s) => s.name === "numdk");
+      expect(numStore).toBeDefined();
+      expect(numStore?.items).toContainEqual({ kind: "deadkey", id: 0x7e });
+      expect(ir.raw.some((f) => f.sourceText.includes("numdk"))).toBe(false);
+    });
+  });
 });

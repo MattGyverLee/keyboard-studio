@@ -15,7 +15,7 @@
     },
     {
       "feature": "named-deadkey",
-      "count": 5685
+      "count": 5711
     },
     {
       "feature": "smp-literal",
@@ -6323,14 +6323,14 @@
         },
         {
           "feature": "named-deadkey",
-          "count": 466
+          "count": 472
         }
       ],
       "recognizedRatio": 0,
       "i2": "structural-divergence",
       "ruleCount": 183,
       "groupCount": 2,
-      "rawFragmentCount": 764
+      "rawFragmentCount": 770
     },
     {
       "keyboardId": "armenian_mnemonic_r",
@@ -6344,14 +6344,14 @@
         },
         {
           "feature": "named-deadkey",
-          "count": 580
+          "count": 586
         }
       ],
       "recognizedRatio": 0,
       "i2": "structural-divergence",
       "ruleCount": 191,
       "groupCount": 2,
-      "rawFragmentCount": 610
+      "rawFragmentCount": 616
     },
     {
       "keyboardId": "avestan_phonetic",
@@ -9007,14 +9007,14 @@
       "opaqueFeatureInventory": [
         {
           "feature": "named-deadkey",
-          "count": 11
+          "count": 12
         }
       ],
       "recognizedRatio": 0,
       "i2": "structural-divergence",
       "ruleCount": 202,
       "groupCount": 2,
-      "rawFragmentCount": 11
+      "rawFragmentCount": 12
     },
     {
       "keyboardId": "gautami_devanagari",
@@ -9024,14 +9024,14 @@
       "opaqueFeatureInventory": [
         {
           "feature": "named-deadkey",
-          "count": 13
+          "count": 14
         }
       ],
       "recognizedRatio": 0,
       "i2": "structural-divergence",
       "ruleCount": 210,
       "groupCount": 2,
-      "rawFragmentCount": 13
+      "rawFragmentCount": 14
     },
     {
       "keyboardId": "gautami_inditran",
@@ -9497,14 +9497,14 @@
       "opaqueFeatureInventory": [
         {
           "feature": "named-deadkey",
-          "count": 2
+          "count": 3
         }
       ],
       "recognizedRatio": 0,
       "i2": "structural-divergence",
       "ruleCount": 97,
       "groupCount": 2,
-      "rawFragmentCount": 2
+      "rawFragmentCount": 3
     },
     {
       "keyboardId": "hausa_ajami_qwerty",
@@ -10812,14 +10812,14 @@
       "opaqueFeatureInventory": [
         {
           "feature": "named-deadkey",
-          "count": 118
+          "count": 121
         }
       ],
       "recognizedRatio": 0,
       "i2": "structural-divergence",
       "ruleCount": 208,
       "groupCount": 2,
-      "rawFragmentCount": 118
+      "rawFragmentCount": 121
     },
     {
       "keyboardId": "sabdalipi_assamese",
@@ -11436,14 +11436,14 @@
       "opaqueFeatureInventory": [
         {
           "feature": "named-deadkey",
-          "count": 6
+          "count": 12
         }
       ],
       "recognizedRatio": 0.30434782608695654,
       "i2": "structural-divergence",
       "ruleCount": 23,
       "groupCount": 1,
-      "rawFragmentCount": 6
+      "rawFragmentCount": 12
     },
     {
       "keyboardId": "sil_myanmar_my3",
@@ -12157,14 +12157,14 @@
         },
         {
           "feature": "named-deadkey",
-          "count": 128
+          "count": 130
         }
       ],
       "recognizedRatio": 0,
       "i2": "structural-divergence",
       "ruleCount": 182,
       "groupCount": 5,
-      "rawFragmentCount": 162
+      "rawFragmentCount": 164
     },
     {
       "keyboardId": "udi_keyboard",
