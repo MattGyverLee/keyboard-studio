@@ -122,6 +122,58 @@ and output paths; **Content** owns the pattern library, survey text, gallery
 ordering, LLM prompts, and criteria triage. Respect the split when picking up
 work.
 
+## Conformance gates — how the team knows it's on track
+
+Off-track shows up as a **failing gate**, not an architect's review note. Each
+gate catches a different class of drift; together they are the "are we following
+the spec?" signal. The discipline: encode as much into gates as possible — what
+isn't gated falls back on human review.
+
+| Gate | Catches | Fires at |
+|---|---|---|
+| `pnpm typecheck` + **zod drift guards** ([`schemas.ts`](../packages/contracts/src/schemas.ts)) | contract divergence — a locked type and its runtime schema out of sync | build / typecheck |
+| **vitest** suites | behaviour regressions | `pnpm test` / CI |
+| **ESLint** flat config ([`eslint.config.mjs`](../eslint.config.mjs)) | lint-only defects; the home for module-boundary fitness functions | `pnpm lint` / CI |
+| **spec-trace** ([`utilities/spec-trace`](../utilities/spec-trace/)) | spec / architecture *text* drift + declared coverage gaps | `node utilities/spec-trace check` |
+| **Constitution Check** (`/speckit-plan`) | a plan that violates a locked invariant | plan time |
+| **CODEOWNERS** | changes to the locked contract / constitution / architecture without architect review | PR |
+
+> **Planned — architecture fitness functions.** dependency-cruiser / eslint
+> module boundaries that assert the §10 layering and §12/§13 team split in CI
+> (e.g. `keyboard-lint` must not import `engine`; `engine` must not import
+> `studio`; authoring touches `KeyboardIR`, not raw `.kmn`). Several invariants
+> in [CLAUDE.md](../CLAUDE.md) are prose today; promoting them to gates is the
+> highest-leverage next step. Until then they rely on review.
+
+## Changing the plan (amendment ritual)
+
+Plans change as we learn what's possible. That is the **normal case, not an
+exception** — the gates above exist to make a deliberate change *cheap and
+explicit*, not to freeze the design. Three rules keep the system nimble.
+
+**1. Match rigidity to confidence.** Don't gate what you're still exploring;
+tighten the ratchet only as a decision hardens.
+
+| Confidence | Mechanism | How it changes |
+|---|---|---|
+| **Exploring** | a spec doc + tests; `spec-trace` status `unreviewed` / `partial` | rewrite freely — no fitness function yet |
+| **Stabilizing** | contract + tests; versioned | change with a version bump + co-edit |
+| **Settled / load-bearing** | fitness function / drift guard / build-fail | change the rule consciously, recorded below |
+
+**2. The amendment loop** — keep it a one-liner, never a committee:
+
+1. Change the spec (the doc — a `spec.md` section, a `specs/NNN/` feature spec, or this file).
+2. Change the gate it guards **in the same PR** (the zod schema, the test, the fitness function). Co-location is what stops the two from diverging.
+3. Record *why* in one line — [`docs/spec-signoff.md`](spec-signoff.md) for amendments, or the commit/PR body. A **locked-contract** change additionally requires the §18 gate: a major `@keyboard-studio/contracts` version bump + a joint engine+content session (constitution Principle I).
+4. `node utilities/spec-trace acknowledge <unit>` for any tracked doc you changed, and commit `docs/spec-trace.json`.
+
+**3. A gate that fights a *good* change is a bug in the gate.** A refactor that
+trips a fitness function is usefully showing you it changed an architectural
+relationship — but a gate that blocks legitimate changes *often* should be
+loosened or deleted. Gates earn their place; curating them down is part of the
+architect's job. Prefer gates on **relationships / boundaries** (stable) over
+**details** (volatile — let the type system carry those).
+
 ## Diagrams
 
 - [architecture.svg](architecture.svg) — component view

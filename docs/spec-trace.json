@@ -3,7 +3,7 @@
   "lastUpdated": "2026-06-16",
   "specFile": "spec.md",
   "sections": {
-    "\u00a71": {
+    "§1": {
       "title": "1. Elevator pitch",
       "hash": "sha256:eb79e27237c413b1",
       "status": "reference",
@@ -11,7 +11,7 @@
       "decisions": [],
       "notes": "Background narrative; no direct code implementation."
     },
-    "\u00a72": {
+    "§2": {
       "title": "2. Why this exists",
       "hash": "sha256:888302e2a8922968",
       "status": "reference",
@@ -19,7 +19,7 @@
       "decisions": [],
       "notes": "Background narrative; no direct code implementation."
     },
-    "\u00a73": {
+    "§3": {
       "title": "3. Target user",
       "hash": "sha256:df008443bd62c655",
       "status": "reference",
@@ -27,7 +27,7 @@
       "decisions": [],
       "notes": "User-persona definition; informs UX, not code contracts."
     },
-    "\u00a74": {
+    "§4": {
       "title": "4. System overview",
       "hash": "sha256:5d07d9c4c8d1b481",
       "status": "partial",
@@ -38,7 +38,7 @@
       "decisions": [],
       "notes": "High-level architecture. BaseBrowser interface exists; SPA shell not yet built."
     },
-    "\u00a75": {
+    "§5": {
       "title": "5. Pattern schema",
       "hash": "sha256:118ce662917c5930",
       "status": "implemented",
@@ -56,7 +56,7 @@
       "notes": "EXTRACTED to specs/005-pattern-schema/spec.md; spec.md body is a stub pointer (tracked hash is the stub). Day-1 contract locked. Pattern + PatternMatch + PatternLibrary interfaces all present and tested.",
       "extractedTo": "specs/005-pattern-schema/spec.md"
     },
-    "\u00a75a": {
+    "§5a": {
       "title": "5a. KeyboardIR (keyboard intermediate representation)",
       "hash": "sha256:9ca9577cccfe0425",
       "status": "partial",
@@ -73,15 +73,15 @@
       ],
       "notes": "KeyboardIR types present (2026-06-08 amendment). Engine parse/emit not yet built."
     },
-    "\u00a76": {
+    "§6": {
       "title": "6. Worked example",
       "hash": "sha256:2da7da2f1aaa3776",
       "status": "reference",
       "implements": [],
       "decisions": [],
-      "notes": "Narrative walkthrough; validated by acceptance scenarios in \u00a715. v1.3.0 added 'Base-derived pre-fill' paragraph \u2014 PatternQuestion.default field is covered by \u00a75 (no new contracts here)."
+      "notes": "Narrative walkthrough; validated by acceptance scenarios in §15. v1.3.0 added 'Base-derived pre-fill' paragraph — PatternQuestion.default field is covered by §5 (no new contracts here)."
     },
-    "\u00a77": {
+    "§7": {
       "title": "7. Strategy selection",
       "hash": "sha256:a3428f1dd19a7686",
       "status": "partial",
@@ -95,10 +95,10 @@
         "D1",
         "D2"
       ],
-      "notes": "EXTRACTED to specs/007-strategy-selection/spec.md; spec.md body is a stub pointer (tracked hash is the stub). A1-A7 axis types + strategy catalog types present. Decision tree engine (\u00a77.2) + S-01..S-12 selectors not yet built. v1.1.1 added \u00a77.6 (corpus placement priors \u2014 seeder in utilities/kbgen, not yet a contracts type). v1.2.0 added \u00a77.7 (scoped assignment map) \u2014 assignmentMap.ts implements the typed contract; SurveyPhaseResult.assignments? additive field already landed ahead of spec text.",
+      "notes": "EXTRACTED to specs/007-strategy-selection/spec.md; spec.md body is a stub pointer (tracked hash is the stub). A1-A7 axis types + strategy catalog types present. Decision tree engine (§7.2) + S-01..S-12 selectors not yet built. v1.1.1 added §7.6 (corpus placement priors — seeder in utilities/kbgen, not yet a contracts type). v1.2.0 added §7.7 (scoped assignment map) — assignmentMap.ts implements the typed contract; SurveyPhaseResult.assignments? additive field already landed ahead of spec text.",
       "extractedTo": "specs/007-strategy-selection/spec.md"
     },
-    "\u00a78": {
+    "§8": {
       "title": "8. Data flow",
       "hash": "sha256:6f04ac146776de27",
       "status": "partial",
@@ -111,10 +111,10 @@
       "decisions": [
         "D9"
       ],
-      "notes": "EXTRACTED to specs/008-data-flow/spec.md; spec.md body is a stub pointer (tracked hash is the stub). CharacterDiscovery + LinguistInventory types exist. Survey-to-pattern pipeline not yet wired. v1.1.1 added placement proposals (Phase B). v1.2.0/v1.3.0 added two-track working-copy spine (instantiateFromBase / instantiateFromExisting) \u2014 producedSet.ts and surveySession.ts implement those contracts. Engine pipeline not yet built.",
+      "notes": "EXTRACTED to specs/008-data-flow/spec.md; spec.md body is a stub pointer (tracked hash is the stub). CharacterDiscovery + LinguistInventory types exist. Survey-to-pattern pipeline not yet wired. v1.1.1 added placement proposals (Phase B). v1.2.0/v1.3.0 added two-track working-copy spine (instantiateFromBase / instantiateFromExisting) — producedSet.ts and surveySession.ts implement those contracts. Engine pipeline not yet built.",
       "extractedTo": "specs/008-data-flow/spec.md"
     },
-    "\u00a79": {
+    "§9": {
       "title": "9. Three-group routing",
       "hash": "sha256:c3458e711b6c278b",
       "status": "unimplemented",
@@ -122,9 +122,9 @@
       "decisions": [
         "D5"
       ],
-      "notes": "Gallery routing (supported / CJK+Ethiopic stub / legacy) not yet built. D5 governs CJK/Ethiopic out-of-scope stub. v1.2.0 added language/script decoupling \u2014 routing follows the chosen target script (BCP47 subtag from identity-lite), not the language's default script. v1.3.0 added Phase A CJK/Ethiopic detection gate detail."
+      "notes": "Gallery routing (supported / CJK+Ethiopic stub / legacy) not yet built. D5 governs CJK/Ethiopic out-of-scope stub. v1.2.0 added language/script decoupling — routing follows the chosen target script (BCP47 subtag from identity-lite), not the language's default script. v1.3.0 added Phase A CJK/Ethiopic detection gate detail."
     },
-    "\u00a710": {
+    "§10": {
       "title": "10. Validator and lint engine",
       "hash": "sha256:db644dd54c5ae5d7",
       "status": "partial",
@@ -140,7 +140,7 @@
       ],
       "notes": "All three-layer interfaces typed. Layer A 9 TS-portable checks + 5 WASM-only not yet implemented. D3 governs 300ms debounce."
     },
-    "\u00a711": {
+    "§11": {
       "title": "11. criteria.md compliance",
       "hash": "sha256:6aa6972138b421d3",
       "status": "implemented",
@@ -152,9 +152,9 @@
       "decisions": [
         "D4"
       ],
-      "notes": "Day-1 criteria catalog fully typed as Criterion[] with 148 entries (133 repo-hygiene + 12 DISCUS + 3 added post-v1.0: 1 from \u00a77.7a KM_LINT_INVENTORY_UNCOVERED split, 2 import-output criteria). Loadable via ALL_CRITERIA / '/criteria' subpath. D4 governs the four-band enforcement model. Previously \u00a711 was 'Virtual FS' \u2014 that content is now a subsection of \u00a712."
+      "notes": "Day-1 criteria catalog fully typed as Criterion[] with 148 entries (133 repo-hygiene + 12 DISCUS + 3 added post-v1.0: 1 from §7.7a KM_LINT_INVENTORY_UNCOVERED split, 2 import-output criteria). Loadable via ALL_CRITERIA / '/criteria' subpath. D4 governs the four-band enforcement model. Previously §11 was 'Virtual FS' — that content is now a subsection of §12."
     },
-    "\u00a712": {
+    "§12": {
       "title": "12. Output artifacts",
       "hash": "sha256:b2e4681ffb3c3c61",
       "status": "partial",
@@ -169,9 +169,9 @@
         "D6",
         "D9"
       ],
-      "notes": "VirtualFS + OutputService + Scaffolder interfaces typed. ZIP and sidecar serialisation built in engine/src/output/; GitHub OAuth fork+PR built in engine/src/output/github.ts; buildImportAttributionBlock in engine/src/output/import-attribution.ts. D6 governs desktop-first scope; D9 covers IR-as-canonical-source for emit. v1.3.0 added working-copy spine (VirtualFS as persistent live edit target, Track 1/Track 2 instantiation, re-projected layers). Virtual FS content previously tracked as standalone \u00a711 now lives here as a subsection."
+      "notes": "VirtualFS + OutputService + Scaffolder interfaces typed. ZIP and sidecar serialisation built in engine/src/output/; GitHub OAuth fork+PR built in engine/src/output/github.ts; buildImportAttributionBlock in engine/src/output/import-attribution.ts. D6 governs desktop-first scope; D9 covers IR-as-canonical-source for emit. v1.3.0 added working-copy spine (VirtualFS as persistent live edit target, Track 1/Track 2 instantiation, re-projected layers). Virtual FS content previously tracked as standalone §11 now lives here as a subsection."
     },
-    "\u00a713": {
+    "§13": {
       "title": "13. Team boundaries",
       "hash": "sha256:83900d7759b68db8",
       "status": "reference",
@@ -179,8 +179,8 @@
       "decisions": [],
       "notes": "Governance: engine vs content team split. Informs package ownership, not runtime code."
     },
-    "\u00a714": {
-      "title": "14. Open questions \u2014 resolved decisions",
+    "§14": {
+      "title": "14. Open questions — resolved decisions",
       "hash": "sha256:5c6e0dca84a7c8b1",
       "status": "reference",
       "implements": [],
@@ -197,7 +197,7 @@
       ],
       "notes": "Decision ledger. Drift here means a decision was re-opened or a new one added."
     },
-    "\u00a715": {
+    "§15": {
       "title": "15. Acceptance scenarios",
       "hash": "sha256:1d2bdc9b47a6b90d",
       "status": "unimplemented",
@@ -205,7 +205,7 @@
       "decisions": [],
       "notes": "End-to-end scenarios not yet wired as test vectors. See km-testing backlog."
     },
-    "\u00a716": {
+    "§16": {
       "title": "16. Out of scope",
       "hash": "sha256:56da5a20e944bd4b",
       "status": "reference",
@@ -216,7 +216,7 @@
       ],
       "notes": "Scope boundary definition. Drift here means v1 scope silently expanded."
     },
-    "\u00a717": {
+    "§17": {
       "title": "17. Glossary",
       "hash": "sha256:18fc42de7b78b116",
       "status": "reference",
@@ -224,7 +224,7 @@
       "decisions": [],
       "notes": "Terminology definitions; no code contract."
     },
-    "\u00a718": {
+    "§18": {
       "title": "18. Revision policy",
       "hash": "sha256:05c4a85c51be1de4",
       "status": "reference",
@@ -232,7 +232,7 @@
       "decisions": [],
       "notes": "Schema change governance; enforced by convention, not code."
     },
-    "\u00a719": {
+    "§19": {
       "title": "19. Reference",
       "hash": "sha256:8e9919d00e70c4e9",
       "status": "reference",
@@ -240,7 +240,7 @@
       "decisions": [],
       "notes": "External document links only."
     },
-    "\u00a73a": {
+    "§3a": {
       "title": "3a. What the user brings (skill envelope)",
       "hash": "sha256:0443812a6f9bc549",
       "status": "reference",
@@ -248,7 +248,7 @@
       "decisions": [],
       "notes": "Skill-envelope persona definition (v1.3.1); informs UX, not code contracts."
     },
-    "\u00a73b": {
+    "§3b": {
       "title": "3b. What success looks like (outcome envelope)",
       "hash": "sha256:11b3c8f11494d8c0",
       "status": "reference",
@@ -256,13 +256,13 @@
       "decisions": [],
       "notes": "Outcome-envelope definition (v1.3.1); informs UX/acceptance, not code contracts."
     },
-    "\u00a73c": {
+    "§3c": {
       "title": "3c. Defaults are the product",
       "hash": "sha256:b21138ce96b9aa5c",
       "status": "reference",
       "implements": [],
       "decisions": [],
-      "notes": "Defaults-first principle \"no default is a defect\" (v1.3.1); governance/UX principle informing the \u00a75/\u00a77.2/\u00a77.6 propose-then-confirm posture. No single-file implementation."
+      "notes": "Defaults-first principle \"no default is a defect\" (v1.3.1); governance/UX principle informing the §5/§7.2/§7.6 propose-then-confirm posture. No single-file implementation."
     },
     "specs/002-defaults-engine": {
       "title": "Feature Specification: Defaults engine (propose-then-confirm proposers)",
@@ -270,10 +270,10 @@
       "status": "unreviewed",
       "implements": [],
       "decisions": [],
-      "notes": "Defaults-engine feature spec (\u00a73c-derived). Coverage not yet triaged."
+      "notes": "Defaults-engine feature spec (§3c-derived). Coverage not yet triaged."
     },
     "specs/005-pattern-schema": {
-      "title": "Feature spec \u2014 Pattern schema (spec.md \u00a75)",
+      "title": "Feature spec — Pattern schema (spec.md §5)",
       "hash": "sha256:269db42c81a1c560",
       "status": "implemented",
       "implements": [
@@ -283,10 +283,10 @@
         "packages/contracts/src/fixtures/patterns.ts"
       ],
       "decisions": [],
-      "notes": "Extracted \u00a75 Pattern-schema contract spec. Canonical type pattern.ts; zod mirror schemas.ts (compile-time drift-guarded). Locked contract (\u00a718)."
+      "notes": "Extracted §5 Pattern-schema contract spec. Canonical type pattern.ts; zod mirror schemas.ts (compile-time drift-guarded). Locked contract (§18)."
     },
     "specs/007-strategy-selection": {
-      "title": "Feature spec \u2014 Strategy selection (spec.md \u00a77)",
+      "title": "Feature spec — Strategy selection (spec.md §7)",
       "hash": "sha256:822706880f9434a7",
       "status": "partial",
       "implements": [
@@ -296,10 +296,10 @@
         "packages/engine/src/strategy-selector"
       ],
       "decisions": [],
-      "notes": "Extracted \u00a77 strategy framework (A1-A7, decision tree, S-01..S-13, \u00a77.5 table)."
+      "notes": "Extracted §7 strategy framework (A1-A7, decision tree, S-01..S-13, §7.5 table)."
     },
     "specs/008-data-flow": {
-      "title": "Feature spec \u2014 Data flow (spec.md \u00a78)",
+      "title": "Feature spec — Data flow (spec.md §8)",
       "hash": "sha256:ce83a5e8e3cdc4a4",
       "status": "partial",
       "implements": [
@@ -309,15 +309,15 @@
         "packages/engine/src/loader"
       ],
       "decisions": [],
-      "notes": "Extracted \u00a78 \u2014 the application meta-flow / data pipeline. Treated as architecture-core (see docs/architecture.md) despite living in specs/NNN."
+      "notes": "Extracted §8 — the application meta-flow / data pipeline. Treated as architecture-core (see docs/architecture.md) despite living in specs/NNN."
     },
     "docs/architecture.md": {
-      "title": "Keyboard Studio \u2014 architecture & meta-flow",
-      "hash": "sha256:15a38e9713965f46",
+      "title": "Keyboard Studio — architecture & meta-flow",
+      "hash": "sha256:02e0728c0b26c7f0",
       "status": "reference",
       "implements": [],
       "decisions": [],
-      "notes": "Architecture / meta-flow composition layer \u2014 the system view spec-kit omits. An index over the spec architecture-core sections + the extracted feature specs; not code."
+      "notes": "Architecture / meta-flow composition layer — the system view spec-kit omits. An index over the spec architecture-core sections + the extracted feature specs; not code."
     }
   }
 }
