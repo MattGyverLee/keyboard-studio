@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { BaseKeyboard, VirtualFS, KeyboardIR, KpsFontEntry, KpsStylesheetEntry } from "@keyboard-studio/contracts";
 import type { CompileResult } from "@keyboard-studio/contracts";
 import { createVirtualFS } from "@keyboard-studio/contracts";
-import { LOCAL_PROXY_BASE, getScaffolderService } from "../lib/services.ts";
+import { getScaffolderService } from "../lib/services.ts";
 import { findKmnPath } from "../lib/findKmnPath.ts";
 
 interface EngineModule {
@@ -315,9 +315,9 @@ export function useKeyboardArtifact(
         }
       } else if (engineRef.current) {
         // Open-base path — fetch existing keyboard source.
-        const fetchResult = await engineRef.current.fetchKeyboardSourceToVfs(kb, vfs, {
-          proxyBase: LOCAL_PROXY_BASE,
-        });
+        // proxyBase defaults to "/kbd-proxy" inside fetchKeyboardSourceToVfs,
+        // which Vite proxies to raw.githubusercontent.com in both dev and prod.
+        const fetchResult = await engineRef.current.fetchKeyboardSourceToVfs(kb, vfs);
         // Build a blob URL for the OSK font so the frame can inject an
         // @font-face rule before the keyboard JS executes. Stored in refs so
         // it survives recompile() (the font only changes on a new fetch).
