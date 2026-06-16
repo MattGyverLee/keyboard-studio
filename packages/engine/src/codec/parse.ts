@@ -28,7 +28,7 @@ import type {
 
 import { tokenize } from "./tokenize.js";
 import { NodeIdMinter } from "./node-ids.js";
-import { OPAQUE_REASONS } from "./opaque-reasons.js";
+import { OPAQUE_REASONS, type OpaqueReason } from "./opaque-reasons.js";
 
 // System stores whose canonical spelling is NOT all-uppercase. The lookup key
 // is the uppercased form; the value is what gets stored in IRStore.name.
@@ -220,10 +220,12 @@ function parseUse(tok: string): string | null {
 }
 
 /**
- * Parse the value list of a store declaration.
- * Returns StoreItem[] or null if an opaque item is detected.
+ * Parse the value list of a store declaration. Always returns the parsed
+ * `items`; `opaqueReason` is non-null when the body carries a construct the
+ * typed IR can't represent (named deadkey, SMP literal), in which case the
+ * caller wraps the whole store as a RawKmnFragment with that reason.
  */
-function parseStoreItems(rawValue: string): { items: StoreItem[]; opaqueReason: string | null } {
+function parseStoreItems(rawValue: string): { items: StoreItem[]; opaqueReason: OpaqueReason | null } {
   const toks = splitTokens(rawValue);
   const items: StoreItem[] = [];
   for (const tok of toks) {
@@ -670,53 +672,29 @@ export function parse(text: string, keyboardId: string): ParseResult {
         }
         pendingComments = [];
 
-        if (parsed.isSystem) {
-          // Track for IRHeader.
-          sysStores[parsed.name] = parsed.rawValue;
-          // Also add to stores array as a system store.
-          const { items, opaqueReason: sysOpaqueReason } = parseStoreItems(parsed.rawValue);
-          if (sysOpaqueReason !== null) {
-            // System store contains SMP, a named deadkey, or other opaque
-            // content — wrap as raw with the specific reason.
-            bumpOpaque(sysOpaqueReason);
-            rawFragments.push({
-              nodeId: storeNodeId,
-              origin: "imported",
-              sourceText: tok.text,
-              reason: sysOpaqueReason,
-            });
-          } else {
-            const sysStore: IRStore = {
-              nodeId: storeNodeId,
-              name: parsed.name,
-              items,
-              isSystem: true,
-            };
-            if (tok.targetSelector !== undefined) sysStore.targetSelector = tok.targetSelector;
-            stores.push(sysStore);
-          }
+        // System stores are also tracked for the IRHeader.
+        if (parsed.isSystem) sysStores[parsed.name] = parsed.rawValue;
+
+        // Body parsing is identical for system and user stores: wrap as a raw
+        // fragment when it carries an opaque construct, otherwise emit a store.
+        const { items, opaqueReason } = parseStoreItems(parsed.rawValue);
+        if (opaqueReason !== null) {
+          bumpOpaque(opaqueReason);
+          rawFragments.push({
+            nodeId: storeNodeId,
+            origin: "imported",
+            sourceText: tok.text,
+            reason: opaqueReason,
+          });
         } else {
-          // User store — may belong to current group or be global.
-          const { items, opaqueReason } = parseStoreItems(parsed.rawValue);
-          if (opaqueReason !== null) {
-            // Wrap as raw fragment with the specific opaque reason.
-            bumpOpaque(opaqueReason);
-            rawFragments.push({
-              nodeId: storeNodeId,
-              origin: "imported",
-              sourceText: tok.text,
-              reason: opaqueReason,
-            });
-          } else {
-            const irStore: IRStore = {
-              nodeId: storeNodeId,
-              name: parsed.name,
-              items,
-              isSystem: false,
-            };
-            if (tok.targetSelector !== undefined) irStore.targetSelector = tok.targetSelector;
-            stores.push(irStore);
-          }
+          const irStore: IRStore = {
+            nodeId: storeNodeId,
+            name: parsed.name,
+            items,
+            isSystem: parsed.isSystem,
+          };
+          if (tok.targetSelector !== undefined) irStore.targetSelector = tok.targetSelector;
+          stores.push(irStore);
         }
         break;
       }
