@@ -214,8 +214,3 @@ Adopted from [keymanapp/keyman](https://github.com/keymanapp/keyman/issues). For
 - `maint(contracts): rename PatternQuestion.required → optional`
 
 Keep `bug` and `fix` separate — `bug(...)` issues link to `fix(...)` PRs via `closes #N`. Mixing the two blurs the issue/PR relationship.
-
-<!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
-<!-- SPECKIT END -->

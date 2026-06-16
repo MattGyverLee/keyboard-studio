@@ -592,7 +592,8 @@ export function parse(text: string, keyboardId: string): ParseResult {
   }
 
   // Parse state.
-  let _entryGroupName = "main";
+  // TODO: capture the `begin <encoding> > use(<group>)` entry group once
+  // multi-group keyboards are supported; v1 assumes the single "main" group.
   let headerParsed = false; // true after we see `begin`
   let currentGroup: IRGroup | null = null;
 
@@ -640,7 +641,7 @@ export function parse(text: string, keyboardId: string): ParseResult {
         if (!parsed) {
           throw new Error(`Malformed begin directive at line ${tok.line}:${tok.col}: ${tok.text}`);
         }
-        _entryGroupName = parsed.entryGroup;
+        // parsed.entryGroup intentionally discarded — see TODO above.
         headerParsed = true;
         flushCommentsFreestanding();
         break;
