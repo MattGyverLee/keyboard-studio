@@ -24,6 +24,13 @@ export * from "./surveySession";
 export * from "./virtualFS";
 
 // ---------------------------------------------------------------------------
+// Runtime schemas — zod mirrors of the locked contract types (spec §5, §11).
+// Used at the data-file load boundaries to validate criteria.json and the
+// pattern-library YAML; compile-time drift guards keep schema and type in sync.
+// ---------------------------------------------------------------------------
+export * from "./schemas";
+
+// ---------------------------------------------------------------------------
 // Service interfaces — runtime APIs each pipeline step exposes. Engine team
 // implements these against real backends; content team uses the mocks subpath
 // for fixture-driven UI work. Alphabetized.
