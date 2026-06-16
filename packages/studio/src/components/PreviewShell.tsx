@@ -2,8 +2,7 @@
 //
 // [SCAFFOLD] Left pane: currently a base-keyboard picker only. The full
 // survey UI (spec §4 / §8 Phase B) is not yet implemented and will replace
-// this pane. The right pane (compile + KMW iframe preview) is the working
-// deliverable ported from studio-poc.
+// this pane. The right pane is the compile + KMW iframe preview.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BaseKeyboard, CompilerDiagnostic } from "@keyboard-studio/contracts";

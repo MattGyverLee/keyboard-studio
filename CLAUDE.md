@@ -36,7 +36,7 @@ Package manager is **pnpm 9** (Node ≥ 20). Run from the repo root unless noted
 - **`@keyboard-studio/engine`** — the real engine. Subsystems under `packages/engine/src/`: `codec` (.kmn ↔ KeyboardIR), `scaffolder`, `output` (VirtualFS → zip), `validator`, `compiler` (kmcmplib wrapper), `simulator`, `recognizer` (+ generated rules), `pattern-apply`, `pattern-library`, `strategy-selector`, `character-discovery`, `inventory`, `loader`, `base-browser`, `stub-mutator`.
 - **`@keymanapp/keyboard-lint`** — Layer C hygiene lint engine (`lintEngine.ts`, `checks/`, `parsers/`).
 - **`@keyboard-studio/llm`** — pluggable LLM client (`backends/`) for prompt-driven assistance.
-- **`@keyboard-studio/studio`** — the React + Vite SPA (three-pane gallery / editor / preview; working-copy spine). **`studio-poc` is a throwaway prototype — do not build on it.**
+- **`@keyboard-studio/studio`** — the React + Vite SPA (three-pane gallery / editor / preview; working-copy spine).
 - **`packages/compiler`** — holds only the fetched `kmcmplib.wasm` (no TS `package.json`); the service wrapping it lives in `engine/src/compiler`.
 
 Spec targets **not yet realised as written:** the `@keymanapp/kmn-validator` package has not been extracted — Layer A/B (and Layer A' import-fidelity) validation lives in `engine/src/validator` (see Architecture). Check a package's actual exports before referencing it.
