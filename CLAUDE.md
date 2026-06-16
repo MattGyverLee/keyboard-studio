@@ -32,7 +32,7 @@ Package manager is **pnpm 9** (Node ≥ 20). Run from the repo root unless noted
 
 **Day-1 contract is locked and the engine + studio are now built out** (this supersedes the earlier "contracts only" status). Packages under `packages/*`:
 
-- **`@keyboard-studio/contracts`** — the locked Day-1 shared contract: TS types, the seven service interfaces + mocks, fixtures, and the criteria catalog at `packages/contracts/data/criteria.json` (148 rows — 133 repo-hygiene + 12 §18 DISCUS design-heuristic at Day-1 lock, plus post-lock additions; see spec §11 and [docs/discus-principles-integration.md](docs/discus-principles-integration.md)). The dependency root — everything else builds to it.
+- **`@keyboard-studio/contracts`** — the locked Day-1 shared contract: TS types, the seven service interfaces + mocks, fixtures, the criteria catalog at `packages/contracts/data/criteria.json` (148 rows — 133 repo-hygiene + 12 §18 DISCUS design-heuristic at Day-1 lock, plus post-lock additions; see spec §11 and [docs/discus-principles-integration.md](docs/discus-principles-integration.md)), and the runtime **zod schemas** (`src/schemas.ts`) that mirror the locked `Pattern`/`Criterion` types. The dependency root — everything else builds to it.
 - **`@keyboard-studio/engine`** — the real engine. Subsystems under `packages/engine/src/`: `codec` (.kmn ↔ KeyboardIR), `scaffolder`, `output` (VirtualFS → zip), `validator`, `compiler` (kmcmplib wrapper), `simulator`, `recognizer` (+ generated rules), `pattern-apply`, `pattern-library`, `strategy-selector`, `character-discovery`, `inventory`, `loader`, `base-browser`, `stub-mutator`.
 - **`@keymanapp/keyboard-lint`** — Layer C hygiene lint engine (`lintEngine.ts`, `checks/`, `parsers/`).
 - **`@keyboard-studio/llm`** — pluggable LLM client (`backends/`) for prompt-driven assistance.
@@ -81,6 +81,8 @@ The `Pattern` TS interface in spec Sec 5 is the Day-1 contract (issue #5). Treat
 - Reopening a resolved decision (D1–D9, Sec 14) — explicit revision request citing original decision and new evidence; **not** informal.
 
 If a task seems to require schema-breaking changes, surface this to the user before editing — don't change the schema silently.
+
+**Runtime enforcement.** The locked types are mirrored by zod schemas in `packages/contracts/src/schemas.ts` (`PatternSchema`, `CriterionSchema`, plus the YAML-tolerant `RawPatternSchema` the engine/studio loaders consume via `@keyboard-studio/engine/pattern-schema`). The data-file boundaries parse through them — `criteria.json` in `criteriaData.ts`, pattern YAML in the engine loader — so malformed records fail loudly. **The hand-written interfaces stay canonical; the schemas mirror them.** Compile-time drift guards in `schemas.ts` fail the build if a schema and its interface diverge, so editing a locked type means editing its schema in the same change.
 
 ## Out of scope for v1 (do not implement)
 
