@@ -12,7 +12,8 @@
 // drift apart silently. This is reinforcement of the existing contract, not a
 // schema change — no field is renamed, retyped, or removed (spec §17 / §18).
 //
-// @see spec.md §5 (Pattern schema)
+// @see packages/contracts/src/pattern.ts — canonical Pattern type (this mirrors it)
+// @see specs/005-pattern-schema/spec.md — §5 prose spec (Day-1 reference)
 // @see spec.md §11 / §14 Decision 4 (Criterion four-band model)
 
 import { z } from "zod";

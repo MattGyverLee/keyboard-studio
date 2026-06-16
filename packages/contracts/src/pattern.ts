@@ -1,4 +1,8 @@
-// see spec.md section 5 - Pattern schema (Day-1 contract)
+// Pattern schema — the Day-1 contract. THIS interface is canonical.
+// Prose spec: specs/005-pattern-schema/spec.md (spec.md §5 is a stub pointer).
+// Runtime mirror + data-file validation: ./schemas.ts (zod; bound to this file
+// by compile-time drift guards — edit a field here and its schema there in the
+// same change, or the build fails).
 
 import type { StrategyId } from "./strategy";
 import type { IRNodeRef } from "./keyboard-ir";
