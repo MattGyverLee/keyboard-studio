@@ -30,7 +30,17 @@ import { findKmnPath } from "./lib/findKmnPath.ts";
 import { buildFindingsByQuestionId } from "./lint/lintToQuestion.ts";
 import { FlowMapView } from "./flowmap/FlowMapView.tsx";
 
-const VALID_ROUTES = new Set<RouteId>(["survey", "preview", "output", "flowmap"]);
+// The Flow Map is a developer aid. It shows automatically in `vite dev`; in
+// hosted builds (Vercel previews, future production) it is gated by
+// VITE_SHOW_FLOWMAP=1 so the kill switch lives in env config, not code.
+const SHOW_FLOWMAP =
+  import.meta.env.DEV || import.meta.env.VITE_SHOW_FLOWMAP === "1";
+
+const VALID_ROUTES = new Set<RouteId>(
+  (["survey", "preview", "output", "flowmap"] as const).filter(
+    (r) => r !== "flowmap" || SHOW_FLOWMAP,
+  ),
+);
 
 function isRouteId(v: string): v is RouteId {
   return VALID_ROUTES.has(v as RouteId);
@@ -92,7 +102,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "survey", label: "Studio" },
   { id: "preview", label: "Preview" },
   { id: "output", label: "Output" },
-  { id: "flowmap", label: "Flow Map" },
+  ...(SHOW_FLOWMAP ? [{ id: "flowmap" as const, label: "Flow Map" }] : []),
 ];
 
 interface NavBarProps {
