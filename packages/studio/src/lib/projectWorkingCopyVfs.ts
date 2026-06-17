@@ -25,6 +25,7 @@ import {
   applyCarveToVfs,
   applyAssignmentsToVfs,
   applyIdentityStubMutation,
+  applyKeycapLabelsToVfs,
   parseKmn,
   emitKmn,
   resetIdentity,
@@ -155,6 +156,20 @@ export function projectWorkingCopyVfs(
           `[project-working-copy] identity projection skipped: ${msg}`,
         );
       }
+    }
+  }
+
+  // Step 3.5: Keycap label projection — patch .kvks and .keyman-touch-layout so
+  // the desktop and touch OSK preview shows the swapped character on the keycap.
+  // Runs after identity (which only touches .kmn) and before id-rename (which
+  // renames source/<keyboardId>.* siblings — patched assets are carried along).
+  if (physicalAssignments.length > 0) {
+    try {
+      const keycapResult = applyKeycapLabelsToVfs(vfs, keyboardId, physicalAssignments);
+      warnings.push(...keycapResult.warnings);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnings.push(`[project-working-copy] keycap label projection skipped: ${msg}`);
     }
   }
 
