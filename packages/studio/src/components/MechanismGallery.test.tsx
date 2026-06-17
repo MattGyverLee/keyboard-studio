@@ -5,13 +5,13 @@
 //
 // Component contract under test:
 //   - One character at a time from lettersToAdd (inventory when baseIr is null).
-//   - "Add key for <char>" button records a MechanismAssignment(scope:"individual").
+//   - "Apply method for <char>" button records a MechanismAssignment(scope:"individual").
 //   - "Skip this character" advances without recording.
-//   - Done button appears when every char is covered or skipped.
+//   - Done button appears when every char is covered or skipped (after clicking Next).
 //   - Coverage status line: "<N> of <M> added".
-//   - Method chooser: "Type a sequence" always present; "Tap an accent" only for
-//     decomposable accented chars (NFD length === 2, second CP U+0300-U+036F).
-//   - Sequence Add button disabled until both key inputs are non-empty.
+//   - Method chooser: "Type a sequence" always present; "Tap a trigger key, then a letter"
+//     always present (S-02 deadkey is always offered, regardless of char type).
+//   - Sequence Apply button disabled until both key inputs are non-empty.
 //   - Added chip row appears; chips invoke remove (filters assignment from store).
 //   - Already-produced section collapsed by default; toggle expands it.
 //   - Guards: null base → no-base prompt; empty inventory → survey prompt.
@@ -27,6 +27,7 @@ import { latinDeadkeyAcuteSingle } from "@keyboard-studio/contracts/fixtures";
 import type { PatternMatch } from "@keyboard-studio/contracts";
 import type { Stage } from "../hooks/useKeyboardArtifact";
 import type { MechanismAssignment } from "@keyboard-studio/contracts";
+import { makeTestIR } from "@keyboard-studio/contracts/fixtures";
 
 // ---------------------------------------------------------------------------
 // vi.hoisted() — variables referenced inside vi.mock() factory closures.
@@ -242,7 +243,7 @@ describe("MechanismGallery — sequence method chooser", () => {
     await act(async () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
     });
-    const addBtn = screen.getByRole("button", { name: /Add key for á/i });
+    const addBtn = screen.getByRole("button", { name: /Apply method for á/i });
     expect((addBtn as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -256,7 +257,7 @@ describe("MechanismGallery — sequence method chooser", () => {
     fireEvent.change(screen.getByLabelText(/First key in sequence/i), {
       target: { value: "a" },
     });
-    const addBtn = screen.getByRole("button", { name: /Add key for á/i });
+    const addBtn = screen.getByRole("button", { name: /Apply method for á/i });
     expect((addBtn as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -272,7 +273,7 @@ describe("MechanismGallery — sequence method chooser", () => {
     fireEvent.change(screen.getByLabelText(/Second key in sequence/i), {
       target: { value: "'" },
     });
-    const addBtn = screen.getByRole("button", { name: /Add key for á/i });
+    const addBtn = screen.getByRole("button", { name: /Apply method for á/i });
     expect((addBtn as HTMLButtonElement).disabled).toBe(false);
   });
 });
@@ -282,21 +283,22 @@ describe("MechanismGallery — sequence method chooser", () => {
 // ---------------------------------------------------------------------------
 
 describe("MechanismGallery — deadkey method chooser", () => {
-  it("shows 'Tap an accent' option for a decomposable accented char", async () => {
-    // "á" (U+00E1) NFD = "a" + U+0301 (combining acute) — qualifies.
+  it("shows 'Tap a trigger key, then a letter' option for any character", async () => {
+    // S-02 deadkey is now always offered (not restricted to decomposable chars).
     seedInventory(["á"]);
     await act(async () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
     });
-    expect(screen.getByText(/Tap an accent, then the letter/i)).toBeTruthy();
+    expect(screen.getByText(/Tap a trigger key, then a letter/i)).toBeTruthy();
   });
 
-  it("does NOT show 'Tap an accent' for a plain ASCII character", async () => {
+  it("shows 'Tap a trigger key, then a letter' for a plain ASCII character too", async () => {
+    // S-02 is always shown — deadkey is not restricted to accented chars.
     seedInventory(["a"]);
     await act(async () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
     });
-    expect(screen.queryByText(/Tap an accent, then the letter/i)).toBeNull();
+    expect(screen.getByText(/Tap a trigger key, then a letter/i)).toBeTruthy();
   });
 
   it("switching to deadkey method exposes the trigger-key selector", async () => {
@@ -304,7 +306,7 @@ describe("MechanismGallery — deadkey method chooser", () => {
     await act(async () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
     });
-    fireEvent.click(screen.getByText(/Tap an accent, then the letter/i));
+    fireEvent.click(screen.getByText(/Tap a trigger key, then a letter/i));
     expect(screen.getByLabelText(/Trigger key for deadkey/i)).toBeTruthy();
   });
 
@@ -313,8 +315,8 @@ describe("MechanismGallery — deadkey method chooser", () => {
     await act(async () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
     });
-    fireEvent.click(screen.getByText(/Tap an accent, then the letter/i));
-    const addBtn = screen.getByRole("button", { name: /Add key for á/i });
+    fireEvent.click(screen.getByText(/Tap a trigger key, then a letter/i));
+    const addBtn = screen.getByRole("button", { name: /Apply method for á/i });
     expect((addBtn as HTMLButtonElement).disabled).toBe(false);
   });
 });
@@ -324,7 +326,7 @@ describe("MechanismGallery — deadkey method chooser", () => {
 // ---------------------------------------------------------------------------
 
 describe("MechanismGallery — apply (sequence)", () => {
-  it("clicking Add key records an individual-scope assignment for the current char", async () => {
+  it("clicking Apply method records an individual-scope assignment for the current char", async () => {
     seedInventory(["á"]);
     await act(async () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
@@ -336,7 +338,7 @@ describe("MechanismGallery — apply (sequence)", () => {
     fireEvent.change(screen.getByLabelText(/Second key in sequence/i), {
       target: { value: "'" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Add key for á/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
 
     const assignments = useWorkingCopyStore
       .getState()
@@ -359,7 +361,7 @@ describe("MechanismGallery — apply (sequence)", () => {
     fireEvent.change(screen.getByLabelText(/Second key in sequence/i), {
       target: { value: "'" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Add key for á/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
 
     const assignment = useWorkingCopyStore
       .getState()
@@ -373,13 +375,13 @@ describe("MechanismGallery — apply (sequence)", () => {
 });
 
 describe("MechanismGallery — apply (deadkey)", () => {
-  it("clicking Add key with deadkey method records patternId deadkey_single_tap", async () => {
+  it("clicking Apply method with deadkey method records patternId deadkey_single_tap", async () => {
     seedInventory(["á"]);
     await act(async () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
     });
-    fireEvent.click(screen.getByText(/Tap an accent, then the letter/i));
-    fireEvent.click(screen.getByRole("button", { name: /Add key for á/i }));
+    fireEvent.click(screen.getByText(/Tap a trigger key, then a letter/i));
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
 
     const assignments = useWorkingCopyStore
       .getState()
@@ -391,11 +393,12 @@ describe("MechanismGallery — apply (deadkey)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Apply — auto-advances to the next character
+// Apply + Next — the component does NOT auto-advance after Apply.
+// The user must click "Next character →" (or "All done →") to move forward.
 // ---------------------------------------------------------------------------
 
-describe("MechanismGallery — auto-advance after apply", () => {
-  it("advances to the next character after Add key is clicked", async () => {
+describe("MechanismGallery — advance after apply", () => {
+  it("advances to the next character after Apply and then Next are clicked", async () => {
     seedInventory(["á", "é"]);
     await act(async () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
@@ -407,7 +410,13 @@ describe("MechanismGallery — auto-advance after apply", () => {
     fireEvent.change(screen.getByLabelText(/Second key in sequence/i), {
       target: { value: "'" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Add key for á/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
+    // Apply records but stays on á; click Next to advance.
+    await waitFor(() => {
+      const nextBtn = screen.getByRole("button", { name: /Next character/i });
+      expect((nextBtn as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(nextBtn);
+    });
 
     // Now the current char should be "é".
     await waitFor(() => {
@@ -427,8 +436,9 @@ describe("MechanismGallery — auto-advance after apply", () => {
     fireEvent.change(screen.getByLabelText(/Second key in sequence/i), {
       target: { value: "'" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Add key for á/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
 
+    // Coverage updates immediately after Apply (á is now covered).
     await waitFor(() => {
       const status = screen.getByRole("status");
       expect(status.getAttribute("aria-label")).toBe("1 of 2 added");
@@ -479,13 +489,22 @@ describe("MechanismGallery — skip character", () => {
 // ---------------------------------------------------------------------------
 
 describe("MechanismGallery — Done state", () => {
-  it("Done button appears when every character is covered", async () => {
+  it("Done button appears when every character is covered and Next is clicked", async () => {
     seedInventory(["á"]);
     await act(async () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
     });
-    fireEvent.click(screen.getByText(/Tap an accent, then the letter/i));
-    fireEvent.click(screen.getByRole("button", { name: /Add key for á/i }));
+    fireEvent.click(screen.getByText(/Tap a trigger key, then a letter/i));
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
+
+    // After Apply: á is covered, isDone=true, currentChar still="á".
+    // The Next button aria-label is "All methods applied, finish"; click it to
+    // reach currentChar===null, which renders the Done button.
+    await waitFor(() => {
+      const nextBtn = screen.getByRole("button", { name: /All methods applied, finish/i });
+      expect((nextBtn as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(nextBtn);
+    });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Done/i })).toBeTruthy();
@@ -503,8 +522,15 @@ describe("MechanismGallery — Done state", () => {
         />,
       );
     });
-    fireEvent.click(screen.getByText(/Tap an accent, then the letter/i));
-    fireEvent.click(screen.getByRole("button", { name: /Add key for á/i }));
+    fireEvent.click(screen.getByText(/Tap a trigger key, then a letter/i));
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
+
+    // Advance to currentChar===null so the Done button appears.
+    await waitFor(() => {
+      const nextBtn = screen.getByRole("button", { name: /All methods applied, finish/i });
+      expect((nextBtn as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(nextBtn);
+    });
 
     await waitFor(() => {
       fireEvent.click(screen.getByRole("button", { name: /Done/i }));
@@ -537,8 +563,8 @@ describe("MechanismGallery — added chip row", () => {
     await act(async () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
     });
-    fireEvent.click(screen.getByText(/Tap an accent, then the letter/i));
-    fireEvent.click(screen.getByRole("button", { name: /Add key for á/i }));
+    fireEvent.click(screen.getByText(/Tap a trigger key, then a letter/i));
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
 
     await waitFor(() => {
       // The "Added characters" group appears.
@@ -556,8 +582,8 @@ describe("MechanismGallery — added chip row", () => {
     await act(async () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
     });
-    fireEvent.click(screen.getByText(/Tap an accent, then the letter/i));
-    fireEvent.click(screen.getByRole("button", { name: /Add key for á/i }));
+    fireEvent.click(screen.getByText(/Tap a trigger key, then a letter/i));
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Remove.*á/i })).toBeTruthy();
@@ -723,7 +749,7 @@ describe("MechanismGallery — preview ready state", () => {
 // ---------------------------------------------------------------------------
 
 describe("MechanismGallery — vfsTransform passed to useKeyboardArtifact", () => {
-  it("passes a non-null vfsTransform after patterns have loaded", async () => {
+  it("passes a non-null vfsTransform after patterns have loaded and working copy is instantiated", async () => {
     // Use a ready stage so OSKFrame renders (confirms GalleryPreviewWithPatterns
     // mounted) and useKeyboardArtifact receives the transform callback.
     setMockStage({
@@ -732,6 +758,15 @@ describe("MechanismGallery — vfsTransform passed to useKeyboardArtifact", () =
       jsBlobUrl: "",
       vfs: createVirtualFS(),
       scaffoldWarnings: [],
+    });
+    // Seed a working copy: useWorkingCopyTransform returns null when baseIr is null,
+    // so instantiateFromBase must be called before patterns load.
+    const seedVfs = createVirtualFS([
+      { path: "source/basic_kbdus.kmn", content: "c test\n", isBinary: false },
+    ]);
+    useWorkingCopyStore.getState().instantiateFromBase(basicKbdus, {
+      vfs: seedVfs,
+      ir: makeTestIR([]),
     });
     seedInventory(["á"]);
     // Let patterns load fully inside act so the async filterFor + getById chain
