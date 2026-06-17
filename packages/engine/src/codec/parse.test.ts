@@ -126,5 +126,32 @@ group(main) using keys
       expect(numStore?.items).toContainEqual({ kind: "deadkey", id: 0x7e });
       expect(ir.raw.some((f) => f.sourceText.includes("numdk"))).toBe(false);
     });
+
+    it("treats the WHOLE store as opaque when a named deadkey follows valid items (early-return discards partials)", () => {
+      // A named deadkey mid-list means the store can't be represented in the
+      // typed IR; the parser early-returns an opaque reason and the caller wraps
+      // the entire store as a RawKmnFragment. The already-parsed valid items
+      // (U+0061, U+0062) are intentionally discarded — NOT salvaged into a
+      // partial store. This guards future callers from expecting partial results.
+      const MIXED = `store(&VERSION) '10.0'
+store(&NAME) 'Mixed'
+store(&TARGETS) 'any'
+store(mixed) U+0061 dk(a_err) U+0062
+begin Unicode > use(main)
+group(main) using keys
++ [K_A] > U+0061
+`;
+      const { ir, opaqueFeatures } = parse(MIXED, "mixed");
+      // The whole store is opaque — not emitted as a parsed store…
+      expect(ir.stores.some((s) => s.name === "mixed")).toBe(false);
+      // …wrapped as a single raw fragment whose sourceText is the ENTIRE store
+      // body: the valid U+0061 / U+0062 are captured opaque, not salvaged into a
+      // partial store.
+      const frag = ir.raw.find((f) => f.sourceText.includes("store(mixed)"));
+      expect(frag?.reason).toBe("named-deadkey");
+      expect(frag?.sourceText).toContain("U+0061");
+      expect(frag?.sourceText).toContain("U+0062");
+      expect(opaqueFeatures).toContainEqual({ feature: "named-deadkey", count: 1 });
+    });
   });
 });
