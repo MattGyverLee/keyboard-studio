@@ -127,14 +127,19 @@ EOF
 
 touch -a "$AUDIT_LOG"
 
-if [[ ! -f "$INBOX_DIR/.labels-created" ]]; then
+# Triage labels: create once per repo lifetime, guarded by a sentinel file.
+# Bump the sentinel suffix whenever a label is added so existing installs
+# create the newcomer on their next sweep (then go quiet again).
+if [[ ! -f "$INBOX_DIR/.labels-created-v2" ]]; then
   gh label create ready-to-merge --color 0e8a16 \
     --description "Triage approved - ready to merge by any team member" 2>/dev/null || true
   gh label create review-needed --color d93f0b \
     --description "Triage escalated - awaiting submitter or tech-lead response" 2>/dev/null || true
   gh label create triage-skip --color cfd3d7 \
     --description "Do not run triage on this PR" 2>/dev/null || true
-  touch "$INBOX_DIR/.labels-created"
+  gh label create needs-rebase --color fbca04 \
+    --description "Triage: branch conflicts with base - rebase needed (auto-clears once mergeable)" 2>/dev/null || true
+  touch "$INBOX_DIR/.labels-created-v2"
 fi
 
 if ! node utilities/km-triage-app/mint-token.js > /dev/null 2>&1; then
@@ -200,6 +205,17 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
 
     printf '[km-triage] PR #%s: %s\n' "$NUM" "$TITLE" | tee -a "$LOG"
 
+    # Label hygiene — clear stale needs-rebase (the "go away when done" half).
+    # Runs first, before any gate's `continue`, so the tag clears even when the
+    # PR is then skipped for an unrelated reason (e.g. ci_not_ready). A PR that
+    # is still CONFLICTING keeps the tag (Gate 4 re-adds / leaves it).
+    if echo "$PR" | jq -e '.mergeable != "CONFLICTING"' > /dev/null 2>&1 \
+       && echo "$PR" | jq -e '[.labels[].name] | any(. == "needs-rebase")' > /dev/null 2>&1; then
+      echo "  clearing stale needs-rebase (mergeable again)" | tee -a "$LOG"
+      node utilities/km-triage-app/bot-gh.js api \
+        "repos/$REPO/issues/$NUM/labels/needs-rebase" -X DELETE >> "$LOG" 2>&1 || true
+    fi
+
     # Gate 1 — external fork
     if echo "$PR" | jq -e '.isCrossRepository == true' > /dev/null 2>&1; then
       echo "  skip: external_pr_not_in_scope" | tee -a "$LOG"
@@ -221,26 +237,29 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
       n_skip=$((n_skip + 1)); continue
     fi
 
-    # Gate 4 — CONFLICTING: post notice once per head SHA, then skip silently
+    # Gate 4 — CONFLICTING: flag with the needs-rebase tag, then skip silently.
+    # Dedup is by label presence (not head SHA): first sweep to see the conflict
+    # adds the tag + posts one @-mention notice; while the tag persists the PR is
+    # skipped quietly. The label-hygiene block above removes the tag once the
+    # branch is mergeable again, so the notice posts exactly once per conflict.
     if echo "$PR" | jq -e '.mergeable == "CONFLICTING"' > /dev/null 2>&1; then
-      PRIOR_CONFLICT=$( [[ -f "$AUDIT_LOG" ]] && jq -c --argjson num "$NUM" --arg sha "$HEAD_SHA" \
-        'select(.pr == $num and .reason == "merge_conflict" and .head_sha == $sha)' \
-        "$AUDIT_LOG" 2>/dev/null | tail -1 || echo "" )
-      if [[ -z "$PRIOR_CONFLICT" ]]; then
-        echo "  skip: merge_conflict — posting notice" | tee -a "$LOG"
+      if echo "$PR" | jq -e '[.labels[].name] | any(. == "needs-rebase")' > /dev/null 2>&1; then
+        echo "  skip: merge_conflict (already tagged needs-rebase)" | tee -a "$LOG"
+      else
+        echo "  skip: merge_conflict — tagging needs-rebase + posting notice" | tee -a "$LOG"
+        node utilities/km-triage-app/bot-gh.js api \
+          "repos/$REPO/issues/$NUM/labels" -X POST -f "labels[]=needs-rebase" >> "$LOG" 2>&1 || true
         CONFLICT_FILE=$(mktemp)
         if [[ "$AUTHOR" == "$TL_LOGIN" ]]; then
           MENTION_LINE="@$TL_LOGIN — km-triage skipped this PR."
         else
           MENTION_LINE="@$TL_LOGIN @$AUTHOR — km-triage skipped this PR."
         fi
-        printf '%s\n\nPR is in CONFLICTING merge state. Triage policy is not to auto-fix or review a branch that needs rebasing.\n\nPlease rebase against `main` first; the next sweep will run the full review crew and either auto-fix mechanical findings or @-mention you again with any open questions.\n' \
+        printf '%s\n\nPR is in CONFLICTING merge state. Triage policy is not to auto-fix or review a branch that needs rebasing.\n\nPlease rebase against `main` first; the next sweep will run the full review crew and either auto-fix mechanical findings or @-mention you again with any open questions. The `needs-rebase` label clears automatically once the branch is mergeable again.\n' \
           "$MENTION_LINE" > "$CONFLICT_FILE"
         node utilities/km-triage-app/bot-gh.js pr comment "$NUM" \
           --body-file "$CONFLICT_FILE" >> "$LOG" 2>&1 || true
         rm -f "$CONFLICT_FILE"
-      else
-        echo "  skip: merge_conflict (already notified at this SHA)" | tee -a "$LOG"
       fi
       audit_skip "$NUM" merge_conflict "$HEAD_SHA"
       n_skip=$((n_skip + 1)); continue

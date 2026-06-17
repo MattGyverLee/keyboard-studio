@@ -101,14 +101,19 @@ PRs and questions that need your attention. Append-only; the triage loop adds en
 
 if (-not (Test-Path $auditLog)) { New-Item -ItemType File -Path $auditLog | Out-Null }
 
-if (-not (Test-Path "$inboxDir\.labels-created")) {
+# Triage labels: create once per repo lifetime, guarded by a sentinel file.
+# Bump the sentinel suffix whenever a label is added so existing installs
+# create the newcomer on their next sweep (then go quiet again).
+if (-not (Test-Path "$inboxDir\.labels-created-v2")) {
   gh label create ready-to-merge --color 0e8a16 `
     --description "Triage approved - ready to merge by any team member" 2>$null; $true
   gh label create review-needed --color d93f0b `
     --description "Triage escalated - awaiting submitter or tech-lead response" 2>$null; $true
   gh label create triage-skip --color cfd3d7 `
     --description "Do not run triage on this PR" 2>$null; $true
-  New-Item -ItemType File -Path "$inboxDir\.labels-created" | Out-Null
+  gh label create needs-rebase --color fbca04 `
+    --description "Triage: branch conflicts with base - rebase needed (auto-clears once mergeable)" 2>$null; $true
+  New-Item -ItemType File -Path "$inboxDir\.labels-created-v2" | Out-Null
 }
 
 try {
@@ -177,6 +182,17 @@ for ($i = 1; $i -le $maxIterations; $i++) {
 
     "  PR #$num : $title" | Tee-Object -FilePath $log -Append | Write-Host
 
+    $labelNames = $pr.labels | ForEach-Object { $_.name }
+
+    # Label hygiene — clear stale needs-rebase (the "go away when done" half).
+    # Runs first, before any gate's `continue`, so the tag clears even when the
+    # PR is then skipped for an unrelated reason (e.g. ci_not_ready). A PR that
+    # is still CONFLICTING keeps the tag (Gate 4 re-adds / leaves it).
+    if ($pr.mergeable -ne "CONFLICTING" -and $labelNames -contains "needs-rebase") {
+      "    clearing stale needs-rebase (mergeable again)" | Tee-Object -FilePath $log -Append | Write-Host
+      try { node utilities/km-triage-app/bot-gh.js api "repos/$repo/issues/$num/labels/needs-rebase" -X DELETE >> $log 2>&1 } catch {}
+    }
+
     # Gate 1 — external fork
     if ($pr.isCrossRepository -eq $true) {
       "    skip: external_pr_not_in_scope" | Tee-Object -FilePath $log -Append | Write-Host
@@ -192,31 +208,39 @@ for ($i = 1; $i -le $maxIterations; $i++) {
     }
 
     # Gate 3 — hard-skip labels
-    $labelNames = $pr.labels | ForEach-Object { $_.name }
     if ($labelNames -contains "ready-to-merge" -or $labelNames -contains "triage-skip") {
       "    skip: already_in_lead_queue (label)" | Tee-Object -FilePath $log -Append | Write-Host
       Write-AuditSkip $num "already_in_lead_queue" $headSha
       $nSkip++; continue
     }
 
-    # Gate 4 — CONFLICTING: post notice via bot-gh directly, zero Claude credits
+    # Gate 4 — CONFLICTING: flag with the needs-rebase tag, then skip silently.
+    # Dedup is by label presence (not head SHA): first sweep to see the conflict
+    # adds the tag + posts one @-mention notice; while the tag persists the PR is
+    # skipped quietly. The label-hygiene block above removes the tag once the
+    # branch is mergeable again, so the notice posts exactly once per conflict.
     if ($pr.mergeable -eq "CONFLICTING") {
-      "    skip: merge_conflict - posting notice" | Tee-Object -FilePath $log -Append | Write-Host
-      $conflictFile = [System.IO.Path]::GetTempFileName()
-      $mentionLine = if ($author -eq $tlLogin) {
-        "@$tlLogin - km-triage skipped this PR."
+      if ($labelNames -contains "needs-rebase") {
+        "    skip: merge_conflict (already tagged needs-rebase)" | Tee-Object -FilePath $log -Append | Write-Host
       } else {
-        "@$tlLogin @$author - km-triage skipped this PR."
-      }
-      Set-Content -Path $conflictFile -Value @"
+        "    skip: merge_conflict - tagging needs-rebase + posting notice" | Tee-Object -FilePath $log -Append | Write-Host
+        try { node utilities/km-triage-app/bot-gh.js api "repos/$repo/issues/$num/labels" -X POST -f "labels[]=needs-rebase" >> $log 2>&1 } catch {}
+        $conflictFile = [System.IO.Path]::GetTempFileName()
+        $mentionLine = if ($author -eq $tlLogin) {
+          "@$tlLogin - km-triage skipped this PR."
+        } else {
+          "@$tlLogin @$author - km-triage skipped this PR."
+        }
+        Set-Content -Path $conflictFile -Value @"
 $mentionLine
 
 PR is in CONFLICTING merge state. Triage policy is not to auto-fix or review a branch that needs rebasing.
 
-Please rebase against ``main`` first; the next sweep will run the full review crew and either auto-fix mechanical findings or @-mention you again with any open questions.
+Please rebase against ``main`` first; the next sweep will run the full review crew and either auto-fix mechanical findings or @-mention you again with any open questions. The ``needs-rebase`` label clears automatically once the branch is mergeable again.
 "@
-      try { node utilities/km-triage-app/bot-gh.js pr comment $num --body-file $conflictFile >> $log 2>&1 } catch {}
-      Remove-Item -Path $conflictFile -Force -ErrorAction SilentlyContinue
+        try { node utilities/km-triage-app/bot-gh.js pr comment $num --body-file $conflictFile >> $log 2>&1 } catch {}
+        Remove-Item -Path $conflictFile -Force -ErrorAction SilentlyContinue
+      }
       Write-AuditSkip $num "merge_conflict" $headSha
       $nSkip++; continue
     }
