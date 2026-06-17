@@ -37,7 +37,7 @@ describe('deleteNode', () => {
     useWorkingCopyStore.getState().deleteNode('n1');
     const s = useWorkingCopyStore.getState();
     expect(s.isDeleted('n1')).toBe(true);
-    expect(s.undoStack).toEqual(['n1']);
+    expect(s.undoStack).toEqual([{ k: 'n', id: 'n1' }]);
   });
 
   it('deleting the same node twice pushes two undoStack entries but deduplicates deletedNodeIds', () => {
@@ -61,7 +61,7 @@ describe('undoDelete', () => {
     const s = useWorkingCopyStore.getState();
     expect(s.isDeleted('n2')).toBe(false);
     expect(s.isDeleted('n1')).toBe(true);
-    expect(s.undoStack).toEqual(['n1']);
+    expect(s.undoStack).toEqual([{ k: 'n', id: 'n1' }]);
   });
 });
 
@@ -73,13 +73,13 @@ describe('restoreNode', () => {
     const s = useWorkingCopyStore.getState();
     expect(s.isDeleted('n1')).toBe(false);
     expect(s.isDeleted('n2')).toBe(true);
-    expect(s.undoStack).toEqual(['n2']);
+    expect(s.undoStack).toEqual([{ k: 'n', id: 'n2' }]);
   });
 
   it('is a no-op for a nodeId that was never deleted', () => {
     useWorkingCopyStore.getState().deleteNode('n1');
     useWorkingCopyStore.getState().restoreNode('ghost');
-    expect(useWorkingCopyStore.getState().undoStack).toEqual(['n1']);
+    expect(useWorkingCopyStore.getState().undoStack).toEqual([{ k: 'n', id: 'n1' }]);
   });
 
   it('removes all occurrences of nodeId from undoStack', () => {
