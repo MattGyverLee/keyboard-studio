@@ -8,7 +8,7 @@
 //   #output             — output / delivery (stub; not yet implemented)
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from "react";
-import type { BaseKeyboard, SurveyPhaseResult } from "@keyboard-studio/contracts";
+import type { BaseKeyboard, Pattern, SurveyPhaseResult } from "@keyboard-studio/contracts";
 import { useWorkingCopyStore } from "./stores/workingCopyStore.ts";
 import { instantiateFromBaseIfConfirmed } from "./lib/confirmRebase.ts";
 import { IdentityLite, Prefill, PhaseB, PhaseF, type IdentityLiteResult } from "./survey/index.ts";
@@ -28,6 +28,8 @@ import { ProjectNameStep } from "./components/ProjectNameStep.tsx";
 import { useValidator } from "./hooks/useValidator.ts";
 import { findKmnPath } from "./lib/findKmnPath.ts";
 import { buildFindingsByQuestionId } from "./lint/lintToQuestion.ts";
+import { getPatternLibraryService } from "./lib/services.ts";
+import { physicalAssignmentsOf } from "./lib/physicalAssignments.ts";
 
 const VALID_ROUTES = new Set<RouteId>(["survey", "preview", "output"]);
 
@@ -280,12 +282,38 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
     }
   }, []);
 
-  // Working-copy transform — projects carve + identity layers into the OSK.
-  // No patternMap here (Phase C assignments are not yet collected in the survey
-  // pane; even if they were, we have no patternMap to pass). Returns null when
-  // the working copy is not yet instantiated (baseIr = null on first load);
-  // useKeyboardArtifact treats null vfsTransform as "no transform" — safe.
-  const workingCopyTransform = useWorkingCopyTransform();
+  // Pattern map for the working-copy transform — needed from Phase F onwards so
+  // mechanism assignments (Phase C) are projected into the OSK preview. Loaded
+  // lazily once assignments exist in the store: by the time the user reaches
+  // Phase F the patterns were already fetched during Phase C (service caches
+  // them), so getById resolves in a single microtask tick and causes at most
+  // one extra recompile cycle.
+  const phaseResults = useWorkingCopyStore((s) => s.phaseResults);
+  const sessionAssignments = useMemo(() => physicalAssignmentsOf(phaseResults), [phaseResults]);
+  const [surveyPatternMap, setSurveyPatternMap] = useState<Map<string, Pattern>>(new Map());
+  useEffect(() => {
+    const ids = new Set(sessionAssignments.flatMap((a) => a.mechanisms.map((m) => m.patternId)));
+    if (ids.size === 0) return;
+    const svc = getPatternLibraryService();
+    Promise.all([...ids].map((id) => svc.getById(id)))
+      .then((patterns) => {
+        const map = new Map<string, Pattern>();
+        for (const p of patterns) {
+          if (p !== undefined) map.set(p.id, p);
+        }
+        setSurveyPatternMap(map);
+      })
+      .catch((err: unknown) => {
+        console.error("[SurveyView] pattern load for preview failed:", err);
+      });
+  }, [sessionAssignments]);
+
+  // Working-copy transform — projects carve + assignments + identity into the OSK.
+  // surveyPatternMap is empty until Phase C completes; useWorkingCopyTransform
+  // treats a null patternMap as "skip assignments" (safe — no assignments exist yet).
+  const workingCopyTransform = useWorkingCopyTransform({
+    patternMap: surveyPatternMap.size > 0 ? surveyPatternMap : null,
+  });
 
   // Use localBase (immediately updated on selection) to drive the pipeline,
   // not the store's baseKeyboard (updated only after compile completes).
