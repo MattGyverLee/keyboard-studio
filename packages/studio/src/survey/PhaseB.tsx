@@ -14,11 +14,12 @@
 // SurveyPhaseResult.confirmedInventory (additive contract field). The gallery
 // reads this via session.confirmedInventory (mergePhaseResults union).
 
-import { useMemo, useState } from "react";
-import type { SurveyAnswer, SurveyPhaseResult, LintFinding } from "@keyboard-studio/contracts";
+import { useCallback, useMemo, useState } from "react";
+import type { SurveyAnswer, SurveyPhaseResult, LintFinding, PlacementMap } from "@keyboard-studio/contracts";
 import { SurveyRunner } from "./SurveyRunner.tsx";
 import { parseFlow } from "./loadFlow.ts";
 import type { SurveyContext, FlowDef } from "./types.ts";
+import { buildPlacementSeeds } from "./placementSeeds.ts";
 
 // Vite ?raw import — typed via the `*.yaml?raw` declaration in src/vite-env.d.ts.
 import phaseBRaw from "../../../../content/flows/phase_b_characters.yaml?raw";
@@ -123,9 +124,25 @@ export interface PhaseBProps {
   onComplete: (result: SurveyPhaseResult) => void;
   onBack?: () => void;
   findingsByQuestionId?: Record<string, LintFinding[]>;
+  /**
+   * Optional placement map from the kbgen seeder (spec §7.6 / §8 Phase B).
+   * When present, PlacementMap codepoints above the confidence threshold are
+   * used to pre-fill pb_special_letters_list with the characters the seeder
+   * knows the language needs.
+   *
+   * The placement data (vkey, modifiers) is NOT wired to any Phase B question —
+   * Phase B has no question asking which key a character should go on.  The
+   * seeder's key-assignment proposals belong to a future Phase C placement
+   * confirmation step (out of scope for v1).
+   *
+   * Providing this prop does NOT affect the §7.2 StrategyRecommendation path
+   * (D3 scope guard): the seeded value populates the question input as a plain
+   * pre-fill; the user confirms or overrides it before it enters SurveyPhaseResult.
+   */
+  placementMap?: PlacementMap;
 }
 
-export function PhaseB({ context = {}, onComplete, onBack, findingsByQuestionId }: PhaseBProps) {
+export function PhaseB({ context = {}, onComplete, onBack, findingsByQuestionId, placementMap }: PhaseBProps) {
   // TODO(#410): switch to loadModularFlow + phase_b_characters.modular.yaml when fan-out cutover lands.
   const flow = useMemo(() => parseFlow(phaseBRaw as string), []);
   const [discoveryMethod, setDiscoveryMethod] = useState<DiscoveryMethod>(null);
@@ -133,6 +150,25 @@ export function PhaseB({ context = {}, onComplete, onBack, findingsByQuestionId 
   // rules of hooks — useMemo must not be called after a conditional return.
   // The result is stable as long as `flow` is stable (which it is, keyed on []).
   const manualFlow = useMemo(() => makeManualOnlyFlow(flow), [flow]);
+
+  // Build the placement seed lookup from the PlacementMap (if provided).
+  // useMemo is used here (not useCallback) because the seeds Map is a derived
+  // value, not a function identity concern — recompute only when placementMap
+  // changes (reference equality).  The seeds are used inside the getSeedValue
+  // callback below.
+  const placementSeeds = useMemo(
+    () => (placementMap !== undefined ? buildPlacementSeeds(placementMap) : new Map<string, string>()),
+    [placementMap],
+  );
+
+  // getSeedValue: called by SurveyRunner before pushing each question.
+  // Returns the seeded default for pb_special_letters_list (when the placement
+  // map provided characters above the threshold), undefined for all other ids.
+  // "Default once, user owns it thereafter" contract is enforced by SurveyRunner.
+  const getSeedValue = useCallback(
+    (questionId: string): string | string[] | undefined => placementSeeds.get(questionId),
+    [placementSeeds],
+  );
 
   // When the user picks a non-manual method at the intro question, we intercept
   // and show a stub. We do this by wrapping onComplete to detect the answer
@@ -220,6 +256,9 @@ export function PhaseB({ context = {}, onComplete, onBack, findingsByQuestionId 
   }
 
   // Wrap onComplete to inject confirmedInventory before forwarding the result.
+  // Not wrapped in useCallback intentionally — mirrors the IdentityLite.tsx neighbor pattern;
+  // SurveyRunner captures onComplete via an internal ref (SurveyRunner.tsx:260), so a fresh
+  // reference per render is harmless.
   function handleComplete(result: SurveyPhaseResult): void {
     onComplete({
       ...result,
@@ -252,6 +291,7 @@ export function PhaseB({ context = {}, onComplete, onBack, findingsByQuestionId 
         context={context}
         onComplete={handleComplete}
         onBack={() => setDiscoveryMethod(null)}
+        getSeedValue={getSeedValue}
         {...(findingsByQuestionId !== undefined ? { findingsByQuestionId } : {})}
       />
     </div>
