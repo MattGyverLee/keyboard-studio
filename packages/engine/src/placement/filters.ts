@@ -97,6 +97,45 @@ export function hasNonUSBase(ir: KeyboardIR, threshold = 3): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Layout-family detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect the base layout family of a keyboard from its unshifted letter-key
+ * layer.  Checks the three key positions (K_Q/K_A/K_Z) that distinguish the
+ * three common European layouts.
+ *
+ * Used by the supportability scanner to annotate each KeyboardPlacementReport
+ * with its layout family before passing reports to aggregatePlacements().
+ *
+ * @see spec.md §7.6 (bucketing by base-layout family)
+ */
+export function detectBaseLayoutFamily(
+  ir: KeyboardIR,
+): "QWERTY" | "AZERTY" | "QWERTZ" | "other" {
+  const map = new Map<string, string>();
+  for (const group of ir.groups) {
+    if (!group.usingKeys) continue;
+    for (const rule of group.rules) {
+      if (rule.context.length !== 1) continue;
+      const ctx = rule.context[0];
+      if (!ctx || ctx.kind !== "vkey" || ctx.modifiers.length !== 0) continue;
+      if (rule.output.length !== 1) continue;
+      const out = rule.output[0];
+      if (!out || out.kind !== "char") continue;
+      map.set(ctx.name, out.value);
+    }
+  }
+  const q = map.get("K_Q");
+  const a = map.get("K_A");
+  const z = map.get("K_Z");
+  if (q === "q" && a === "a" && z === "z") return "QWERTY";
+  if (q === "a" && a === "q" && z === "w") return "AZERTY";
+  if (q === "q" && a === "a" && z === "y") return "QWERTZ";
+  return "other";
+}
+
+// ---------------------------------------------------------------------------
 // Candidate-level filters
 // ---------------------------------------------------------------------------
 

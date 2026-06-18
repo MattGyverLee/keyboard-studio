@@ -45,7 +45,7 @@ import { fileURLToPath } from "node:url";
 import { promises as fsp } from "node:fs";
 import { parse, emit } from "../../packages/engine/src/codec/index.js";
 import { recognizePatterns } from "../../packages/engine/src/recognizer/index.js";
-import { emitPlacementMap } from "../../packages/engine/src/placement/index.js";
+import { emitPlacementMap, detectBaseLayoutFamily } from "../../packages/engine/src/placement/index.js";
 import { aggregatePlacements, computeFingerprintFromCandidates } from "../../packages/engine/src/placement/aggregate.js";
 import type { KeyboardIR } from "@keyboard-studio/contracts";
 import { ImportStatus } from "@keyboard-studio/contracts";
@@ -280,32 +280,7 @@ interface ScanReport {
  * Heuristic: compare K_Q/K_A/K_Z outputs against known families:
  *   QWERTY  q/a/z, AZERTY  a/q/w, QWERTZ  q/a/y
  */
-function detectBaseLayoutFamily(
-  ir: KeyboardIR,
-): "QWERTY" | "AZERTY" | "QWERTZ" | "other" {
-  const map = new Map<string, string>();
-  for (const group of ir.groups) {
-    if (!group.usingKeys) continue;
-    for (const rule of group.rules) {
-      if (rule.context.length !== 1) continue;
-      const ctx = rule.context[0];
-      if (!ctx || ctx.kind !== "vkey" || ctx.modifiers.length !== 0) continue;
-      if (rule.output.length !== 1) continue;
-      const out = rule.output[0];
-      if (!out || out.kind !== "char") continue;
-      map.set(ctx.name, out.value);
-    }
-  }
-  const q = map.get("K_Q");
-  const a = map.get("K_A");
-  const z = map.get("K_Z");
-  if (q === "q" && a === "a" && z === "z") return "QWERTY";
-  if (q === "a" && a === "q" && z === "w") return "AZERTY";
-  if (q === "q" && a === "a" && z === "y") return "QWERTZ";
-  return "other";
-}
-
-// computeFingerprint is provided by aggregate.ts as computeFingerprintFromCandidates.
+// detectBaseLayoutFamily and computeFingerprint are provided by the placement module.
 
 /**
  * Scan one .kmn file.  Returns the scan report and, optionally, the parsed IR
