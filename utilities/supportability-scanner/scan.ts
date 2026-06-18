@@ -155,9 +155,9 @@ function printHelp(): void {
 function findKpjFiles(dir: string): string[] {
   const out: string[] = [];
   const walk = (d: string): void => {
-    let entries: ReturnType<typeof readdirSync>;
+    let entries: import('node:fs').Dirent<string>[];
     try {
-      entries = readdirSync(d, { withFileTypes: true });
+      entries = readdirSync(d, { withFileTypes: true, encoding: 'utf8' });
     } catch {
       return;
     }
