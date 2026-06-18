@@ -87,34 +87,36 @@ export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
   }
 
   return (
-    <div style={{ maxWidth: 880, margin: '0 auto', padding: '0 24px 120px' }}>
-      <PageHeader
-        removedCount={removedCount}
-        menuOpen={menuOpen}
-        setMenuOpen={setMenuOpen}
-        ir={ir}
-        deletedNodeIds={deletedNodeIds}
-        deletedItemIds={deletedItemIds}
-        restoreAll={restoreAll}
-      />
+    <div style={{ height: '100%', overflowY: 'auto' }}>
+      <div style={{ maxWidth: 880, margin: '0 auto', padding: '0 24px 120px' }}>
+        <PageHeader
+          removedCount={removedCount}
+          menuOpen={menuOpen}
+          setMenuOpen={setMenuOpen}
+          ir={ir}
+          deletedNodeIds={deletedNodeIds}
+          deletedItemIds={deletedItemIds}
+          restoreAll={restoreAll}
+        />
 
-      <main style={{ paddingTop: 14 }}>
-        {view === 'flagged' ? (
-          <FlaggedView onToggle={() => setView('full')} />
-        ) : (
-          <FullView
-            ir={ir}
-            recognizedPatterns={recognizedPatterns}
-            unrecognizedGroups={unrecognizedGroups}
-            nonSystemStores={nonSystemStores}
-            showInternals={showInternals}
-            setShowInternals={setShowInternals}
-            onToggle={() => setView('flagged')}
-          />
-        )}
+        <main style={{ paddingTop: 14 }}>
+          {view === 'flagged' ? (
+            <FlaggedView onToggle={() => setView('full')} />
+          ) : (
+            <FullView
+              ir={ir}
+              recognizedPatterns={recognizedPatterns}
+              unrecognizedGroups={unrecognizedGroups}
+              nonSystemStores={nonSystemStores}
+              showInternals={showInternals}
+              setShowInternals={setShowInternals}
+              onToggle={() => setView('flagged')}
+            />
+          )}
 
-        <Footer onComplete={onComplete} onBack={onBack} onSkip={handleSkip} />
-      </main>
+          <Footer onComplete={onComplete} onBack={onBack} onSkip={handleSkip} />
+        </main>
+      </div>
     </div>
   );
 }

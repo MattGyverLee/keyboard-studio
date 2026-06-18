@@ -106,7 +106,7 @@ function NavBar({ active }: NavBarProps) {
         alignItems: "center",
         gap: 4,
         padding: "0 16px",
-        background: "#0d1117",
+        background: "var(--bg)",
         borderBottom: "1px solid #283040",
         boxSizing: "border-box",
       }}
@@ -462,7 +462,7 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
 
   if (stage === "carve") {
     return (
-      <div style={{ height: "100%", overflow: "hidden" }}>
+      <div style={{ height: "100%", overflowY: "auto" }}>
         <CarveGallery
           onComplete={handleCarveComplete}
           onBack={() => setStage("prefill")}
@@ -500,7 +500,7 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
         flexDirection: "row",
         height: "100%",
         width: "100%",
-        background: "#0d1117",
+        background: "var(--bg)",
         overflow: "hidden",
       }}
     >
@@ -708,7 +708,7 @@ export function StudioShell() {
         height: "100vh",
         width: "100vw",
         overflow: "hidden",
-        background: "#0d1117",
+        background: "var(--bg)",
       }}
     >
       <NavBar active={route} />
