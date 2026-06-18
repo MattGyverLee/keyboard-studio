@@ -18,7 +18,6 @@ import type { PlacementCandidate } from "@keyboard-studio/contracts";
 import {
   isMnemonicKeyboard,
   hasNonUSBase,
-  dropPUATagged,
   dedupCapsNcaps,
 } from "./filters.js";
 
@@ -122,9 +121,9 @@ function extractOutput(
 // ---------------------------------------------------------------------------
 
 /**
- * Walk a parsed KeyboardIR and extract placement candidates.
+ * Walk a parsed KeyboardIR and extract placement candidates keyed by codepoint.
  *
- * Returns an empty array when:
+ * Returns an empty Map when:
  *   - the keyboard is mnemonic (isMnemonicKeyboard returns true)
  *   - the keyboard has a non-US base layout (hasNonUSBase returns true)
  *
@@ -134,11 +133,13 @@ function extractOutput(
  *   - confidence: 0.5 (placeholder; aggregation normalises it)
  *   - mechanism: 'direct' (only direct rules are emitted in v1)
  *
+ * Map key is 4-char uppercase hex codepoint (e.g. "0253").
+ *
  * @see spec.md §7.6
  */
-export function emitPlacementMap(ir: KeyboardIR): PlacementCandidate[] {
-  if (isMnemonicKeyboard(ir)) return [];
-  if (hasNonUSBase(ir)) return [];
+export function emitPlacementMap(ir: KeyboardIR): Map<string, PlacementCandidate[]> {
+  if (isMnemonicKeyboard(ir)) return new Map();
+  if (hasNonUSBase(ir)) return new Map();
 
   const raw: TaggedCandidate[] = [];
 
@@ -175,6 +176,9 @@ export function emitPlacementMap(ir: KeyboardIR): PlacementCandidate[] {
       // Skip SMP codepoints for v1 (only BMP direct candidates).
       if (cp > 0xffff) continue;
 
+      // Drop PUA range (U+E000–U+F8FF) inline — no separate tagged-filter step needed.
+      if (cp >= 0xe000 && cp <= 0xf8ff) continue;
+
       raw.push({
         codepoint: cp,
         candidate: {
@@ -189,12 +193,21 @@ export function emitPlacementMap(ir: KeyboardIR): PlacementCandidate[] {
     }
   }
 
-  // Apply CAPS/NCAPS dedup before PUA filter.
+  // Apply CAPS/NCAPS dedup.
   const deduped = dedupCapsNcaps(raw);
-  // Drop PUA range (U+E000–U+F8FF).
-  const filtered = dropPUATagged(deduped);
 
-  return filtered.map((t) => t.candidate);
+  // Build codepoint-keyed map.
+  const result = new Map<string, PlacementCandidate[]>();
+  for (const { codepoint, candidate } of deduped) {
+    const hexKey = codepoint.toString(16).toUpperCase().padStart(4, "0");
+    let bucket = result.get(hexKey);
+    if (bucket === undefined) {
+      bucket = [];
+      result.set(hexKey, bucket);
+    }
+    bucket.push(candidate);
+  }
+  return result;
 }
 
 // Re-export filter helpers so the supportability scanner can use them directly.

@@ -14,6 +14,11 @@ import { emitPlacementMap } from "./index.js";
 import { parse } from "../codec/parse.js";
 import type { PlacementCandidate } from "@keyboard-studio/contracts";
 
+/** Flatten the codepoint-keyed Map returned by emitPlacementMap into a plain array. */
+function flatCandidates(ir: Parameters<typeof emitPlacementMap>[0]): PlacementCandidate[] {
+  return [...emitPlacementMap(ir).values()].flat();
+}
+
 // ---------------------------------------------------------------------------
 // Fixture builder
 // ---------------------------------------------------------------------------
@@ -42,8 +47,7 @@ function extractRaltCandidate(
   kbId: string,
 ): PlacementCandidate | undefined {
   const { ir } = parse(raltKmn(vkey, hexCp), kbId);
-  const candidates = emitPlacementMap(ir);
-  return candidates.find(
+  return flatCandidates(ir).find(
     (c) => c.vkey === vkey && c.modifiers.includes("RALT"),
   );
 }
@@ -143,7 +147,7 @@ describe("West-African Latin placement spot-check fixtures", () => {
     "$description — emitPlacementMap extracts $vkey+RALT for U+$hexCp",
     ({ codepoint, hexCp, vkey, modifiers }) => {
       const { ir } = parse(raltKmn(vkey, hexCp), `kb-wa-${codepoint.toString(16)}`);
-      const candidates = emitPlacementMap(ir);
+      const candidates = flatCandidates(ir);
 
       expect(
         candidates.length,
@@ -173,7 +177,7 @@ describe("West-African Latin placement spot-check fixtures", () => {
         raltKmn(fixture.vkey, fixture.hexCp),
         `kb-wa-dedup-${fixture.codepoint.toString(16)}`,
       );
-      const candidates = emitPlacementMap(ir);
+      const candidates = flatCandidates(ir);
       const raltMatches = candidates.filter(
         (c) => c.vkey === fixture.vkey && c.modifiers.includes("RALT"),
       );
@@ -190,7 +194,7 @@ describe("West-African Latin placement spot-check fixtures", () => {
         raltKmn(fixture.vkey, fixture.hexCp),
         `kb-wa-fields-${fixture.codepoint.toString(16)}`,
       );
-      const candidates = emitPlacementMap(ir);
+      const candidates = flatCandidates(ir);
       const c = candidates.find(
         (cand) => cand.vkey === fixture.vkey && cand.modifiers.includes("RALT"),
       );

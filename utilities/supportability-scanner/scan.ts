@@ -42,16 +42,14 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 
 import { join, dirname, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createHash } from "node:crypto";
 import { promises as fsp } from "node:fs";
-import { parse, emit } from "../../packages/engine/src/codec/index.ts";
-import { recognizePatterns } from "../../packages/engine/src/recognizer/index.ts";
-import { emitPlacementMap } from "../../packages/engine/src/placement/index.ts";
-import { aggregatePlacements } from "../../packages/engine/src/placement/aggregate.ts";
+import { parse, emit } from "../../packages/engine/src/codec/index.js";
+import { recognizePatterns } from "../../packages/engine/src/recognizer/index.js";
+import { emitPlacementMap } from "../../packages/engine/src/placement/index.js";
+import { aggregatePlacements, computeFingerprintFromCandidates } from "../../packages/engine/src/placement/aggregate.js";
 import type { KeyboardIR } from "@keyboard-studio/contracts";
-import type { PlacementCandidate } from "@keyboard-studio/contracts";
 import { ImportStatus } from "@keyboard-studio/contracts";
-import type { KeyboardPlacementReport } from "../../packages/engine/src/placement/model.ts";
+import type { KeyboardPlacementReport } from "../../packages/engine/src/placement/model.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..");
@@ -307,17 +305,7 @@ function detectBaseLayoutFamily(
   return "other";
 }
 
-/**
- * Compute a stable SHA-256 fingerprint from a list of PlacementCandidates.
- * Used for fork-collapse in aggregatePlacements.
- */
-function computeFingerprint(candidates: PlacementCandidate[]): string {
-  const tuples = candidates
-    .map((c) => `${c.vkey}|${[...c.modifiers].sort().join(",")}|${c.mechanism}`)
-    .sort()
-    .join("\n");
-  return createHash("sha256").update(tuples).digest("hex");
-}
+// computeFingerprint is provided by aggregate.ts as computeFingerprintFromCandidates.
 
 /**
  * Scan one .kmn file.  Returns the scan report and, optionally, the parsed IR
@@ -570,14 +558,15 @@ async function main(): Promise<void> {
       // --emit-placements: extract placement candidates from the parsed IR.
       if (args.emitPlacements && ir !== null) {
         try {
-          const candidates = emitPlacementMap(ir);
-          if (candidates.length > 0) {
+          const candidatesByCodepoint = emitPlacementMap(ir);
+          if (candidatesByCodepoint.size > 0) {
+            const flat = [...candidatesByCodepoint.values()].flat();
             placementReports.push({
               keyboardId: report.keyboardId,
               bcp47: ir.header.bcp47,
               baseLayoutFamily: detectBaseLayoutFamily(ir),
-              candidates,
-              placementFingerprint: computeFingerprint(candidates),
+              candidatesByCodepoint,
+              placementFingerprint: computeFingerprintFromCandidates(flat),
             });
           }
         } catch {

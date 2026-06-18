@@ -2,14 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   isMnemonicKeyboard,
   hasNonUSBase,
-  dropPUACandidates,
-  dropPUATagged,
   dedupCapsNcaps,
 } from "./filters.js";
 import { parse } from "../codec/parse.js";
 import type { PlacementCandidate } from "@keyboard-studio/contracts";
 import { makeTestIR } from "@keyboard-studio/contracts/fixtures";
-import type { IRGroup, IRStore } from "@keyboard-studio/contracts";
 
 // ---------------------------------------------------------------------------
 // Minimal KMN helpers
@@ -130,70 +127,6 @@ describe("hasNonUSBase", () => {
     const { ir } = parse(kmn, "kb-5dev");
     expect(hasNonUSBase(ir, 5)).toBe(false);
     expect(hasNonUSBase(ir, 4)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// dropPUACandidates (exported identity pass — tested for interface contract)
-// ---------------------------------------------------------------------------
-
-describe("dropPUACandidates", () => {
-  it("passes through all candidates (identity) — PUA filtering is handled by dropPUATagged", () => {
-    const candidates: PlacementCandidate[] = [
-      { vkey: "K_B", modifiers: [], mechanism: "direct", priorSource: "corpus", priorCount: 1, confidence: 0.5 },
-      { vkey: "K_A", modifiers: [], mechanism: "direct", priorSource: "corpus", priorCount: 1, confidence: 0.5 },
-    ];
-    expect(dropPUACandidates(candidates)).toHaveLength(2);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// dropPUATagged (the real PUA filter used by emitPlacementMap)
-// ---------------------------------------------------------------------------
-
-describe("dropPUATagged", () => {
-  function tagged(cp: number): { codepoint: number; candidate: PlacementCandidate } {
-    return {
-      codepoint: cp,
-      candidate: {
-        vkey: "K_A",
-        modifiers: [],
-        mechanism: "direct",
-        priorSource: "corpus",
-        priorCount: 1,
-        confidence: 0.5,
-      },
-    };
-  }
-
-  it("strips U+E001 (in PUA range U+E000–U+F8FF)", () => {
-    const result = dropPUATagged([tagged(0xe001)]);
-    expect(result).toHaveLength(0);
-  });
-
-  it("strips U+E000 (first PUA codepoint)", () => {
-    expect(dropPUATagged([tagged(0xe000)])).toHaveLength(0);
-  });
-
-  it("strips U+F8FF (last PUA codepoint)", () => {
-    expect(dropPUATagged([tagged(0xf8ff)])).toHaveLength(0);
-  });
-
-  it("keeps U+0253 (ɓ — below PUA range)", () => {
-    const result = dropPUATagged([tagged(0x0253)]);
-    expect(result).toHaveLength(1);
-    expect(result[0]?.codepoint).toBe(0x0253);
-  });
-
-  it("keeps U+F900 (above PUA range)", () => {
-    const result = dropPUATagged([tagged(0xf900)]);
-    expect(result).toHaveLength(1);
-  });
-
-  it("keeps non-PUA and drops PUA in mixed input", () => {
-    const result = dropPUATagged([tagged(0x0253), tagged(0xe001), tagged(0x0257)]);
-    expect(result).toHaveLength(2);
-    expect(result.map((t) => t.codepoint)).toEqual([0x0253, 0x0257]);
   });
 });
 

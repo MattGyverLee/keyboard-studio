@@ -140,21 +140,9 @@ export function aggregatePlacements(
   // -------------------------------------------------------------------------
   // Step 2 — Aggregate by codepoint.
   //
-  // For each surviving report, walk its candidates.  We need the codepoint to
-  // key the aggregate; since PlacementCandidate has no `codepoint` field the
-  // scanner must have stored it separately.  The aggregate module receives the
-  // raw candidates list; we have no way to recover the codepoint from a bare
-  // PlacementCandidate.
-  //
-  // Resolution: the scanner attaches a `_codepoint` non-standard field that
-  // aggregatePlacements reads.  This is an internal contract between the
-  // scanner and this module — it does NOT appear in the exported
-  // PlacementPriorsJSON or in any contract type.
-  //
-  // To avoid polluting PlacementCandidate we use a local extension type.
+  // Each report now carries candidatesByCodepoint: Map<hexKey, PlacementCandidate[]>.
+  // The codepoint is the map key — no _codepoint tag needed.
   // -------------------------------------------------------------------------
-
-  type TaggedCandidate = PlacementCandidate & { _codepoint?: number };
 
   // Map from hex-codepoint key → Map<slotKey, { count, bcp47Set, layoutSet, candidate }>
   const cpMap = new Map<
@@ -164,37 +152,34 @@ export function aggregatePlacements(
 
   for (const report of survivingReports) {
     const multiplier = bonus[report.keyboardId] ?? 1;
-    for (const rawCand of report.candidates) {
-      const cand = rawCand as TaggedCandidate;
-      const cp = cand._codepoint;
-      if (cp === undefined) continue; // no codepoint tag — skip
-
-      const hexKey = cp.toString(16).toUpperCase().padStart(4, "0");
+    for (const [hexKey, candidates] of report.candidatesByCodepoint) {
       let slotMap = cpMap.get(hexKey);
       if (slotMap === undefined) {
         slotMap = new Map();
         cpMap.set(hexKey, slotMap);
       }
-      const sk = slotKey(cand);
-      const existing = slotMap.get(sk);
-      if (existing !== undefined) {
-        existing.count += multiplier;
-        for (const tag of report.bcp47) existing.bcp47Set.add(tag);
-        existing.layoutSet.add(report.baseLayoutFamily);
-      } else {
-        slotMap.set(sk, {
-          count: multiplier,
-          bcp47Set: new Set(report.bcp47),
-          layoutSet: new Set([report.baseLayoutFamily]),
-          candidate: {
-            vkey: cand.vkey,
-            modifiers: cand.modifiers,
-            mechanism: cand.mechanism,
-            priorSource: cand.priorSource,
-            priorCount: multiplier,
-            confidence: 0, // filled in after normalization
-          },
-        });
+      for (const cand of candidates) {
+        const sk = slotKey(cand);
+        const existing = slotMap.get(sk);
+        if (existing !== undefined) {
+          existing.count += multiplier;
+          for (const tag of report.bcp47) existing.bcp47Set.add(tag);
+          existing.layoutSet.add(report.baseLayoutFamily);
+        } else {
+          slotMap.set(sk, {
+            count: multiplier,
+            bcp47Set: new Set(report.bcp47),
+            layoutSet: new Set([report.baseLayoutFamily]),
+            candidate: {
+              vkey: cand.vkey,
+              modifiers: cand.modifiers,
+              mechanism: cand.mechanism,
+              priorSource: cand.priorSource,
+              priorCount: multiplier,
+              confidence: 0, // filled in after normalization
+            },
+          });
+        }
       }
     }
   }

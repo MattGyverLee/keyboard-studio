@@ -19,7 +19,8 @@ export interface KeyboardPlacementReport {
   keyboardId: string;
   bcp47: string[];
   baseLayoutFamily: "QWERTY" | "AZERTY" | "QWERTZ" | "other";
-  candidates: PlacementCandidate[];
+  /** key = 4-char hex codepoint (e.g. "0253"), value = candidates for that codepoint. */
+  candidatesByCodepoint: Map<string, PlacementCandidate[]>;
   /** SHA-256 fingerprint of the (codepoint → vkey+modifiers) map.
    *  Used for fork-collapse: keyboards that share ≥90% of their placement
    *  tuples collapse to one vote before aggregation. */

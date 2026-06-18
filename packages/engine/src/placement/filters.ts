@@ -101,44 +101,6 @@ export function hasNonUSBase(ir: KeyboardIR, threshold = 3): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Drop candidates whose output codepoint falls in the Unicode PUA range
- * U+E000–U+F8FF (Basic Multilingual Plane Private Use Area).
- *
- * @see spec.md §7.6 (PUA-drop filter)
- */
-export function dropPUACandidates(
-  candidates: PlacementCandidate[],
-): PlacementCandidate[] {
-  return candidates.filter((c) => {
-    // The codepoint is embedded in the candidate's vkey/modifier slot; we need
-    // access to the original codepoint.  The PlacementCandidate type does not
-    // carry the codepoint — it is the map key in PlacementEntry.  The filtering
-    // is therefore done by the caller (emitPlacementMap) before creating
-    // candidates, but this function accepts a tagged list with codepoints
-    // attached as a separate parameter.
-    //
-    // Implementation note: emitPlacementMap passes a _tagged_ slice where each
-    // candidate comes with its codepoint string attached.  We accept the plain
-    // PlacementCandidate[] here and rely on the caller having pre-tagged which
-    // candidates to drop.  The exported function is used AFTER codepoint tagging
-    // in index.ts.  See dropPUACandidatesByCodepoint below for the internal helper.
-    return true; // Identity pass — actual PUA filtering happens in the tagged variant.
-  });
-}
-
-/**
- * Drop entries in a `(codepoint, candidate)` list where the codepoint is in
- * the Unicode BMP PUA range (U+E000–U+F8FF).
- *
- * Used internally by emitPlacementMap.
- */
-export function dropPUATagged(
-  tagged: Array<{ codepoint: number; candidate: PlacementCandidate }>,
-): Array<{ codepoint: number; candidate: PlacementCandidate }> {
-  return tagged.filter(({ codepoint }) => codepoint < 0xe000 || codepoint > 0xf8ff);
-}
-
-/**
  * Deduplicate rule tuples where the CAPS-state and NCAPS-state produce the same
  * output codepoint for the same vkey.  Keeps the first occurrence and removes
  * duplicates that differ only in the CAPS/NCAPS modifier token.
