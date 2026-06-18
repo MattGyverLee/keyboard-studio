@@ -83,6 +83,26 @@ post_conflict_notice() {
   n_skip=$((n_skip + 1))
 }
 
+# Just-in-time draft re-check. The bulk `gh pr list` snapshot is taken once at
+# the top of the iteration, but PRs are reviewed sequentially with a full,
+# minutes-long claude run between each — so by the time a given PR's turn
+# arrives the snapshot can be many minutes stale. A PR converted to draft
+# inside that window would pass the stale Gate 2 and spin up an entire claude
+# process only for its own Phase 2 to skip it as draft (wasted credits).
+# Re-fetch live isDraft immediately before spawning. Returns 0 (and logs +
+# audits the skip, bumping n_skip) when the PR is now a draft; 1 otherwise.
+jit_is_draft() {
+  local num="$1" head_sha="$2" live_draft
+  live_draft=$(gh pr view "$num" --json isDraft --jq '.isDraft' 2>/dev/null || echo "")
+  if [[ "$live_draft" == "true" ]]; then
+    echo "  skip: draft (converted since sweep snapshot)" | tee -a "$LOG"
+    audit_skip "$num" draft "$head_sha"
+    n_skip=$((n_skip + 1))
+    return 0
+  fi
+  return 1
+}
+
 spawn_claude_for_pr() {
   local pr_num="$1"
   set +e
@@ -341,7 +361,12 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
       fi
     fi
 
-    # All gates cleared — spawn a fresh, isolated Claude process for this PR
+    # All gates cleared — but the Phase-2 snapshot may be stale by now (this PR
+    # may have sat behind other PRs' multi-minute claude runs). Re-check draft
+    # live so a just-converted draft never spins up a claude process.
+    if jit_is_draft "$NUM" "$HEAD_SHA"; then continue; fi
+
+    # Spawn a fresh, isolated Claude process for this PR
     echo "  -> spawning claude for PR #$NUM" | tee -a "$LOG"
     n_review=$((n_review + 1))
     set +e
@@ -363,7 +388,7 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     echo "[km-triage] retrying ${#prs_to_retry[@]} UNKNOWN-mergeability PR(s)" | tee -a "$LOG"
     for RETRY_NUM in "${prs_to_retry[@]}"; do
       RETRY_PR=$(gh pr view "$RETRY_NUM" \
-        --json number,mergeable,headRefOid,author 2>/dev/null || echo "{}")
+        --json number,mergeable,headRefOid,author,isDraft 2>/dev/null || echo "{}")
       RETRY_MERGEABLE=$(echo "$RETRY_PR" | jq -r '.mergeable // "UNKNOWN"')
       RETRY_HEAD=$(echo "$RETRY_PR" | jq -r '.headRefOid // "unknown"')
       RETRY_AUTHOR=$(echo "$RETRY_PR" | jq -r '.author.login // "unknown"')
@@ -384,6 +409,12 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
       elif [[ "$RETRY_MERGEABLE" == "CONFLICTING" ]]; then
         echo "  PR #$RETRY_NUM resolved CONFLICTING — posting notice" | tee -a "$LOG"
         post_conflict_notice "$RETRY_NUM" "$RETRY_AUTHOR" "$RETRY_HEAD"
+
+      elif [[ "$(echo "$RETRY_PR" | jq -r '.isDraft // false')" == "true" ]]; then
+        # Converted to draft while we were processing the other PRs.
+        echo "  PR #$RETRY_NUM converted to draft — skipping" | tee -a "$LOG"
+        audit_skip "$RETRY_NUM" draft "$RETRY_HEAD"
+        n_skip=$((n_skip + 1))
 
       else
         # Resolved to MERGEABLE — spawn Claude for full review
