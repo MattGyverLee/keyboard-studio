@@ -318,7 +318,18 @@ Please rebase against ``main`` first; the next sweep will run the full review cr
       }
     }
 
-    # All gates cleared - spawn a fresh, isolated Claude process for this PR
+    # All gates cleared - but the Phase-2 snapshot may be stale by now (this PR
+    # may have sat behind other PRs' multi-minute claude runs). Re-check draft
+    # live so a just-converted draft never spins up a claude process.
+    $liveDraft = (gh pr view $num --json isDraft --jq '.isDraft' 2>$null)
+    if ($liveDraft -eq "true") {
+      "    skip: draft (converted since sweep snapshot)" | Tee-Object -FilePath $log -Append | Write-Host
+      Write-AuditSkip $num "draft" $headSha
+      $nSkip++
+      continue
+    }
+
+    # Spawn a fresh, isolated Claude process for this PR
     "    -> spawning claude for PR #$num" | Tee-Object -FilePath $log -Append | Write-Host
     $nReview++
     # Clear CLAUDECODE so a triage launched from inside a Claude Code session
