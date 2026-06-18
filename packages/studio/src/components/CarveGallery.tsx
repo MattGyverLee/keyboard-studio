@@ -16,6 +16,7 @@ interface CarveGalleryProps {
 
 export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
   const ir = useWorkingCopyStore((s) => s.ir);
+  const instantiationMode = useWorkingCopyStore((s) => s.instantiationMode);
   const deletedNodeIds = useWorkingCopyStore((s) => s.deletedNodeIds);
   const deletedItemIds = useWorkingCopyStore((s) => s.deletedItemIds);
   const isDeleted = useWorkingCopyStore((s) => s.isDeleted);
@@ -29,13 +30,19 @@ export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
 
   const nodes = useMemo(() => (ir ? toRailNodes(ir) : []), [ir]);
 
-  // Gate: show the "all clear" screen when the keyboard has no patterns, stores, or raw —
-  // only a single plain group (the common "main" group case). User can force-open the full carver.
-  const isSimple = useMemo(
-    () => nodes.filter((n) => n.kind === 'pattern' || n.kind === 'store' || n.kind === 'raw').length === 0
-      && nodes.filter((n) => n.kind === 'group').length <= 1,
-    [nodes],
-  );
+  // Gate: show the "all clear" screen only when ALL of the following hold:
+  //   1. Track 1 (adapting a base) — Track 2 authors know their own keyboard and want to review it.
+  //   2. No recognised patterns, user stores, or raw fragments — nothing complex to carve.
+  //   3. At most one plain group AND that group has ≤ 20 displayable glyphs — a truly small keyboard.
+  //      Arabic / Ethiopic / CJK keyboards with hundreds of rules in "main" must go to the full carver.
+  const isSimple = useMemo(() => {
+    if (instantiationMode === 'adapt-existing') return false;
+    if (nodes.some((n) => n.kind === 'pattern' || n.kind === 'store' || n.kind === 'raw')) return false;
+    const groups = nodes.filter((n) => n.kind === 'group');
+    if (groups.length > 1) return false;
+    const totalGlyphs = groups.reduce((sum, g) => sum + (g.glyphs?.length ?? 0), 0);
+    return totalGlyphs <= 20;
+  }, [nodes, instantiationMode]);
   const [forceOpen, setForceOpen] = useState(false);
 
   const [selectedId, setSelectedId] = useState<string | null>(() => null);
