@@ -1,18 +1,14 @@
 {
-  "name": "@keyboard-studio/oauth-backend",
+  "name": "oauth-backend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Minimal OAuth token-exchange backend for the GitHub fork+PR delivery path.",
-  "main": "./dist/server.js",
   "scripts": {
-    "build": "tsc -b",
-    "dev": "tsc -b --watch --preserveWatchOutput",
-    "clean": "tsc -b --clean",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "start": "node dist/server.js"
+    "start": "tsx src/server.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
@@ -21,6 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "^22",
+    "tsx": "^4.19.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
   }

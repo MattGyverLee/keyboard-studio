@@ -21,7 +21,7 @@ import type {
 } from "./schemas.js";
 
 // ---------------------------------------------------------------------------
-// Fetch abstraction (mirrors engine GitHubFetchFn shape)
+// Fetch abstraction (intentionally minimal local contract; not a mirror of engine GitHubFetchFn)
 // ---------------------------------------------------------------------------
 
 export type OAuthFetchFn = (

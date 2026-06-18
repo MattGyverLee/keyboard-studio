@@ -1,8 +1,10 @@
-# @keyboard-studio/oauth-backend
+# oauth-backend
 
 Minimal OAuth token-exchange backend for the keyboard-studio GitHub fork+PR delivery path.
 
 The studio SPA runs the GitHub OAuth web-app flow (PKCE, S256) but cannot hold the OAuth client secret in browser JavaScript. This service performs the server-side code-for-token exchange and returns the raw GitHub access token to the SPA, which stores it in `sessionStorage` (tab-scoped). No token is persisted server-side.
+
+Lives in `utilities/oauth-backend/` — a standalone deployable service kept out of `packages/*` so it does not participate in `pnpm -r build/test/typecheck`.
 
 ## Endpoints
 
@@ -77,26 +79,24 @@ The service exits at startup with a fatal error if `GITHUB_CLIENT_ID` or `GITHUB
 
 ## Running
 
-**Development (TypeScript watch):**
+**Development (run directly with tsx):**
 
 ```sh
-pnpm --filter @keyboard-studio/oauth-backend dev
+cd utilities/oauth-backend
+npm install
+GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=... npm start
 ```
 
-**Production (after build):**
+**Typecheck / test (from the utility directory):**
 
 ```sh
-pnpm --filter @keyboard-studio/oauth-backend build
-GITHUB_CLIENT_ID=... GITHUB_CLIENT_SECRET=... pnpm --filter @keyboard-studio/oauth-backend start
+cd utilities/oauth-backend
+npm install
+npm run typecheck
+npm test
 ```
 
-**From the monorepo root:**
-
-```sh
-pnpm install
-pnpm --filter @keyboard-studio/oauth-backend typecheck
-pnpm --filter @keyboard-studio/oauth-backend test
-```
+Note: this utility is not a pnpm workspace member, so use `npm` or `node` directly rather than `pnpm --filter`.
 
 ## Security notes
 

@@ -99,7 +99,7 @@ export async function buildServer(opts: {
   /** Injected fetch implementation — defaults to globalThis.fetch */
   fetchFn?: OAuthFetchFn;
 }): Promise<ReturnType<typeof Fastify>> {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: { level: "warn" } });
 
   // -------------------------------------------------------------------------
   // CORS — explicit allowlist, no wildcard with credentials
@@ -214,5 +214,5 @@ if (isMain) {
   const config = loadConfig();
   const app = await buildServer(config);
   const address = await app.listen({ port: config.port, host: "0.0.0.0" });
-  console.log(`[oauth-backend] listening on ${address}`);
+  app.log.info(`[oauth-backend] listening on ${address}`);
 }
