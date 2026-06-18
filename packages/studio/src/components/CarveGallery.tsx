@@ -5,6 +5,7 @@ import type { CarveNode } from '../lib/irToCarveNodes.ts';
 import { StatusBar } from './carve/StatusBar.tsx';
 import type { RemovedItem } from './carve/StatusBar.tsx';
 import { DepBanner } from './carve/DepBanner.tsx';
+import type { DepNode } from './carve/DepBanner.tsx';
 import { Rail } from './carve/Rail.tsx';
 import { Inspector } from './carve/Inspector.tsx';
 
@@ -104,21 +105,21 @@ export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
   }, [restoreItem, restoreNode]);
 
   // DepBanner — orphaned patterns + newly-unused stores
-  const { orphanedNames, unusedStoreNames } = useMemo(() => {
-    const orphaned: string[] = [];
-    const unusedStores: string[] = [];
+  const { orphanedNodes, unusedStoreNodes } = useMemo(() => {
+    const orphaned: DepNode[] = [];
+    const unusedStores: DepNode[] = [];
     nodes.forEach((node) => {
       if ((node.kind === 'pattern' || node.kind === 'group') && nodeState(node, isItemDeleted, isDeleted) === 'off') {
-        orphaned.push(node.name);
+        orphaned.push({ nodeId: node.nodeId, name: node.name });
       }
       if (node.kind === 'store' && node.referencedByNodeId !== undefined && !isDeleted(node.nodeId)) {
         const refNode = nodes.find((n) => n.nodeId === node.referencedByNodeId);
         if (refNode && nodeState(refNode, isItemDeleted, isDeleted) === 'off') {
-          unusedStores.push(node.name);
+          unusedStores.push({ nodeId: node.nodeId, name: node.name });
         }
       }
     });
-    return { orphanedNames: orphaned, unusedStoreNames: unusedStores };
+    return { orphanedNodes: orphaned, unusedStoreNodes: unusedStores };
   }, [nodes, deletedItemIds, deletedNodeIds, isItemDeleted, isDeleted]);
 
   if (!ir) {
@@ -147,7 +148,12 @@ export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
           <button
-            onClick={() => setForceOpen(true)}
+            onClick={() => {
+              const mainGroup = nodes.find((n) => n.kind === 'group' && n.name === 'main')
+                ?? nodes.find((n) => n.kind === 'group');
+              if (mainGroup) setSelectedId(mainGroup.nodeId);
+              setForceOpen(true);
+            }}
             style={{ font: '600 13.5px var(--app-font)', cursor: 'pointer', color: 'var(--app-accent-text)', background: 'var(--app-surface-2)', border: '1px solid var(--app-border-strong)', borderRadius: 9, padding: '10px 20px' }}
           >
             Open rule carver anyway
@@ -210,7 +216,11 @@ export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
       />
 
       {/* Dependency banner */}
-      <DepBanner orphanedNames={orphanedNames} unusedStoreNames={unusedStoreNames} />
+      <DepBanner
+        orphanedNodes={orphanedNodes}
+        unusedStoreNodes={unusedStoreNodes}
+        onRemoveNode={(nodeId) => handleToggleNode(nodeId, true)}
+      />
 
       {/* Two-panel body */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>

@@ -1,12 +1,22 @@
 import { WarnIcon } from './carveShared.tsx';
 
+export interface DepNode { nodeId: string; name: string }
+
 interface DepBannerProps {
-  orphanedNames: string[];
-  unusedStoreNames: string[];
+  orphanedNodes: DepNode[];
+  unusedStoreNodes: DepNode[];
+  onRemoveNode: (nodeId: string) => void;
 }
 
-export function DepBanner({ orphanedNames, unusedStoreNames }: DepBannerProps) {
-  if (orphanedNames.length === 0 && unusedStoreNames.length === 0) return null;
+const btnRemove: React.CSSProperties = {
+  flexShrink: 0, font: '600 12px var(--app-font)', cursor: 'pointer',
+  color: 'var(--sil-orange-dark)', background: 'transparent',
+  border: '1px solid color-mix(in srgb, var(--sil-orange) 55%, transparent)',
+  borderRadius: 7, padding: '4px 11px', whiteSpace: 'nowrap',
+};
+
+export function DepBanner({ orphanedNodes, unusedStoreNodes, onRemoveNode }: DepBannerProps) {
+  if (orphanedNodes.length === 0 && unusedStoreNodes.length === 0) return null;
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 8,
@@ -14,24 +24,28 @@ export function DepBanner({ orphanedNames, unusedStoreNames }: DepBannerProps) {
       background: 'color-mix(in srgb, var(--sil-orange) 7%, var(--app-bg))',
       borderBottom: '1px solid color-mix(in srgb, var(--sil-orange) 35%, transparent)',
     }}>
-      {orphanedNames.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--app-text)' }}>
-          <span style={{ color: 'var(--sil-orange-dark)', display: 'inline-flex' }}><WarnIcon size={15} /></span>
-          <span>
-            <b>{orphanedNames.join(', ')}</b>{' '}
-            {orphanedNames.length === 1 ? 'produces' : 'produce'} nothing now — every output was dropped, but the trigger key still fires.
+      {orphanedNodes.map((n) => (
+        <div key={n.nodeId} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--app-text)' }}>
+          <span style={{ color: 'var(--sil-orange-dark)', display: 'inline-flex', flexShrink: 0 }}><WarnIcon size={15} /></span>
+          <span style={{ flex: 1 }}>
+            <b>{n.name}</b> produces nothing now — every output was dropped, but the trigger key still fires.
           </span>
+          <button style={btnRemove} onClick={() => onRemoveNode(n.nodeId)}>
+            Remove trigger key too
+          </button>
         </div>
-      )}
-      {unusedStoreNames.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--app-text)' }}>
-          <span style={{ color: 'var(--sil-orange-dark)', display: 'inline-flex' }}><WarnIcon size={15} /></span>
-          <span>
-            <b>{unusedStoreNames.join(', ')}</b>{' '}
-            {unusedStoreNames.length === 1 ? 'is' : 'are'} no longer referenced and can be removed too.
+      ))}
+      {unusedStoreNodes.map((n) => (
+        <div key={n.nodeId} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--app-text)' }}>
+          <span style={{ color: 'var(--sil-orange-dark)', display: 'inline-flex', flexShrink: 0 }}><WarnIcon size={15} /></span>
+          <span style={{ flex: 1 }}>
+            <b>{n.name}</b> is no longer referenced and can be removed too.
           </span>
+          <button style={btnRemove} onClick={() => onRemoveNode(n.nodeId)}>
+            Remove store too
+          </button>
         </div>
-      )}
+      ))}
     </div>
   );
 }
