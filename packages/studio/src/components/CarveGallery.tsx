@@ -87,13 +87,13 @@ export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
         list.push({ type: 'node', id: node.nodeId, kind: node.kind, label: node.name, count: 1 });
       }
     });
-    deletedItemIds.forEach((gid) => {
-      const nodeId = gid.split('#', 1)[0] ?? gid;
-      if (fullOffIds.has(nodeId)) return;
-      const node = nodes.find((n) => n.nodeId === nodeId);
-      const glyph = node?.glyphs?.find((g) => g.gid === gid);
-      if (!glyph) return;
-      list.push({ type: 'item', id: gid, ch: glyph.ch, keys: glyph.keys, nodeName: node?.name });
+    nodes.forEach((node) => {
+      if (!node.glyphs) return;
+      if (fullOffIds.has(node.nodeId)) return;
+      node.glyphs.forEach((glyph) => {
+        if (!deletedItemIds.has(glyph.gid)) return;
+        list.push({ type: 'item', id: glyph.gid, ch: glyph.ch, keys: glyph.keys, nodeName: node.name });
+      });
     });
     return list;
   }, [nodes, deletedItemIds, deletedNodeIds, isItemDeleted, isDeleted]);

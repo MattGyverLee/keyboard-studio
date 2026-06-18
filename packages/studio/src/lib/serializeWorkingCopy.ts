@@ -77,7 +77,7 @@ export interface SerializeWorkingCopyResult {
 export async function serializeWorkingCopy(): Promise<SerializeWorkingCopyResult | null> {
   // 1. Read current working-copy store state.
   const state = useWorkingCopyStore.getState();
-  const { baseVfs, baseIr, baseKeyboard, deletedNodeIds, phaseResults, identity, touchLayoutJson, instantiationMode } = state;
+  const { baseVfs, baseIr, baseKeyboard, deletedNodeIds, deletedItemIds, phaseResults, identity, touchLayoutJson, instantiationMode } = state;
 
   // Not-instantiated guard.
   if (baseVfs === null || baseIr === null || baseKeyboard === null) {
@@ -232,6 +232,7 @@ export async function serializeWorkingCopy(): Promise<SerializeWorkingCopyResult
     targetKeyboardId: outputKeyboardId,
     baseIr,
     deletedNodeIds,
+    deletedItemIds,
     assignments: sessionAssignments,
     getPattern: (id) => patternCache.get(id),
     identity: identityForProjection,

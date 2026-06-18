@@ -89,12 +89,13 @@ export function outputToChar(output: OutputElement[]): string {
 // ruleToGlyph — single IRRule → CarveGlyph (null if not displayable)
 // ---------------------------------------------------------------------------
 
-function ruleToGlyph(rule: IRRule, prefix: string, index: number): CarveGlyph | null {
+// gid == rule.nodeId so deletedItemIds can be forwarded directly to applyCarveToVfs
+function ruleToGlyph(rule: IRRule): CarveGlyph | null {
   const keys = contextToKeys(rule.context);
   if (keys.length === 0) return null;
   const ch = outputToChar(rule.output);
   if (ch === '?' || ch === '‹dk›') return null;
-  return { gid: `${prefix}#r${index}`, keys, ch };
+  return { gid: rule.nodeId, keys, ch };
 }
 
 // ---------------------------------------------------------------------------
@@ -103,9 +104,9 @@ function ruleToGlyph(rule: IRRule, prefix: string, index: number): CarveGlyph | 
 
 export function groupToGlyphs(group: IRGroup): CarveGlyph[] {
   const glyphs: CarveGlyph[] = [];
-  group.rules.forEach((rule, i) => {
+  group.rules.forEach((rule) => {
     if (rule.ownedByPattern !== undefined) return;
-    const g = ruleToGlyph(rule, group.nodeId, i);
+    const g = ruleToGlyph(rule);
     if (g) glyphs.push(g);
   });
   return glyphs;
@@ -121,12 +122,11 @@ export function patternToGlyphs(pattern: Pattern, ir: KeyboardIR): CarveGlyph[] 
   const ownedIds = new Set(pattern.ownedNodes.map((n) => n.nodeId));
   const glyphs: CarveGlyph[] = [];
 
-  // Walk all groups looking for rules owned by this pattern
   for (const group of ir.groups) {
     group.rules.forEach((rule) => {
       if (!ownedIds.has(rule.nodeId)) return;
-      const g = ruleToGlyph(rule, pattern.id, glyphs.length);
-      if (g) glyphs.push({ ...g, gid: `${pattern.id}#${glyphs.length}` });
+      const g = ruleToGlyph(rule);
+      if (g) glyphs.push(g);
     });
   }
 
