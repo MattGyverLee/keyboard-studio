@@ -1,8 +1,8 @@
 # keyboard-studio — Spec
 
 **Repository:** https://github.com/MattGyverLee/keyboard-studio
-**Date:** 2026-06-15
-**Version:** 1.3.1
+**Date:** 2026-06-18
+**Version:** 1.4.0
 **Status:** Draft — pre-Day-1 sync
 
 ---
@@ -626,8 +626,11 @@ Source-of-truth for the band assignments is `packages/contracts/data/criteria.js
 
 *Revised 2026-06-08 (v1.1.0 KeyboardIR import). See [docs/spec-amendment-2026-06-08-keyboardir.md](docs/spec-amendment-2026-06-08-keyboardir.md).*
 *Revised 2026-06-14 (v1.3.0 working-copy spine). Extends Decision 9.*
+*Revised 2026-06-18 (v1.4.0 save & resume). See [docs/spec-amendment-2026-06-18-save-resume.md](docs/spec-amendment-2026-06-18-save-resume.md). **PROPOSED — pending joint engine+content sign-off**; amends a v1.3.0 invariant.*
 
-**Working copy as the live edit target.** The `VirtualFS` is instantiated at keyboard selection (Track 1: `instantiateFromBase`; Track 2: `instantiateFromExisting` — see §8 "Two authoring tracks") and is the session's sole live edit target from that point forward. Every subsequent mutation — carve deletions, survey answers, gallery pattern insertions, OSK edits — is applied to this working copy. Assignments and carve deletions are applied as **re-projected layers on top of the IR**: they do not destructively rewrite IR nodes; instead, the emitter projects the current assignment map and carve state over the base IR at render time, so the original IR structure is always recoverable by unwinding the layers. The working copy is serialized to a `.zip` archive or committed as a fork+PR only at output (step 15) — the studio does not write to disk during authoring, and there is no intermediate persistence step between instantiation and output.
+**Working copy as the live edit target.** The `VirtualFS` is instantiated at keyboard selection (Track 1: `instantiateFromBase`; Track 2: `instantiateFromExisting` — see §8 "Two authoring tracks") and is the session's sole live edit target from that point forward. Every subsequent mutation — carve deletions, survey answers, gallery pattern insertions, OSK edits — is applied to this working copy. Assignments and carve deletions are applied as **re-projected layers on top of the IR**: they do not destructively rewrite IR nodes; instead, the emitter projects the current assignment map and carve state over the base IR at render time, so the original IR structure is always recoverable by unwinding the layers. The working copy is serialized to a `.zip` archive or committed as a fork+PR at output (step 15), and the studio does not write to the **host** disk during authoring.
+
+**Save & resume (v1.4.0).** The working copy *may* be persisted as a **session snapshot** between instantiation and output, so an author can leave and return to in-progress work. This is a non-destructive snapshot, not a second edit path: a restored working copy is identical to the one serialized, the snapshot is never a route to delivery, and **output (step 15) remains the only way to produce a `.zip` or PR**. Two snapshot stores are permitted — **browser-local** (the default; no account, no network) and an **optional account-keyed backing store** for cross-device resume (§16). Save & resume always degrades to the browser-local store when no backing service is configured, and **never requires a GitHub account**.
 
 **OSK spacebar caption as a visible identity mutation.** KeymanWeb renders the keyboard's display name on the spacebar caption by default (`spacebarTextMode` = `KEYBOARD`; the host may instead select language, or both via `LANGUAGE_KEYBOARD`), drawing on the `KeyboardIdentity` fields `displayName` and `bcp47`. Because the working copy is the live OSK target, identity edits are immediately visible in the OSK as spacebar caption changes. Script, base-keyboard, carve, and mechanism edits change the key labels. The OSK is therefore a complete observable of the working copy's current state.
 
@@ -847,7 +850,7 @@ Rationale: Attribution must survive in the committed source tree independent of 
 - **LDML output** — deferred until the LDML-to-touch build path lands in the Keyman toolchain. Emission format is locked to KMN + `.keyman-touch-layout`.
 - **Mobile-app integration** — `oem/` updates, partner CSV updates, partner-organization bundle workflows.
 - **Touch-first authoring path** — v1 supports desktop-first authoring only (Decision 6, Sec 14). The survey, strategy selector, and gallery are anchored to physical-keyboard mental-model answers; the touch layout is scaffolded from the desktop OSK in Phase E with no reverse derivation. Mobile-primary authors are surfaced this at Phase A and may continue with the desktop-first flow (still receiving a derived touch layout). Touch-first authoring is a v1.1 candidate.
-- **Hosting and deployment** — infrastructure is left to the operator; this project ships a static SPA.
+- **Hosting and deployment** — infrastructure is left to the operator; this project ships a static SPA. **(v1.4.0 exception, PROPOSED):** an optional, minimal backing service is permitted solely for (a) the OAuth token exchange the in-scope GitHub fork+PR delivery path already requires (the client secret cannot live in client code) and (b) account-keyed save & resume (§12). The service is never required to author, validate, or deliver a keyboard — save & resume degrades to browser-local persistence without it, and **no GitHub account is ever required** (the ZIP-download path stays accountless). General-purpose hosting and ops remain out of scope and the operator's responsibility.
 - **CJK, Ethiopic, and Hangul/jamo cluster-assembly in v1** — confirmed excluded; see Sec 14, decision 5. CJK (Han-based scripts) and Ethiopic are excluded due to incomplete specialist curation; Hangul is excluded because jamo-to-syllable cluster composition (Dubeolsik/Sebeolsik stateful composition) is a distinct complexity class with no jamo composition pattern in the library. Target: sprint 2 pattern-library work.
 - **Multi-language `welcome.htm` variants** — LLM-generated variants for multiple languages; post-v1.
 - **`.kpj.user` or build-folder management beyond what the scaffolder strips** — cleanup is one-time at scaffold time.
