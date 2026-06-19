@@ -24,7 +24,11 @@ interface RawKey {
   nextlayer?: string;
   sk?: RawKey[];
   multitap?: RawKey[];
-  // other visual/positioning fields ignored
+  /** Wire format encodes sp as a JSON string (e.g. `"sp": "1"`); also accept a number for robustness. */
+  sp?: string | number;
+  /** Wire format encodes width as a JSON string (e.g. `"width": "100"`); also accept a number for robustness. */
+  width?: string | number;
+  hint?: string;
   [key: string]: unknown;
 }
 
@@ -59,6 +63,15 @@ function convertKey(raw: RawKey, minter: NodeIdMinter): TouchKeyIR {
   if (raw.text !== undefined) key.text = raw.text;
   if (raw.output !== undefined) key.output = raw.output;
   if (raw.nextlayer !== undefined) key.nextlayer = raw.nextlayer;
+  if (typeof raw.hint === "string" && raw.hint.length > 0) key.hint = raw.hint;
+  if (raw.sp !== undefined && raw.sp !== "") {
+    const spNum = typeof raw.sp === "number" ? raw.sp : Number(raw.sp);
+    if (Number.isFinite(spNum)) key.sp = spNum;
+  }
+  if (raw.width !== undefined && raw.width !== "") {
+    const widthNum = typeof raw.width === "number" ? raw.width : Number(raw.width);
+    if (Number.isFinite(widthNum)) key.width = widthNum;
+  }
   if (Array.isArray(raw.sk) && raw.sk.length > 0) {
     key.sk = raw.sk.map(sk => convertKey(sk, minter));
   }
