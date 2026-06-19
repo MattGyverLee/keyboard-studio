@@ -137,8 +137,13 @@ export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
     );
   }
 
-  // Gate screen — shown for simple keyboards with nothing complex to carve
-  if (isSimple && !forceOpen) {
+  const hasRawFragments = ir.raw.length > 0;
+
+  // Gate screen — shown for simple keyboards with nothing complex to carve.
+  // Skipped when hasRawFragments: the warning must be visible and the user
+  // should see the carver (even if it can't apply changes) rather than a
+  // misleading "looks good" screen.
+  if (isSimple && !forceOpen && !hasRawFragments) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--app-bg)', color: 'var(--app-text)', gap: 24, padding: '0 32px', textAlign: 'center' }}>
         <svg width={56} height={56} viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -183,6 +188,15 @@ export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--app-bg)', color: 'var(--app-text)' }}>
+      {/* Raw-fragment warning — deletions won't apply when the codec can't re-emit */}
+      {hasRawFragments && (
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 22px', background: 'var(--amber-bg)', borderBottom: '1px solid var(--amber-border)', fontSize: 13, color: 'var(--amber-text)', lineHeight: 1.5 }}>
+          <span style={{ flexShrink: 0, marginTop: 1 }}>⚠</span>
+          <span>
+            <b>Removals won't apply to this keyboard.</b> It contains advanced rules the editor can't rewrite ({ir.raw.length} fragment{ir.raw.length !== 1 ? 's' : ''}), so deletions you make here won't show up in the preview or the downloaded zip.
+          </span>
+        </div>
+      )}
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 22px', borderBottom: '1px solid var(--app-border)', flexShrink: 0 }}>
         {onBack !== undefined && (

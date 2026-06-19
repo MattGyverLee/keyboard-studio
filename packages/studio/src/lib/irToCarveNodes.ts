@@ -144,6 +144,48 @@ export function storeChars(store: { items: StoreItem[] }): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// StoreUsage — how a store is referenced across the keyboard's rules
+// ---------------------------------------------------------------------------
+
+export interface StoreUsage {
+  ruleCount: number;      // total rules in any group that reference this store
+  asSource: boolean;      // used in any()/notany() context elements
+  asOutput: boolean;      // used in index()/outs() output/context elements
+  groupNames: string[];   // names of groups containing referencing rules
+}
+
+function analyzeStoreUsage(storeName: string, ir: KeyboardIR): StoreUsage {
+  let ruleCount = 0;
+  let asSource = false;
+  let asOutput = false;
+  const groupNameSet = new Set<string>();
+
+  for (const group of ir.groups) {
+    for (const rule of group.rules) {
+      let used = false;
+      for (const el of rule.context) {
+        if ((el.kind === 'any' || el.kind === 'notany') && el.storeRef === storeName) {
+          used = true; asSource = true;
+        } else if (el.kind === 'index' && el.storeRef === storeName) {
+          used = true; asOutput = true;
+        }
+      }
+      for (const el of rule.output) {
+        if ((el.kind === 'index' || el.kind === 'outs') && el.storeRef === storeName) {
+          used = true; asOutput = true;
+        }
+      }
+      if (used) {
+        ruleCount++;
+        groupNameSet.add(group.name);
+      }
+    }
+  }
+
+  return { ruleCount, asSource, asOutput, groupNames: [...groupNameSet] };
+}
+
+// ---------------------------------------------------------------------------
 // CarveNode — unified rail node type for the Rail + Inspector layout
 // ---------------------------------------------------------------------------
 
@@ -159,6 +201,7 @@ export interface CarveNode {
   rawReason?: string | undefined;          // raw fragments
   referencedByNodeId?: string | undefined; // store: which pattern owns it
   referencedByLabel?: string | undefined;  // store: that pattern's title
+  storeUsage?: StoreUsage | undefined;     // store: how it is used in rules
 }
 
 // ---------------------------------------------------------------------------
@@ -216,12 +259,14 @@ export function toRailNodes(ir: KeyboardIR): CarveNode[] {
     const refPattern = recognized.find((p) =>
       p.ownedNodes?.some((n) => n.nodeId === store.nodeId),
     );
+    const usage = analyzeStoreUsage(store.name, ir);
     nodes.push({
       nodeId: store.nodeId,
       kind: 'store',
       name: store.name,
       displayChars: storeChars(store),
       loadBearing: refPattern !== undefined,
+      storeUsage: usage.ruleCount > 0 ? usage : undefined,
       ...(refPattern !== undefined ? { referencedByNodeId: refPattern.id, referencedByLabel: refPattern.title } : {}),
     });
   }

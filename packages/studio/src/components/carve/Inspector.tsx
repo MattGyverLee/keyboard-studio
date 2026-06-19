@@ -80,6 +80,38 @@ interface StoreDetailProps {
   isItemDeleted: (id: string) => boolean;
   onToggleNode: (nodeId: string, off: boolean) => void;
 }
+function storeRoleChip(node: CarveNode): React.ReactNode {
+  const u = node.storeUsage;
+  if (!u) return null;
+  if (u.asSource && u.asOutput) return (
+    <span style={{ font: '600 10px/1 var(--app-font)', padding: '3px 7px', borderRadius: 5, background: 'color-mix(in srgb, #b8a0d8 18%, var(--app-surface))', border: '1px solid color-mix(in srgb, #b8a0d8 50%, transparent)', color: '#c8b0e8' }}>in+out</span>
+  );
+  if (u.asSource) return (
+    <span style={{ font: '600 10px/1 var(--app-font)', padding: '3px 7px', borderRadius: 5, background: 'var(--app-accent-subtle)', border: '1px solid var(--app-border)', color: 'var(--app-accent-text)' }}>input</span>
+  );
+  if (u.asOutput) return (
+    <span style={{ font: '600 10px/1 var(--app-font)', padding: '3px 7px', borderRadius: 5, background: 'color-mix(in srgb, #7dbf8e 15%, var(--app-surface))', border: '1px solid color-mix(in srgb, #7dbf8e 40%, transparent)', color: '#7dbf8e' }}>output</span>
+  );
+  return null;
+}
+
+function storeDesc(node: CarveNode): string {
+  const u = node.storeUsage;
+  if (!u) {
+    return node.referencedByLabel !== undefined
+      ? 'Owned by a recognized pattern — removal is managed through the pattern.'
+      : 'Defined but not directly referenced in any rules.';
+  }
+  const { ruleCount, asSource, asOutput, groupNames } = u;
+  const n = ruleCount;
+  const rs = n === 1 ? 'rule' : 'rules';
+  const inG = groupNames.length > 0 ? ` in ${groupNames.join(', ')}` : '';
+  if (asSource && asOutput) return `Used as both any() input and index() output in ${n} ${rs}${inG}.`;
+  if (asSource) return `Matched by any() as input in ${n} ${rs}${inG} — these characters are context to match.`;
+  if (asOutput) return `Output target for index() in ${n} ${rs}${inG} — these are the characters that get inserted.`;
+  return `Referenced in ${n} ${rs}${inG}.`;
+}
+
 function StoreDetail({ node, nodes, isDeleted, isItemDeleted, onToggleNode }: StoreDetailProps) {
   const off = isDeleted(node.nodeId);
   const refNode = node.referencedByNodeId !== undefined
@@ -96,10 +128,11 @@ function StoreDetail({ node, nodes, isDeleted, isItemDeleted, onToggleNode }: St
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, fontFamily: 'var(--app-font-mono)', color: 'var(--app-text)' }}>{node.name}</h2>
             <KindBadge kind="store" />
+            {storeRoleChip(node)}
             {node.loadBearing === true && <LoadBearing />}
           </div>
-          <p style={{ margin: '6px 0 0', fontSize: 13.5, color: 'var(--app-text-muted)' }}>
-            A named character list other rules draw from.
+          <p style={{ margin: '6px 0 0', fontSize: 13.5, color: 'var(--app-text-muted)', lineHeight: 1.55 }}>
+            {storeDesc(node)}
           </p>
         </div>
       </div>
@@ -176,6 +209,12 @@ export function Inspector({ node, nodes, isItemDeleted, onToggleGlyph, onSetMany
     ? glyphs.filter((x) => x.ch.toLowerCase().includes(q.toLowerCase()) || x.keys.join('').toLowerCase().includes(q.toLowerCase()))
     : glyphs;
 
+  // Uniform cell height: size every row to fit the cell with the most keys.
+  // Use ceil(N/2) estimated key rows at ~72px column width, with a generous
+  // 26px per row to accommodate non-Latin key names that wrap more readily.
+  const maxKeys = shown.length > 0 ? Math.max(...shown.map((x) => x.keys.length)) : 1;
+  const rowHeight = Math.max(88, 60 + Math.ceil(maxKeys / 2) * 26);
+
   return (
     <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '20px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
@@ -205,7 +244,7 @@ export function Inspector({ node, nodes, isItemDeleted, onToggleGlyph, onSetMany
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(58px, 1fr))', gap: 8, marginTop: big ? 12 : 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gridAutoRows: rowHeight + 'px', gap: 8, marginTop: big ? 12 : 18 }}>
         {shown.map((x) => (
           <GlyphCell
             key={x.gid}
