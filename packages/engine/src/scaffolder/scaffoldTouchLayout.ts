@@ -270,6 +270,7 @@ function buildTouchKey(
   const key: TouchKeyIR = {
     nodeId,
     id: vkey,
+    width: 100,
     ...(output !== undefined ? { text: output, output } : {}),
   };
 
@@ -291,7 +292,35 @@ function buildTouchKey(
 }
 
 /**
- * Build one row of TouchKeyIR nodes for the given layer.
+ * Build one row of TouchKeyIR nodes for the given layer, using symmetric
+ * slot-padding to centre short rows and keep all row sums identical.
+ *
+ * ## Slot-padding model (replaces the old centering-pad approach)
+ *
+ * KMW's `totalWidth` = widest-row-sum + DEFAULT_RIGHT_MARGIN (15).
+ * If every row's `sum(key.width + key.pad)` equals `maxRowKeys * 115`
+ * (= 1150 for a 10-key frame), then `totalWidth` = 1165 for all rows, and
+ * every letter key renders at exactly 100 / 1165 regardless of which row it
+ * lives in.
+ *
+ * For a short row (`nKeys < maxRowKeys`):
+ *   gap = maxRowKeys - nKeys          (number of invisible spacer slots needed)
+ *   leading = Math.floor(gap / 2)     (spacers BEFORE the letter block)
+ *   trailing = gap - leading           (spacers AFTER — absorbs odd-gap asymmetry)
+ *
+ * Each spacer: `sp: 10` (KMW spacer class), `width: 100`, default `pad: 15`.
+ * Stable ids: `T_sp_l{i}` (leading) and `T_sp_r{i}` (trailing), 1-indexed.
+ *
+ * Row sum check:
+ *   nKeys * 115 + gap * 115 = maxRowKeys * 115 = 1150  (all letter keys width:100)
+ *
+ * The last key in the row (a trailing spacer) absorbs the KMW residual stretch,
+ * but since its width is already 100 it renders as a uniform spacer.
+ *
+ * No `pad` is set on any letter key — the centering-pad-on-first-key approach
+ * is replaced entirely by this symmetric slot-padding.
+ *
+ * @param maxRowKeys  Number of keys in the widest letter row (10 for QWERTY).
  */
 function buildRow(
   vkeys: ReadonlyArray<string>,
@@ -299,10 +328,34 @@ function buildRow(
   keyMap: KeyMap,
   deadkeySuccessors: DeadkeySuccessors,
   minter: NodeIdMinter,
+  maxRowKeys = 10,
 ): TouchKeyIR[] {
-  return vkeys.map((vkey) =>
+  const letterKeys = vkeys.map((vkey) =>
     buildTouchKey(vkey, layer, keyMap, deadkeySuccessors, minter),
   );
+
+  const nKeys = vkeys.length;
+  const gap = maxRowKeys - nKeys;
+  if (gap === 0) return letterKeys;
+
+  const leading = Math.floor(gap / 2);
+  const trailing = gap - leading;
+
+  const makeSpacerKey = (idPrefix: string, index: number): TouchKeyIR => ({
+    nodeId: minter.mint("touchKey"),
+    id: `${idPrefix}${index}`,
+    sp: 10,
+    width: 100,
+  });
+
+  const leadingSpacers = Array.from({ length: leading }, (_, i) =>
+    makeSpacerKey("T_sp_l", i + 1),
+  );
+  const trailingSpacers = Array.from({ length: trailing }, (_, i) =>
+    makeSpacerKey("T_sp_r", i + 1),
+  );
+
+  return [...leadingSpacers, ...letterKeys, ...trailingSpacers];
 }
 
 /**
@@ -311,9 +364,15 @@ function buildRow(
  * sp:1 = special (system) key; width is in Keyman touch-layout units (total ~1000).
  */
 export function buildFunctionalRow(minter: NodeIdMinter): TouchKeyIR[] {
+  // Row sum target: maxRowKeys * 115 = 10 * 115 = 1150
+  // K_LOPT:  width:100, pad:15 (default) → 115
+  // K_SPACE: width:790, pad:15 (default) → 805
+  // K_BKSP:  width:100, pad:15 (default) → 115
+  // K_ENTER: width:100, pad:15 (default) → 115  (last key; renders as residual)
+  // Sum: 115 + 805 + 115 + 115 = 1150  ✓ → totalWidth = 1165; K_ENTER residual = 100
   return [
     { nodeId: minter.mint("touchKey"), id: "K_LOPT",  sp: 1, width: 100 },
-    { nodeId: minter.mint("touchKey"), id: "K_SPACE",  text: " ", output: " ", width: 700 },
+    { nodeId: minter.mint("touchKey"), id: "K_SPACE",  text: " ", output: " ", width: 790 },
     { nodeId: minter.mint("touchKey"), id: "K_BKSP",  sp: 1, width: 100 },
     { nodeId: minter.mint("touchKey"), id: "K_ENTER", sp: 1, width: 100 },
   ];
@@ -340,10 +399,12 @@ function buildPhoneLayersFromDesktop(
   const hasAltgr = [...keyMap.values()].some((m) => m.has("altgr"));
   if (hasAltgr) layersToEmit.push("altgr");
 
+  const maxRowKeys = Math.max(...QWERTY_ROWS.map((r) => r.length));
+
   for (const layerId of layersToEmit) {
     const rows = [
       ...QWERTY_ROWS.map((rowVkeys) => ({
-        keys: buildRow(rowVkeys, layerId, keyMap, deadkeySuccessors, minter),
+        keys: buildRow(rowVkeys, layerId, keyMap, deadkeySuccessors, minter, maxRowKeys),
       })),
       { keys: buildFunctionalRow(minter) },
     ];
@@ -433,15 +494,58 @@ export function buildMinimalPhoneTouchLayout(): TouchLayoutIR {
     row.map(([id, ch]) => [id, ch.toUpperCase()] as [string, string])
   );
 
+  // Max row width for the minimal layout: 10 keys (QWERTY row).
+  // frameWidth = 10 * 115 + 15 = 1165 units.
+  const MAX_ROW_KEYS = 10;
+
+  /**
+   * Build one row, using symmetric slot-padding so every row sums to
+   * MAX_ROW_KEYS * 115 = 1150 and totalWidth is stable at 1165.
+   *
+   * For short rows (`nKeys < MAX_ROW_KEYS`):
+   *   gap = MAX_ROW_KEYS - nKeys
+   *   leading = Math.floor(gap / 2)  spacers BEFORE the letter block
+   *   trailing = gap - leading         spacers AFTER (absorbs odd-gap asymmetry)
+   *
+   * Each spacer: sp:10, width:100, default pad:15 → 115 units.
+   * No centering pad on any letter key.
+   *
+   * Row-sum check for maxRowKeys=10:
+   *   10-key row: 10*115 = 1150  ✓
+   *    9-key row: 9*115 + 1*115 = 1150  ✓  (gap=1: leading=0, trailing=1)
+   *    7-key row: 7*115 + 3*115 = 1150  ✓  (gap=3: leading=1, trailing=2)
+   */
   function makeRow(pairs: Array<[string, string]>): { keys: TouchKeyIR[] } {
-    return {
-      keys: pairs.map(([id, ch]) => ({
-        nodeId: minter.mint("touchKey"),
-        id,
-        text: ch,
-        output: ch,
-      })),
-    };
+    const nKeys = pairs.length;
+    const letterKeys: TouchKeyIR[] = pairs.map(([id, ch]) => ({
+      nodeId: minter.mint("touchKey"),
+      id,
+      text: ch,
+      output: ch,
+      width: 100,
+    }));
+
+    const gap = MAX_ROW_KEYS - nKeys;
+    if (gap === 0) return { keys: letterKeys };
+
+    const leading = Math.floor(gap / 2);
+    const trailing = gap - leading;
+
+    const makeSpacerKey = (idPrefix: string, index: number): TouchKeyIR => ({
+      nodeId: minter.mint("touchKey"),
+      id: `${idPrefix}${index}`,
+      sp: 10,
+      width: 100,
+    });
+
+    const leadingSpacers = Array.from({ length: leading }, (_, i) =>
+      makeSpacerKey("T_sp_l", i + 1),
+    );
+    const trailingSpacers = Array.from({ length: trailing }, (_, i) =>
+      makeSpacerKey("T_sp_r", i + 1),
+    );
+
+    return { keys: [...leadingSpacers, ...letterKeys, ...trailingSpacers] };
   }
 
   const funcRow = { keys: buildFunctionalRow(minter) };

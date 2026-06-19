@@ -85,6 +85,12 @@ export interface TouchKeyIR {
    * The wire format encodes this as a JSON string (e.g. `"width": "100"`); the IR normalizes it to a number.
    */
   width?: number;
+  /**
+   * Left padding (in Keyman layout units) from .keyman-touch-layout.
+   * The wire format encodes this as a JSON string (e.g. `"pad": "50"`); the IR normalizes it to a number.
+   * Default when absent: DEFAULT_PAD (15) applied by the KMW polyfill at render time.
+   */
+  pad?: number;
 }
 
 /** Diff produced by the I2 functional-equivalence round-trip check (decision D7, spec §14). */

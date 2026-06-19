@@ -327,6 +327,70 @@ describe("emitTouchLayout", () => {
     expect(irKey2?.hint).toBe("x");
   });
 
+  it("round-trips pad: parse → emit → reparse preserves pad as numeric IR and string wire value", () => {
+    // FIX 2: pad is now parsed from the wire format and emitted back as a string.
+    const source = JSON.stringify({
+      phone: {
+        layer: [{
+          id: "default",
+          row: [{
+            id: 1,
+            key: [{ id: "K_Z", text: "z", pad: "50" }],
+          }],
+        }],
+      },
+    });
+    // Parse: wire string "50" → IR number 50
+    const ir = parseTouchLayout(source);
+    const irKey = ir.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(irKey?.pad).toBe(50);
+
+    // Emit: IR number 50 → wire string "50"
+    const emitted = emitTouchLayout(ir);
+    const reparsed = JSON.parse(emitted) as Record<string, { layer: Array<{ row: Array<{ key: Array<{ pad?: string }> }> }> }>;
+    const wireKey = reparsed["phone"]?.layer[0]?.row[0]?.key[0];
+    expect(wireKey?.pad).toBe("50");
+
+    // Re-parse the emitted JSON: wire string "50" → IR number 50 again
+    const ir2 = parseTouchLayout(emitted);
+    const irKey2 = ir2.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(irKey2?.pad).toBe(50);
+  });
+
+  it("parses pad when supplied as a number (robustness)", () => {
+    const json = JSON.stringify({
+      phone: {
+        layer: [{
+          id: "default",
+          row: [{
+            id: 1,
+            key: [{ id: "K_Z", pad: 172 }],
+          }],
+        }],
+      },
+    });
+    const ir = parseTouchLayout(json);
+    const key = ir.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(key?.pad).toBe(172);
+  });
+
+  it("does not set pad when raw value is empty string or NaN-producing", () => {
+    const json = JSON.stringify({
+      phone: {
+        layer: [{
+          id: "default",
+          row: [{
+            id: 1,
+            key: [{ id: "K_Z", pad: "" }],
+          }],
+        }],
+      },
+    });
+    const ir = parseTouchLayout(json);
+    const key = ir.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(key?.pad).toBeUndefined();
+  });
+
   it("round-trips key ids and text through emit → reparse", () => {
     const ir = parseTouchLayout(SUBKEY_TOUCH);
     const json = emitTouchLayout(ir);
