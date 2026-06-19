@@ -113,13 +113,31 @@ describe("useGitHubAuth", () => {
     expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull();
   });
 
-  it("picks up ?oauth_error= on mount into error state and strips it from the URL", async () => {
-    window.history.replaceState(null, "", "/?oauth_error=access_denied");
+  it("maps a ?oauth_error= reason code to a static message on mount and strips it from the URL", async () => {
+    // The boot-time handler carries the safe `reason` enum, not raw backend text.
+    window.history.replaceState(null, "", "/?oauth_error=exchange-failed");
 
     const { result } = renderHook(() => useGitHubAuth());
 
-    await waitFor(() => expect(result.current.error).toBe("access_denied"));
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        "GitHub sign-in could not be completed. Please try connecting again.",
+      ),
+    );
     // The param is stripped so a refresh does not re-surface it.
+    expect(window.location.search).toBe("");
+  });
+
+  it("falls back to a generic message for an unknown ?oauth_error= code", async () => {
+    window.history.replaceState(null, "", "/?oauth_error=totally-bogus");
+
+    const { result } = renderHook(() => useGitHubAuth());
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        "GitHub sign-in could not be completed. Please try connecting again.",
+      ),
+    );
     expect(window.location.search).toBe("");
   });
 });

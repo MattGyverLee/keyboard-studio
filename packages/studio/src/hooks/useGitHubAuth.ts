@@ -20,13 +20,34 @@ import {
   type StoredGitHubToken,
 } from "../lib/githubOAuth.ts";
 import { getGitHubOutputService } from "../lib/services.ts";
+import type { OAuthCallbackFailureReason } from "../lib/handleOAuthCallback.ts";
+
+/**
+ * Static, user-facing copy for each OAuth-callback failure reason. The boot-time
+ * handler carries the safe `reason` enum in `?oauth_error=` — never the raw
+ * backend message — so the only thing ever surfaced is one of these fixed
+ * strings, mapped here. Unknown / malformed codes fall back to {@link
+ * GENERIC_OAUTH_ERROR}.
+ */
+const OAUTH_ERROR_MESSAGES: Record<OAuthCallbackFailureReason, string> = {
+  "state-mismatch":
+    "GitHub sign-in was rejected for security reasons. Please try connecting again.",
+  "missing-code": "GitHub did not return an authorization code. Please try connecting again.",
+  "missing-verifier":
+    "Your GitHub sign-in session expired before it completed. Please try connecting again.",
+  "exchange-failed": "GitHub sign-in could not be completed. Please try connecting again.",
+};
+
+const GENERIC_OAUTH_ERROR = "GitHub sign-in could not be completed. Please try connecting again.";
 
 /**
  * Read a `?oauth_error=` param left by the boot-time OAuth callback handler
- * (handleOAuthCallback redirects to `/?oauth_error=<message>` on a failed /
+ * (handleOAuthCallback redirects to `/?oauth_error=<reason>` on a failed /
  * denied round-trip) and strip it from the URL so a refresh does not re-show it.
  *
- * Returns the decoded message, or null if absent. Strips the param via
+ * The param value is a safe {@link OAuthCallbackFailureReason} code, which we map
+ * to a static user-facing string — no backend-sourced text is ever rendered.
+ * Returns the message, or null if absent. Strips the param via
  * history.replaceState (no navigation, no host-disk write). Browser-only; guards
  * against non-browser / missing-history environments so the hook stays testable.
  */
@@ -43,7 +64,10 @@ function consumeOAuthErrorParam(): string | null {
     window.location.pathname + (query === "" ? "" : `?${query}`) + window.location.hash;
   window.history.replaceState(window.history.state, "", newUrl);
 
-  return oauthError === "" ? null : oauthError;
+  if (oauthError === "") return null;
+  return (
+    OAUTH_ERROR_MESSAGES[oauthError as OAuthCallbackFailureReason] ?? GENERIC_OAUTH_ERROR
+  );
 }
 
 /** Connection lifecycle for the GitHub OAuth integration. */

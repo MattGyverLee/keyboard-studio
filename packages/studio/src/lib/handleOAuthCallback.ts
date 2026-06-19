@@ -28,10 +28,22 @@ import {
 /** The OAuth redirect path. Must match getRedirectUri() in githubOAuth.ts. */
 export const OAUTH_CALLBACK_PATH = "/oauth/callback";
 
+/**
+ * Why a callback failed. A short, fixed, URL-safe enum — NOT free text. The
+ * boot-time handler carries this (not the raw `message`) across the redirect in
+ * `?oauth_error=`, and useGitHubAuth maps it to a static user-facing string, so
+ * no backend-sourced text is ever interpolated into the URL or rendered.
+ */
+export type OAuthCallbackFailureReason =
+  | "state-mismatch"
+  | "missing-code"
+  | "missing-verifier"
+  | "exchange-failed";
+
 /** Outcome of the callback handler (for tests + caller logging). */
 export type OAuthCallbackResult =
   | { ok: true }
-  | { ok: false; reason: "state-mismatch" | "missing-code" | "missing-verifier" | "exchange-failed"; message: string };
+  | { ok: false; reason: OAuthCallbackFailureReason; message: string };
 
 /**
  * Process the OAuth callback query params. Pure of routing side effects except
@@ -89,9 +101,11 @@ export async function processOAuthCallback(search: string): Promise<OAuthCallbac
 
 /**
  * Boot-time entry point. When the current pathname is the OAuth callback,
- * processes the handshake and then redirects to the app root (carrying a
- * `?oauth_error=` query on failure so the app can surface it). Returns true if
- * it handled (i.e. the caller should NOT render the app this tick).
+ * processes the handshake and then redirects to the app root. On failure it
+ * carries the safe `reason` enum (NOT the raw backend `message`) in
+ * `?oauth_error=`, which useGitHubAuth maps to a static user-facing string —
+ * so no backend-sourced text is interpolated into the URL. Returns true if it
+ * handled (i.e. the caller should NOT render the app this tick).
  */
 export async function runOAuthCallbackIfPresent(): Promise<boolean> {
   if (window.location.pathname !== OAUTH_CALLBACK_PATH) {
@@ -100,7 +114,7 @@ export async function runOAuthCallbackIfPresent(): Promise<boolean> {
   const result = await processOAuthCallback(window.location.search);
   const target = result.ok
     ? "/"
-    : `/?oauth_error=${encodeURIComponent(result.message)}`;
+    : `/?oauth_error=${encodeURIComponent(result.reason)}`;
   window.location.replace(target);
   return true;
 }

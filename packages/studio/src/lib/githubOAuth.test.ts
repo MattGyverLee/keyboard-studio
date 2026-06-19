@@ -3,11 +3,14 @@
 // Browser-only crypto (crypto.subtle / getRandomValues / randomUUID) and
 // sessionStorage are provided by the jsdom environment.
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
+  beginAuthorize,
   computeS256Challenge,
   generatePkce,
   buildAuthorizeUrl,
+  getStoredVerifier,
+  getStoredState,
   setStoredToken,
   getStoredToken,
   clearStoredToken,
@@ -88,6 +91,65 @@ describe("buildAuthorizeUrl", () => {
     expect(parsed.searchParams.get("state")).toBe("state-abc");
     expect(parsed.searchParams.get("code_challenge")).toBe("chal-xyz");
     expect(parsed.searchParams.get("code_challenge_method")).toBe("S256");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// beginAuthorize — the security-critical wiring of generatePkce + randomUUID +
+// setOAuthScratch + buildAuthorizeUrl. The sub-functions are covered above; this
+// asserts the composition: scratch is persisted AND the same verifier/state are
+// what the returned URL commits to.
+// ---------------------------------------------------------------------------
+
+describe("beginAuthorize", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("throws when the client id is not configured", async () => {
+    vi.stubEnv("VITE_GITHUB_CLIENT_ID", "");
+    await expect(beginAuthorize()).rejects.toThrow(/not configured/i);
+  });
+
+  it("persists the verifier+state and binds them into the authorize URL", async () => {
+    vi.stubEnv("VITE_GITHUB_CLIENT_ID", "seeded-client-id");
+
+    const url = await beginAuthorize();
+
+    // Scratch state is persisted for the post-redirect callback to validate.
+    const verifier = getStoredVerifier();
+    const state = getStoredState();
+    expect(verifier).not.toBeNull();
+    expect(state).not.toBeNull();
+
+    const parsed = new URL(url);
+    // The URL commits to the seeded client id and the persisted state...
+    expect(parsed.searchParams.get("client_id")).toBe("seeded-client-id");
+    expect(parsed.searchParams.get("state")).toBe(state);
+    expect(parsed.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(parsed.searchParams.get("redirect_uri")).toBe(
+      `${window.location.origin}/oauth/callback`,
+    );
+    // ...and the challenge is the S256 of the verifier that was actually stored
+    // (i.e. the verifier the token-exchange step will replay matches the URL).
+    expect(parsed.searchParams.get("code_challenge")).toBe(
+      await computeS256Challenge(verifier as string),
+    );
+  });
+
+  it("uses a fresh state on each call (no state reuse across authorize attempts)", async () => {
+    vi.stubEnv("VITE_GITHUB_CLIENT_ID", "seeded-client-id");
+
+    const firstUrl = await beginAuthorize();
+    const firstState = getStoredState();
+
+    const secondUrl = await beginAuthorize();
+    const secondState = getStoredState();
+
+    expect(secondState).not.toBe(firstState);
+    expect(new URL(secondUrl).searchParams.get("state")).not.toBe(
+      new URL(firstUrl).searchParams.get("state"),
+    );
   });
 });
 
