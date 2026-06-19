@@ -37,7 +37,7 @@ import type {
 import { useWorkingCopyStore } from "../stores/workingCopyStore.ts";
 import { getPatternLibraryService } from "../lib/services.ts";
 import type { DiscoveryAxisVector } from "@keyboard-studio/contracts";
-import { useKeyboardArtifact, type ScaffoldSpec } from "../hooks/useKeyboardArtifact.ts";
+import { useKeyboardArtifact, type ScaffoldSpec, type Stage } from "../hooks/useKeyboardArtifact.ts";
 import { useWorkingCopyTransform } from "../hooks/useWorkingCopyTransform.ts";
 import { useInventoryDiff } from "../hooks/useInventoryDiff.ts";
 import { OSKFrame } from "./OSKFrame.tsx";
@@ -127,37 +127,30 @@ function isDecomposableAccented(char: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// GalleryPreviewWithPatterns — right pane (kept AS-IS from original)
+// GalleryPreviewWithPatterns — right pane
+//
+// The compile pipeline (useKeyboardArtifact + useWorkingCopyTransform) is
+// owned by MechanismGallery and passed in as props. During Phase C the outer
+// SurveyView's useKeyboardArtifact hook is still mounted (React hooks cannot
+// be conditional) but its OSK preview section is NOT rendered (SurveyView
+// returns MechanismGallery full-screen). To avoid two concurrent WASM compiles
+// for the same keyboard, MechanismGallery owns the single live pipeline and
+// passes the resulting stage + retry down here. This satisfies the
+// single-artifact invariant (decision D3 / spec §8).
 // ---------------------------------------------------------------------------
 
 interface GalleryPreviewWithPatternsProps {
   selectedBaseKeyboard: BaseKeyboard;
-  patternMap: Map<string, Pattern>;
+  stage: Stage;
+  retry: () => void;
 }
 
 function GalleryPreviewWithPatterns({
   selectedBaseKeyboard,
-  patternMap,
+  stage,
+  retry,
 }: GalleryPreviewWithPatternsProps) {
   const [oskMode, setOskMode] = useState<OskMode>("desktop");
-
-  const identity = useWorkingCopyStore((s) => s.identity);
-  const scaffoldSpec = useMemo<ScaffoldSpec | null>(
-    () =>
-      identity?.keyboardId != null
-        ? { keyboardId: identity.keyboardId, displayName: identity.displayName ?? "" }
-        : null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [identity?.keyboardId, identity?.displayName],
-  );
-
-  const vfsTransform = useWorkingCopyTransform({ patternMap });
-
-  const { stage, retry } = useKeyboardArtifact(
-    selectedBaseKeyboard,
-    scaffoldSpec,
-    vfsTransform,
-  );
 
   const applyWarnings =
     stage.kind === "ready" && stage.scaffoldWarnings.length > 0
@@ -830,6 +823,31 @@ export function MechanismGallery({
   }, [selectedBaseKeyboard, axes]);
 
   // ---------------------------------------------------------------------------
+  // Keyboard artifact pipeline — owns the single WASM compile for Phase C.
+  //
+  // MechanismGallery is rendered full-screen (SurveyView returns early at
+  // stage === "mechanisms"). SurveyView's useKeyboardArtifact hook remains
+  // mounted but its OSK output section is not rendered. To prevent two
+  // concurrent WASM compiles we own the pipeline here and pass stage+retry
+  // down to GalleryPreviewWithPatterns as props (single-artifact invariant).
+  // ---------------------------------------------------------------------------
+
+  const identity = useWorkingCopyStore((s) => s.identity);
+  const galleryScaffoldSpec = useMemo<ScaffoldSpec | null>(
+    () =>
+      identity?.keyboardId != null
+        ? { keyboardId: identity.keyboardId, displayName: identity.displayName ?? "" }
+        : null,
+    [identity?.keyboardId, identity?.displayName],
+  );
+  const galleryVfsTransform = useWorkingCopyTransform({ patternMap });
+  const { stage: artifactStage, retry: artifactRetry } = useKeyboardArtifact(
+    selectedBaseKeyboard,
+    galleryScaffoldSpec,
+    galleryVfsTransform,
+  );
+
+  // ---------------------------------------------------------------------------
   // Per-char method state — reset when currentChar changes
   // ---------------------------------------------------------------------------
 
@@ -875,7 +893,11 @@ export function MechanismGallery({
     setSuggestionDismissed(false);
     resetMethodState();
     if (currentChar !== null && isDecomposableAccented(currentChar)) {
+      // §3c defaults-first: for a decomposable accented letter the natural method
+      // is deadkey (S-02) — propose-then-confirm. resetMethodState sets "sequence"
+      // unconditionally, so override here after the reset.
       setDeadkeyBaseLetter([...currentChar.normalize("NFD")][0] ?? "");
+      setMethod("deadkey");
     }
   }, [currentChar, resetMethodState]);
 
@@ -1070,6 +1092,8 @@ export function MechanismGallery({
         .slice(0, idx)
         .find((c) => !coveredChars.has(c) && !skippedChars.has(c)) ??
       null;
+    // When no uncovered+unskipped char remains, explicitly land on null so the
+    // "All done" branch (currentChar === null && isDone) becomes visible.
     setCurrentChar(next);
   }, [currentChar, lettersToAdd, coveredChars, skippedChars]);
 
@@ -1699,7 +1723,8 @@ export function MechanismGallery({
         {!loading && loadError === null ? (
           <GalleryPreviewWithPatterns
             selectedBaseKeyboard={selectedBaseKeyboard}
-            patternMap={patternMap}
+            stage={artifactStage}
+            retry={artifactRetry}
           />
         ) : loading ? (
           <p style={{ color: TEXT_DIM, fontSize: 13, fontFamily: FONT }}>

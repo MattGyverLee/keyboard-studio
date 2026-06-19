@@ -3,8 +3,8 @@
 // Four discovery methods are offered:
 //   manual      — step-by-step questions via SurveyRunner (fully functional)
 //   text-sample — user types each character separated by spaces (TextSampleView)
-//   linguist    — LLM-synthesized inventory (coming soon, #141)
-//   picker      — CLDR-seeded visual grid (coming soon, #142)
+//   linguist    — LLM-synthesized inventory (coming soon)
+//   picker      — CLDR-seeded visual grid (coming soon)
 //
 // On completion, extractInventory() scans the Phase B answers for the question
 // ids that carry character data, splits them into NFC graphemes, and populates
@@ -444,8 +444,8 @@ export function PhaseB({ context = {}, onComplete, onBack, findingsByQuestionId,
       Exclude<DiscoveryMethod, "manual" | "text-sample" | null>,
       { feature: string; issueRef: string }
     > = {
-      linguist: { feature: "Linguist-synthesized inventory", issueRef: "#141" },
-      picker: { feature: "Visual character grid picker", issueRef: "#142" },
+      linguist: { feature: "Linguist-synthesized inventory", issueRef: "LLM synthesizer" },
+      picker: { feature: "Visual character grid picker", issueRef: "visual picker" },
     };
     const stub = stubInfo[discoveryMethod];
     return (
