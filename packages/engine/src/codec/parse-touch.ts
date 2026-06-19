@@ -181,9 +181,20 @@ export function emitTouchLayout(ir: TouchLayoutIR): string {
   for (const platform of ir.platforms) {
     const layer = platform.layers.map((l) => ({
       id: l.id,
-      row: l.rows.map((r) => ({ key: r.keys.map(emitKey) })),
+      row: l.rows.map((r, rowIdx) => ({
+        // row.id is required by the kmc-kmn TouchLayoutFileWriter (fixup calls
+        // row.id.toString()); emit 1-based numeric ids matching the Keyman schema.
+        id: rowIdx + 1,
+        key: r.keys.map(emitKey),
+      })),
     }));
-    const platformOut: Record<string, unknown> = { layer };
+    const platformOut: Record<string, unknown> = {
+      layer,
+      // defaultHint is required on TouchLayoutPlatform per the vendor type; the
+      // kmc-kmn writer does not hard-require it at runtime, but emit "longpress"
+      // as a safe default so the output is schema-conformant.
+      defaultHint: "longpress",
+    };
     if (platform.font !== undefined) platformOut["font"] = platform.font;
     out[platform.id] = platformOut;
   }

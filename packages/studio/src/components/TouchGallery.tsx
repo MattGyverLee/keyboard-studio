@@ -27,7 +27,9 @@
 
 import { useState, useEffect, useMemo, useCallback, type CSSProperties } from "react";
 import type { TouchAssignment } from "@keyboard-studio/contracts";
+import { createVirtualFS } from "@keyboard-studio/contracts";
 import { buildMinimalPhoneTouchLayout, emitTouchLayout } from "@keyboard-studio/engine";
+import { buildTouchLayoutJson } from "../lib/buildTouchLayoutJson.ts";
 import { useWorkingCopyStore } from "../stores/workingCopyStore.ts";
 import { LintSummary } from "../lint/LintSummary.tsx";
 import { useTouchLint } from "../hooks/useTouchLint.ts";
@@ -538,6 +540,7 @@ export interface TouchGalleryProps {
 
 export function TouchGallery({ onComplete }: TouchGalleryProps) {
   const baseVfs = useWorkingCopyStore((s) => s.baseVfs);
+  const baseIr = useWorkingCopyStore((s) => s.baseIr);
   const identity = useWorkingCopyStore((s) => s.identity);
   const baseKeyboard = useWorkingCopyStore((s) => s.baseKeyboard);
 
@@ -560,31 +563,61 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
     [identity?.keyboardId, identity?.displayName],
   );
 
-  // Minimal Keyman-default phone layout — injected only when the keyboard
-  // has no existing .keyman-touch-layout. Not derived from desktop rules.
-  const minimalTouchJson = useMemo(() => emitTouchLayout(buildMinimalPhoneTouchLayout()), []);
-
-  // VFS transform: inject a minimal touch layout only when the base keyboard
-  // has none. Keyboards that already ship a .keyman-touch-layout use theirs.
-  const vfsTransform = useMemo<VfsTransform>(
-    () => (vfs, kbId) => {
-      const touchPath = `source/${kbId}.keyman-touch-layout`;
-      if (vfs.get(touchPath) === undefined) {
-        vfs.set(touchPath, minimalTouchJson);
-      }
-      return { warnings: [] };
-    },
-    [minimalTouchJson],
-  );
-
-  const { stage, retry } = useKeyboardArtifact(baseKeyboard, scaffoldSpec, vfsTransform);
-
   // ---------------------------------------------------------------------------
-  // Per-character touch assignment state
+  // Per-character touch assignment state (declared early — memos below depend on it)
   // ---------------------------------------------------------------------------
 
   // Local map of explicitly-configured characters: char -> TouchAssignment.
   const [charTouch, setCharTouch] = useState<Map<string, TouchAssignment>>(new Map());
+
+  // Minimal Keyman-default phone layout — fallback when baseIr is not yet set.
+  // Not derived from desktop rules; used only when baseIr === null.
+  const minimalTouchJson = useMemo(() => emitTouchLayout(buildMinimalPhoneTouchLayout()), []);
+
+  // Stable primitive key serializing the current charTouch map so useMemo fires
+  // exactly when the author's edits change (mirrors assignmentsKey in
+  // useWorkingCopyTransform.ts lines ~100-111 — same pattern, different source).
+  const touchKey = useMemo(
+    () =>
+      [...charTouch.values()]
+        .map(
+          (a) =>
+            `${a.target}:${a.mechanisms
+              .map((m) => `${m.patternId}/${JSON.stringify(m.slotValues ?? {})}`)
+              .join(",")}`,
+        )
+        .join("|"),
+    [charTouch],
+  );
+
+  // Build applied touch layout JSON from baseIr + non-inherited assignments.
+  // The filter here matches handleContinue exactly (the single source of truth
+  // for what "non-inherited" means). When baseIr is null the preview falls back
+  // to minimalTouchJson so the OSK still renders.
+  const touchLayoutJson = useMemo(() => {
+    if (baseIr === null) return null;
+    const applied = [...charTouch.values()].filter(
+      (a) => a.mechanisms[0]?.patternId !== "touch_inherited",
+    );
+    return buildTouchLayoutJson(baseIr, applied).json;
+    // touchKey drives re-evaluation when charTouch changes (Map identity is
+    // not stable; the key is). baseIr is a stable snapshot post-lockDesktop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseIr, touchKey]);
+
+  // VFS transform: always overwrite the phone layout with the scaffold+apply
+  // result. Phase E is the authoritative source for the touch layout — the
+  // existing base file (if any) is superseded once the author enters Phase E.
+  // Falls back to minimalTouchJson only when baseIr is not yet available.
+  const vfsTransform = useMemo<VfsTransform>(
+    () => (vfs, kbId) => {
+      vfs.set(`source/${kbId}.keyman-touch-layout`, touchLayoutJson ?? minimalTouchJson);
+      return { warnings: [] };
+    },
+    [touchLayoutJson, minimalTouchJson],
+  );
+
+  const { stage, retry } = useKeyboardArtifact(baseKeyboard, scaffoldSpec, vfsTransform);
 
   // Skipped characters.
   const [skippedChars, setSkippedChars] = useState<Set<string>>(new Set());
@@ -807,8 +840,22 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
     onComplete(assignments);
   }, [charTouch, onComplete]);
 
-  // Touch lint — runs on the base VFS via the single debounce cycle.
-  const { touchFindings, touchLintRunning } = useTouchLint(baseVfs, keyboardId);
+  // Projected VFS for lint — clones baseVfs and overwrites the touch layout path
+  // with the same touchLayoutJson the preview uses (lint, preview, output agree).
+  // When touchLayoutJson is null (baseIr not yet set) lint sees the raw baseVfs.
+  // keyboardId in deps so the path key stays correct if the id changes.
+  const editedVfsForLint = useMemo(() => {
+    if (baseVfs === null) return null;
+    if (touchLayoutJson === null || keyboardId === null) return baseVfs;
+    const cloned = createVirtualFS(baseVfs.entries());
+    cloned.set(`source/${keyboardId}.keyman-touch-layout`, touchLayoutJson);
+    return cloned;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseVfs, touchLayoutJson, keyboardId]);
+
+  // Touch lint — runs on the projected (edited) VFS so checks 18.1–18.5 reflect
+  // Phase E edits. The existing 300ms debounce inside useTouchLint is unchanged.
+  const { touchFindings, touchLintRunning } = useTouchLint(editedVfsForLint, keyboardId);
 
   // ---------------------------------------------------------------------------
   // Shared styles

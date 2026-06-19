@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTouchLayout } from "./parse-touch.js";
+import { parseTouchLayout, emitTouchLayout } from "./parse-touch.js";
 
 const MINIMAL_TOUCH = JSON.stringify({
   tablet: {
@@ -175,5 +175,46 @@ describe("parseTouchLayout", () => {
 
   it("throws TypeError on JSON array", () => {
     expect(() => parseTouchLayout("[]")).toThrow(TypeError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// emitTouchLayout — kmc-kmn compat: row id + platform defaultHint
+// ---------------------------------------------------------------------------
+
+describe("emitTouchLayout", () => {
+  it("emits numeric row id on every row (required by TouchLayoutFileWriter.fixup)", () => {
+    // Parse a fixture that has row ids, then emit and re-parse to confirm
+    // the emitted JSON includes id on every row.
+    const ir = parseTouchLayout(MULTI_PLATFORM_TOUCH);
+    const json = emitTouchLayout(ir);
+    const reparsed = JSON.parse(json) as Record<string, { layer: Array<{ row: Array<{ id?: number }> }> }>;
+    for (const [, platform] of Object.entries(reparsed)) {
+      for (const layer of platform.layer) {
+        for (let i = 0; i < layer.row.length; i++) {
+          expect(layer.row[i]!.id, `row[${i}].id must be present`).toBe(i + 1);
+        }
+      }
+    }
+  });
+
+  it("emits defaultHint on every platform (schema-conformant output)", () => {
+    const ir = parseTouchLayout(MULTI_PLATFORM_TOUCH);
+    const json = emitTouchLayout(ir);
+    const reparsed = JSON.parse(json) as Record<string, { defaultHint?: string }>;
+    for (const [pid, platform] of Object.entries(reparsed)) {
+      expect(platform.defaultHint, `platform "${pid}" must have defaultHint`).toBeTruthy();
+    }
+  });
+
+  it("round-trips key ids and text through emit → reparse", () => {
+    const ir = parseTouchLayout(SUBKEY_TOUCH);
+    const json = emitTouchLayout(ir);
+    const reparsed = JSON.parse(json) as Record<string, { layer: Array<{ row: Array<{ key: Array<{ id: string; sk?: Array<{ id: string }> }> }> }> }>;
+    const tabletLayer = reparsed["tablet"]?.layer[0];
+    const parentKey = tabletLayer?.row[0]?.key[0];
+    expect(parentKey?.id).toBe("U_0028");
+    expect(parentKey?.sk?.length).toBe(2);
+    expect(parentKey?.sk?.[0]?.id).toBe("U_005B");
   });
 });

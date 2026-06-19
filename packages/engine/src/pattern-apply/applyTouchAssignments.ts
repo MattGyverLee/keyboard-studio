@@ -1,0 +1,260 @@
+/**
+ * applyTouchAssignments — pure function that folds Phase E touch
+ * assignments (longpress / flick / multitap) into a TouchLayoutIR.
+ *
+ * Only the phone platform's "default" layer is mutated (via structural
+ * sharing — no original objects are modified). All other platforms and
+ * layers are returned by reference.
+ *
+ * @see spec.md §8 Phase E (touch gallery)
+ */
+
+import type { TouchLayoutIR, TouchKeyIR } from "@keyboard-studio/contracts";
+import type { TouchAssignment } from "@keyboard-studio/contracts";
+import { NodeIdMinter } from "../codec/node-ids.js";
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
+export interface ApplyTouchAssignmentsResult {
+  /** Updated layout (structurally shared with the input where unchanged). */
+  layout: TouchLayoutIR;
+  /** Diagnostic messages for unknown/unhandled assignments. */
+  warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply a list of touch {@link TouchAssignment}s to a {@link TouchLayoutIR},
+ * returning a new (pure, non-mutating) layout and any diagnostic warnings.
+ *
+ * Only the phone platform's "default" layer is modified; all other platforms
+ * and layers are returned by reference (structural sharing).
+ *
+ * @param layout      The base touch layout (from scaffoldTouchLayout or
+ *                    buildMinimalPhoneTouchLayout).
+ * @param assignments Touch-modality assignments from Phase E (TouchGallery).
+ */
+export function applyTouchAssignments(
+  layout: TouchLayoutIR,
+  assignments: ReadonlyArray<TouchAssignment>,
+): ApplyTouchAssignmentsResult {
+  const warnings: string[] = [];
+  const minter = new NodeIdMinter();
+
+  // Verify the phone platform exists.
+  const phonePlatformIndex = layout.platforms.findIndex((p) => p.id === "phone");
+  if (phonePlatformIndex === -1) {
+    warnings.push(
+      "[touch-apply] no phone platform found in layout — all touch assignments skipped"
+    );
+    return { layout, warnings };
+  }
+
+  const phonePlatform = layout.platforms[phonePlatformIndex]!;
+
+  // Verify the default layer exists.
+  const defaultLayerIndex = phonePlatform.layers.findIndex(
+    (l) => l.id === "default"
+  );
+  if (defaultLayerIndex === -1) {
+    warnings.push(
+      "[touch-apply] phone platform has no default layer — all touch assignments skipped"
+    );
+    return { layout, warnings };
+  }
+
+  const defaultLayer = phonePlatform.layers[defaultLayerIndex]!;
+
+  // Build a flat working map: vkey id → row index × key index, pointing into
+  // a mutable copy of each key we may need to update. We structural-share keys
+  // we never touch.
+  // Strategy: shallow-clone all rows up-front (array of arrays), then replace
+  // individual key slots as assignments are processed.
+  const workingRows: Array<{ keys: TouchKeyIR[] }> = defaultLayer.rows.map(
+    (row) => ({ keys: [...row.keys] })
+  );
+
+  // Build a lookup: id → { rowIdx, keyIdx }
+  const keyIndex = new Map<string, { rowIdx: number; keyIdx: number }>();
+  for (let ri = 0; ri < workingRows.length; ri++) {
+    const row = workingRows[ri]!;
+    for (let ki = 0; ki < row.keys.length; ki++) {
+      const key = row.keys[ki]!;
+      keyIndex.set(key.id, { rowIdx: ri, keyIdx: ki });
+    }
+  }
+
+  // Helper: get the current working copy of a key (already shallow-copied into
+  // workingRows; we replace it in-place as we accumulate changes).
+  function getWorkingKey(hostKey: string): TouchKeyIR | undefined {
+    const pos = keyIndex.get(hostKey);
+    if (!pos) return undefined;
+    return workingRows[pos.rowIdx]!.keys[pos.keyIdx];
+  }
+
+  function setWorkingKey(hostKey: string, updated: TouchKeyIR): void {
+    const pos = keyIndex.get(hostKey);
+    if (!pos) return;
+    workingRows[pos.rowIdx]!.keys[pos.keyIdx] = updated;
+  }
+
+  // Process each assignment in order.
+  for (const assignment of assignments) {
+    const ref = assignment.mechanisms[0];
+    if (!ref) continue;
+
+    const { patternId, slotValues } = ref;
+
+    // touch_inherited: intentional no-op, no warning.
+    if (patternId === "touch_inherited") {
+      continue;
+    }
+
+    if (patternId === "longpress_alternates") {
+      const hostKey = slotValues?.["hostKey"] ?? "";
+      const char = slotValues?.["char"] ?? "";
+
+      const key = getWorkingKey(hostKey);
+      if (!key) {
+        warnings.push(
+          `[touch-apply] host key "${hostKey}" not found in phone default layer — assignment for "${char}" skipped`
+        );
+        continue;
+      }
+
+      const existingSk = key.sk ?? [];
+      // Dedupe: skip if already present.
+      if (existingSk.some((s) => s.output === char)) {
+        continue;
+      }
+
+      const newSkKey: TouchKeyIR = {
+        nodeId: minter.mint("touchKey"),
+        id: `${hostKey}_sk_${char.codePointAt(0)?.toString(16) ?? "x"}`,
+        text: char,
+        output: char,
+      };
+
+      const updated: TouchKeyIR = {
+        ...key,
+        sk: [...existingSk, newSkKey],
+      };
+
+      // Set hint only when not already set (do NOT overwrite deadkey-derived hint).
+      if (updated.hint === undefined) {
+        updated.hint = char;
+      }
+
+      setWorkingKey(hostKey, updated);
+      continue;
+    }
+
+    if (patternId === "flick_gestures") {
+      const hostKey = slotValues?.["hostKey"] ?? "";
+      const direction = slotValues?.["direction"] ?? "";
+      const char = slotValues?.["char"] ?? "";
+
+      const key = getWorkingKey(hostKey);
+      if (!key) {
+        warnings.push(
+          `[touch-apply] host key "${hostKey}" not found in phone default layer — assignment for "${char}" skipped`
+        );
+        continue;
+      }
+
+      const newFlickKey: TouchKeyIR = {
+        nodeId: minter.mint("touchKey"),
+        id: `${hostKey}_flick_${direction}`,
+        text: char,
+        output: char,
+      };
+
+      // Merge with existing flick map; avoid spreading `undefined`.
+      const mergedFlick: NonNullable<TouchKeyIR["flick"]> = {
+        ...(key.flick ?? {}),
+        [direction]: newFlickKey,
+      };
+
+      const updated: TouchKeyIR = {
+        ...key,
+        flick: mergedFlick,
+      };
+
+      setWorkingKey(hostKey, updated);
+      continue;
+    }
+
+    if (patternId === "multitap") {
+      const hostKey = slotValues?.["hostKey"] ?? "";
+      const char = slotValues?.["char"] ?? "";
+
+      const key = getWorkingKey(hostKey);
+      if (!key) {
+        warnings.push(
+          `[touch-apply] host key "${hostKey}" not found in phone default layer — assignment for "${char}" skipped`
+        );
+        continue;
+      }
+
+      const existingMt = key.multitap ?? [];
+      // Dedupe: skip if already present.
+      if (existingMt.some((s) => s.output === char)) {
+        continue;
+      }
+
+      const index = existingMt.length;
+      const newMtKey: TouchKeyIR = {
+        nodeId: minter.mint("touchKey"),
+        id: `${hostKey}_mt_${index}`,
+        text: char,
+        output: char,
+      };
+
+      const updated: TouchKeyIR = {
+        ...key,
+        multitap: [...existingMt, newMtKey],
+      };
+
+      setWorkingKey(hostKey, updated);
+      continue;
+    }
+
+    // Unknown patternId — one warning per assignment.
+    warnings.push(
+      `[touch-apply] unknown patternId "${patternId}" — assignment skipped`
+    );
+  }
+
+  // Reconstruct the layout with structural sharing.
+  // Only replace the default layer and the phone platform; everything else is
+  // returned by reference.
+  const updatedDefaultLayer = {
+    ...defaultLayer,
+    rows: workingRows,
+  };
+
+  const updatedLayers = phonePlatform.layers.map((layer, idx) =>
+    idx === defaultLayerIndex ? updatedDefaultLayer : layer
+  );
+
+  const updatedPhonePlatform = {
+    ...phonePlatform,
+    layers: updatedLayers,
+  };
+
+  const updatedPlatforms = layout.platforms.map((platform, idx) =>
+    idx === phonePlatformIndex ? updatedPhonePlatform : platform
+  );
+
+  const updatedLayout: TouchLayoutIR = {
+    ...layout,
+    platforms: updatedPlatforms,
+  };
+
+  return { layout: updatedLayout, warnings };
+}

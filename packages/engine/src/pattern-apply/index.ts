@@ -12,3 +12,6 @@ export { applyAssignmentsToVfs } from "./applyAssignmentsToVfs.js";
 export { applyCarveToVfs } from "./applyCarveToVfs.js";
 
 export { applyKeycapLabelsToVfs } from "./applyKeycapLabelsToVfs.js";
+
+export { applyTouchAssignments } from "./applyTouchAssignments.js";
+export type { ApplyTouchAssignmentsResult } from "./applyTouchAssignments.js";
