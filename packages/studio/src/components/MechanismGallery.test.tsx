@@ -243,8 +243,26 @@ describe("MechanismGallery — sequence method chooser", () => {
     await act(async () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
     });
+    // "á" decomposes to a + U+0301, so the §3c default method is deadkey
+    // (with the base letter pre-filled). Switch to the sequence method to
+    // assert its empty-input disabled state.
+    fireEvent.click(screen.getByText(/Type a sequence/i));
     const addBtn = screen.getByRole("button", { name: /Apply method for á/i });
     expect((addBtn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("defaults to the deadkey method (pre-enabled) for a decomposable accented char (§3c)", async () => {
+    // Propose-then-confirm: for "á" (a + U+0301) the deadkey method is the
+    // natural default, with the base letter pre-filled to "a", so Apply is
+    // enabled without further input — the author just confirms.
+    seedInventory(["á"]);
+    await act(async () => {
+      render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
+    });
+    const triggerSelect = screen.getByLabelText(/Trigger key for deadkey/i);
+    expect(triggerSelect).toBeTruthy();
+    const addBtn = screen.getByRole("button", { name: /Apply method for á/i });
+    expect((addBtn as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("Add key button is disabled when only first key is filled", async () => {
