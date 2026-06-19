@@ -1,4 +1,5 @@
-export type CardKind = 'pattern' | 'group' | 'store' | 'raw';
+import type { CardKind } from '../../lib/irToCarveNodes.ts';
+export type { CardKind } from '../../lib/irToCarveNodes.ts';
 
 export const KIND_COLOR: Record<CardKind, string> = {
   pattern: '#6fbbd4',

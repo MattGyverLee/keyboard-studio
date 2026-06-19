@@ -9,15 +9,14 @@ import type {
   Pattern,
   StoreItem,
 } from '@keyboard-studio/contracts';
-import type { CardKind } from '../components/carve/KindBadge.tsx';
+export type CardKind = 'pattern' | 'group' | 'store' | 'raw';
 
 // ---------------------------------------------------------------------------
-// isCombining — true for Unicode combining diacritical marks (U+0300–U+036F)
+// isCombining — true for Unicode non-spacing marks (Mn category, all scripts)
 // ---------------------------------------------------------------------------
 
 export const isCombining = (ch: string) => {
-  const c = ch?.codePointAt(0) ?? 0;
-  return c >= 0x0300 && c <= 0x036f;
+  return /^\p{Mn}$/u.test(ch ?? '');
 };
 
 export interface CarveGlyph {

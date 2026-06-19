@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { CarveNode } from '../../lib/irToCarveNodes.ts';
-import { nodeState } from '../../lib/irToCarveNodes.ts';
+import { nodeState, isCombining } from '../../lib/irToCarveNodes.ts';
 import { ToggleBox } from './ToggleBox.tsx';
 import { GlyphCell } from './GlyphCell.tsx';
 import { KindBadge, KIND_COLOR } from './KindBadge.tsx';
@@ -148,7 +148,7 @@ function StoreDetail({ node, nodes, isDeleted, isItemDeleted, onToggleNode }: St
               opacity: off ? 0.6 : 1,
             }}>
               <span style={{ font: "400 22px/1 'Lora', serif", color: off ? 'var(--app-text-subtle)' : 'var(--app-text)' }}>
-                {'◌' + ch}
+                {isCombining(ch) ? '◌' + ch : ch}
               </span>
             </span>
           ))}
