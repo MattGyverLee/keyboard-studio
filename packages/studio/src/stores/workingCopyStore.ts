@@ -450,7 +450,12 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       baseVfs: vfs,
       baseIr: ir,
       // Preserve identity from the loaded keyboard's metadata.
+      // keyboardId is required: downstream consumers (serializeWorkingCopy zip
+      // filename, MechanismGallery scaffoldSpec, lint identity checks) read
+      // identity.keyboardId and get undefined without it — "no default is a defect"
+      // per spec v1.3.1 §3c.
       identity: {
+        keyboardId: keyboard.id,
         bcp47: keyboard.languages?.[0] ?? "",
         displayName: keyboard.displayName,
       },
