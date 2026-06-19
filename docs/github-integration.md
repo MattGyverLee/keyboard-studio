@@ -98,7 +98,7 @@ SPA ──token──▶ createGitHubOutputService({ token }).publishPR(...)
 
 ## 5. Open questions (parked, surface before implementing)
 
-1. **Branch naming.** The studio picks the branch name. Convention TBD — current candidate is `studio/<keyboard-id>-<short-timestamp>` so multiple submissions don't collide. Decide before second-submission UX lands.
+1. **Branch naming.** The convention is `add/<keyboardId>` — matching the shipped contract (`packages/contracts/src/outputService.ts` §12, `PublishPROptions.branchName` JSDoc) and the engine implementation (`packages/engine/src/output/github.ts`). Open question: whether to append a uniqueness suffix (e.g. `add/<keyboardId>-<shortHash>`, as Option B already does) to avoid collisions when the same keyboard is re-submitted while its prior branch is still open on the fork. Decide before second-submission UX lands.
 2. **Re-submission posture.** If the same user re-opens the same working copy after their first PR merged, do we open a *new* PR off latest upstream `main`, or push to the existing branch? Default proposal: **always a new branch.** Avoids reasoning about whether the prior branch was deleted, force-pushed, or had upstream changes since.
 3. **Option B (org-mediated).** Out of scope for the OAuth-backend PR. Will need a separate decision on bot identity, commit-attribution shape, and how the user is informed their submission is going via the org.
 4. **Token storage in the SPA.** `sessionStorage` is the current assumption (cleared on tab close, not shared across tabs). Confirm with Grace before the OAuth-backend PR merges, since it constrains the SPA-side wrapper.
