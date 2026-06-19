@@ -1,13 +1,14 @@
 // Base-keyboard suggestion for the hybrid flow's base-resolution step
 // (spec §8 "Base resolution", workflow-model.md). Given the target *(language,
 // script) pair* from identity-lite, rank the available base keyboards:
-// language-match > script-match > US-QWERTY fallback.
+// language-match > related-language-match > script-match > language-cross-script > US-QWERTY fallback.
 //
 // Language and script are decoupled (spec §8/§9): matching keys on the chosen
 // TARGET script, never the language's default script. So a Hindi romanization
 // (hi-Latn) matches Latin bases that cover Hindi — never the Devanagari base —
 // and an IPA keyboard (und-fonipa) matches Latin/IPA bases. refs #369.
 
+import { primarySubtag } from "@keyboard-studio/engine";
 import type {
   BaseKeyboard,
   RelatednessProvenance,
@@ -70,12 +71,6 @@ export interface BaseSuggestion {
 }
 
 const DEFAULT_FALLBACK_ID = "basic_kbdus";
-
-/** Primary language subtag of a BCP47 tag, lowercased (`"hi-Latn"` → `"hi"`). */
-function primarySubtag(tag: string): string {
-  const first = tag.split("-")[0] ?? "";
-  return first.toLowerCase();
-}
 
 /**
  * True when the BCP47 tag carries an explicit ISO 15924 script subtag (a
