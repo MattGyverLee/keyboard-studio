@@ -1,26 +1,184 @@
+import { useState, useMemo, useCallback } from 'react';
 import { useWorkingCopyStore } from '../stores/workingCopyStore.ts';
-import { PatternCard } from './carve/PatternCard.tsx';
-import { GroupCard } from './carve/GroupCard.tsx';
-import { StoreCard } from './carve/StoreCard.tsx';
-import { RawFragmentCard } from './carve/RawFragmentCard.tsx';
+import { toRailNodes, nodeState } from '../lib/irToCarveNodes.ts';
+import type { CarveNode } from '../lib/irToCarveNodes.ts';
+import { StatusBar } from './carve/StatusBar.tsx';
+import type { RemovedItem } from './carve/StatusBar.tsx';
+import { DepBanner } from './carve/DepBanner.tsx';
+import type { DepNode } from './carve/DepBanner.tsx';
+import { Rail } from './carve/Rail.tsx';
+import { Inspector } from './carve/Inspector.tsx';
 
 interface CarveGalleryProps {
   onComplete: () => void;
-  onBack?: () => void;
+  onBack?: (() => void) | undefined;
 }
 
 export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
   const ir = useWorkingCopyStore((s) => s.ir);
-  const undoStack = useWorkingCopyStore((s) => s.undoStack);
+  const instantiationMode = useWorkingCopyStore((s) => s.instantiationMode);
+  const deletedNodeIds = useWorkingCopyStore((s) => s.deletedNodeIds);
+  const deletedItemIds = useWorkingCopyStore((s) => s.deletedItemIds);
+  const isDeleted = useWorkingCopyStore((s) => s.isDeleted);
+  const isItemDeleted = useWorkingCopyStore((s) => s.isItemDeleted);
+  const deleteNode = useWorkingCopyStore((s) => s.deleteNode);
+  const restoreNode = useWorkingCopyStore((s) => s.restoreNode);
+  const deleteItem = useWorkingCopyStore((s) => s.deleteItem);
+  const restoreItem = useWorkingCopyStore((s) => s.restoreItem);
+  const restoreAll = useWorkingCopyStore((s) => s.restoreAll);
   const keepAll = useWorkingCopyStore((s) => s.keepAll);
-  const undoDelete = useWorkingCopyStore((s) => s.undoDelete);
+
+  const nodes = useMemo(() => (ir ? toRailNodes(ir) : []), [ir]);
+
+  // Gate: show the "all clear" screen only when ALL of the following hold:
+  //   1. Track 1 (adapting a base) — Track 2 authors know their own keyboard and want to review it.
+  //   2. No recognised patterns, user stores, or raw fragments — nothing complex to carve.
+  //   3. At most one plain group AND that group has ≤ 20 displayable glyphs — a truly small keyboard.
+  //      Arabic / Ethiopic / CJK keyboards with hundreds of rules in "main" must go to the full carver.
+  const isSimple = useMemo(() => {
+    if (instantiationMode === 'adapt-existing') return false;
+    if (nodes.some((n) => n.kind === 'pattern' || n.kind === 'store' || n.kind === 'raw')) return false;
+    const groups = nodes.filter((n) => n.kind === 'group');
+    if (groups.length > 1) return false;
+    const totalGlyphs = groups.reduce((sum, g) => sum + (g.glyphs?.length ?? 0), 0);
+    return totalGlyphs <= 20;
+  }, [nodes, instantiationMode]);
+  const [forceOpen, setForceOpen] = useState(false);
+
+  const [selectedId, setSelectedId] = useState<string | null>(() => null);
+  const selectedNode = useMemo<CarveNode | undefined>(
+    () => nodes.find((n) => n.nodeId === selectedId) ?? nodes[0],
+    [nodes, selectedId],
+  );
+
+  // Handlers for Rail/Inspector callbacks
+  const handleSetManyGlyphs = useCallback((gids: string[], off: boolean) => {
+    gids.forEach((gid) => { off ? deleteItem(gid) : restoreItem(gid); });
+  }, [deleteItem, restoreItem]);
+
+  const handleToggleNode = useCallback((nodeId: string, off: boolean) => {
+    off ? deleteNode(nodeId) : restoreNode(nodeId);
+  }, [deleteNode, restoreNode]);
+
+  const handleToggleGlyph = useCallback((gid: string) => {
+    isItemDeleted(gid) ? restoreItem(gid) : deleteItem(gid);
+  }, [isItemDeleted, restoreItem, deleteItem]);
+
+  // Kept / total counts
+  const { kept, total } = useMemo(() => {
+    let t = 0, k = 0;
+    nodes.forEach((node) => {
+      if (node.glyphs) {
+        t += node.glyphs.length;
+        k += node.glyphs.filter((g) => !isItemDeleted(g.gid)).length;
+      }
+    });
+    return { kept: k, total: t };
+  }, [nodes, deletedItemIds, isItemDeleted]);
+
+  // Removed list for StatusBar
+  const removedList = useMemo<RemovedItem[]>(() => {
+    const list: RemovedItem[] = [];
+    const fullOffIds = new Set<string>();
+
+    nodes.forEach((node) => {
+      if (node.kind !== 'pattern' && node.kind !== 'group') return;
+      if (nodeState(node, isItemDeleted, isDeleted) === 'off') {
+        fullOffIds.add(node.nodeId);
+        list.push({ type: 'node', id: node.nodeId, kind: node.kind, label: node.name, count: node.glyphs?.length ?? 0, glyphIds: node.glyphs?.map((g) => g.gid) });
+      }
+    });
+    nodes.forEach((node) => {
+      if (node.kind !== 'store' && node.kind !== 'raw') return;
+      if (isDeleted(node.nodeId)) {
+        list.push({ type: 'node', id: node.nodeId, kind: node.kind, label: node.name, count: 1 });
+      }
+    });
+    nodes.forEach((node) => {
+      if (!node.glyphs) return;
+      if (fullOffIds.has(node.nodeId)) return;
+      node.glyphs.forEach((glyph) => {
+        if (!deletedItemIds.has(glyph.gid)) return;
+        list.push({ type: 'item', id: glyph.gid, ch: glyph.ch, keys: glyph.keys, nodeName: node.name });
+      });
+    });
+    return list;
+  }, [nodes, deletedItemIds, deletedNodeIds, isItemDeleted, isDeleted]);
+
+  const handleRestore = useCallback((item: RemovedItem) => {
+    if (item.type === 'item') { restoreItem(item.id); return; }
+    if (item.glyphIds) { item.glyphIds.forEach((gid) => restoreItem(gid)); }
+    else { restoreNode(item.id); }
+  }, [restoreItem, restoreNode]);
+
+  // DepBanner — orphaned patterns + newly-unused stores
+  const { orphanedNodes, unusedStoreNodes } = useMemo(() => {
+    const orphaned: DepNode[] = [];
+    const unusedStores: DepNode[] = [];
+    nodes.forEach((node) => {
+      if ((node.kind === 'pattern' || node.kind === 'group') && nodeState(node, isItemDeleted, isDeleted) === 'off') {
+        orphaned.push({ nodeId: node.nodeId, name: node.name });
+      }
+      if (node.kind === 'store' && node.referencedByNodeId !== undefined && !isDeleted(node.nodeId)) {
+        const refNode = nodes.find((n) => n.nodeId === node.referencedByNodeId);
+        if (refNode && nodeState(refNode, isItemDeleted, isDeleted) === 'off') {
+          unusedStores.push({ nodeId: node.nodeId, name: node.name });
+        }
+      }
+    });
+    return { orphanedNodes: orphaned, unusedStoreNodes: unusedStores };
+  }, [nodes, deletedItemIds, deletedNodeIds, isItemDeleted, isDeleted]);
 
   if (!ir) {
     return (
-      <div style={{ padding: '1.5rem' }}>
-        <p>Loading keyboard...</p>
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--app-bg)', color: 'var(--app-text)' }}>
+        <p style={{ fontSize: 14, color: 'var(--app-text-muted)' }}>Loading keyboard…</p>
+      </div>
+    );
+  }
+
+  const hasRawFragments = ir.raw.length > 0;
+
+  // Gate screen — shown for simple keyboards with nothing complex to carve.
+  // Skipped when hasRawFragments: the warning must be visible and the user
+  // should see the carver (even if it can't apply changes) rather than a
+  // misleading "looks good" screen.
+  if (isSimple && !forceOpen && !hasRawFragments) {
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--app-bg)', color: 'var(--app-text)', gap: 24, padding: '0 32px', textAlign: 'center' }}>
+        <svg width={56} height={56} viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+          <circle cx={12} cy={12} r={10} />
+          <path d="M9 12l2 2 4-4" />
+        </svg>
+        <div>
+          <h2 style={{ margin: '0 0 8px', font: "500 22px/1.15 'Playfair Display', serif", color: 'var(--app-text)' }}>
+            Your rules look good
+          </h2>
+          <p style={{ margin: 0, fontSize: 14.5, color: 'var(--app-text-muted)', maxWidth: 400, lineHeight: 1.6 }}>
+            This keyboard uses standard rules in a single group — there's nothing complex to review or remove.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+          <button
+            onClick={() => {
+              const mainGroup = nodes.find((n) => n.kind === 'group' && n.name === 'main')
+                ?? nodes.find((n) => n.kind === 'group');
+              if (mainGroup) setSelectedId(mainGroup.nodeId);
+              setForceOpen(true);
+            }}
+            style={{ font: '600 13.5px var(--app-font)', cursor: 'pointer', color: 'var(--app-accent-text)', background: 'var(--app-surface-2)', border: '1px solid var(--app-border-strong)', borderRadius: 9, padding: '10px 20px' }}
+          >
+            Open rule carver anyway
+          </button>
+          <button
+            onClick={() => { keepAll(); onComplete(); }}
+            style={{ font: '600 13.5px var(--app-font)', cursor: 'pointer', color: '#fff', background: 'var(--app-accent)', border: 'none', borderRadius: 9, padding: '10px 22px' }}
+          >
+            Skip Rule Carver →
+          </button>
+        </div>
         {onBack !== undefined && (
-          <button type="button" onClick={onBack} style={{ marginTop: '0.5rem' }}>
+          <button onClick={onBack} style={{ font: '13px var(--app-font)', cursor: 'pointer', color: 'var(--app-text-subtle)', background: 'transparent', border: 'none', marginTop: 4 }}>
             ← Back
           </button>
         )}
@@ -28,66 +186,84 @@ export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
     );
   }
 
-  const recognizedPatterns = ir.recognizedPatterns.filter((p) => p.origin === 'recognized');
-  const nonSystemStores = ir.stores.filter((s) => !s.isSystem);
-  const hasNothingToCarve =
-    recognizedPatterns.length === 0 &&
-    ir.groups.every((g) => g.rules.every((r) => r.ownedByPattern !== undefined)) &&
-    nonSystemStores.length === 0 &&
-    ir.raw.length === 0;
-
-  const handleSkip = () => {
-    keepAll();
-    onComplete();
-  };
-
   return (
-    <div style={{ maxWidth: '720px', margin: '0 auto', padding: '1.5rem', overflowY: 'auto' }}>
-      <h1>Review your keyboard</h1>
-      <p>
-        Remove any parts you don&apos;t need before starting the survey. You can always
-        undo a deletion.
-      </p>
-      <button onClick={handleSkip} style={{ marginBottom: '1.5rem' }}>
-        Keep everything &mdash; continue
-      </button>
-
-      {hasNothingToCarve && (
-        <div style={{ padding: '1rem', background: '#f0f4f8', borderRadius: '6px', marginBottom: '1rem' }}>
-          Nothing needs to be removed &mdash; these are standard keys. Click Continue when ready.
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--app-bg)', color: 'var(--app-text)' }}>
+      {/* Raw-fragment warning — deletions won't apply when the codec can't re-emit */}
+      {hasRawFragments && (
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 22px', background: 'var(--amber-bg)', borderBottom: '1px solid var(--amber-border)', fontSize: 13, color: 'var(--amber-text)', lineHeight: 1.5 }}>
+          <span style={{ flexShrink: 0, marginTop: 1 }}>⚠</span>
+          <span>
+            <b>Removals won't apply to this keyboard.</b> It contains advanced rules the editor can't rewrite ({ir.raw.length} fragment{ir.raw.length !== 1 ? 's' : ''}), so deletions you make here won't show up in the preview or the downloaded zip.
+          </span>
         </div>
       )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {recognizedPatterns.map((p) => (
-          <PatternCard
-            key={p.id}
-            pattern={p}
-          />
-        ))}
-        {ir.groups.map((g) => (
-          <GroupCard key={g.nodeId} group={g} />
-        ))}
-        {nonSystemStores.map((s) => (
-          <StoreCard key={s.nodeId} store={s} />
-        ))}
-        {ir.raw.map((f) => (
-          <RawFragmentCard key={f.nodeId} fragment={f} />
-        ))}
-      </div>
-
-      <div style={{ marginTop: '1.5rem' }}>
-        <button onClick={onComplete}>Continue &rarr;</button>
-      </div>
-
-      {undoStack.length > 0 && (
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 22px', borderBottom: '1px solid var(--app-border)', flexShrink: 0 }}>
+        {onBack !== undefined && (
+          <button onClick={onBack} style={{ font: '600 13px var(--app-font)', cursor: 'pointer', color: 'var(--app-text-muted)', background: 'transparent', border: 'none', padding: '4px 0', whiteSpace: 'nowrap' }}>
+            ← Back
+          </button>
+        )}
+        <div style={{ flex: 1 }}>
+          <div style={{ font: '600 10.5px/1 var(--app-font)', letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--app-text-subtle)' }}>
+            Phase D · Carve
+          </div>
+          <h1 style={{ margin: '6px 0 0', font: "500 23px/1.1 'Playfair Display', serif", color: 'var(--app-text)' }}>
+            Review your keyboard's rules
+          </h1>
+        </div>
         <button
-          onClick={undoDelete}
-          style={{ position: 'fixed', bottom: '1rem', right: '1rem', padding: '0.5rem 1rem' }}
+          onClick={() => { keepAll(); onComplete(); }}
+          title="Skip removal — keep all rules"
+          style={{ font: '600 13px var(--app-font)', cursor: 'pointer', color: 'var(--app-text-muted)', background: 'transparent', border: '1px solid var(--app-border-strong)', borderRadius: 8, padding: '7px 13px', whiteSpace: 'nowrap', marginRight: 6 }}
         >
-          Undo
+          Skip
         </button>
-      )}
+        <button
+          onClick={onComplete}
+          style={{ font: '600 13px var(--app-font)', cursor: 'pointer', color: '#fff', background: 'var(--app-accent)', border: 'none', borderRadius: 8, padding: '9px 18px' }}
+        >
+          Continue →
+        </button>
+      </div>
+
+      {/* Status bar */}
+      <StatusBar
+        kept={kept}
+        total={total}
+        removedList={removedList}
+        onRestore={handleRestore}
+        onRestoreAll={restoreAll}
+      />
+
+      {/* Dependency banner */}
+      <DepBanner
+        orphanedNodes={orphanedNodes}
+        unusedStoreNodes={unusedStoreNodes}
+        onRemoveNode={(nodeId) => handleToggleNode(nodeId, true)}
+      />
+
+      {/* Two-panel body */}
+      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+        <Rail
+          nodes={nodes}
+          selectedId={selectedNode?.nodeId ?? null}
+          onSelect={setSelectedId}
+          isItemDeleted={isItemDeleted}
+          isDeleted={isDeleted}
+          onSetManyGlyphs={handleSetManyGlyphs}
+          onToggleNode={handleToggleNode}
+        />
+        <Inspector
+          node={selectedNode}
+          nodes={nodes}
+          isItemDeleted={isItemDeleted}
+          onToggleGlyph={handleToggleGlyph}
+          onSetManyGlyphs={handleSetManyGlyphs}
+          isDeleted={isDeleted}
+          onToggleNode={handleToggleNode}
+        />
+      </div>
     </div>
   );
 }
