@@ -39,6 +39,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { join, dirname, basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -497,6 +498,29 @@ function buildMarkdown(sorted: ScanReport[], opaque: OpaqueEntry[]): string {
 }
 
 // ---------------------------------------------------------------------------
+// Provenance helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the git SHA of the keyboards checkout for provenance. Returns
+ * "keymanapp/keyboards@<sha>" or "keymanapp/keyboards@unknown" if the SHA
+ * cannot be determined (not a git checkout, git unavailable, etc).
+ */
+function resolveKeyboardsProvenance(releaseDir: string): string {
+  try {
+    const root = dirname(releaseDir);
+    const sha = execSync("git rev-parse HEAD", {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return sha ? `keymanapp/keyboards@${sha}` : "keymanapp/keyboards@unknown";
+  } catch {
+    return "keymanapp/keyboards@unknown";
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -588,7 +612,7 @@ async function main(): Promise<void> {
   // --emit-placements: aggregate and write placement-priors.json.
   if (args.emitPlacements) {
     const priorsJSON = aggregatePlacements(placementReports, {
-      generatedFrom: `keymanapp/keyboards@${new Date().toISOString()}`,
+      generatedFrom: resolveKeyboardsProvenance(args.releaseDir),
     });
     const priorsPath = join(args.outDir, "placement-priors.json");
     await fsp.writeFile(priorsPath, JSON.stringify(priorsJSON, null, 2) + "\n", "utf8");
