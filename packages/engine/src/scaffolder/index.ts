@@ -343,6 +343,9 @@ function generateStubs(
       content: `Copyright © ${yyyy} ${displayName}\n\nMIT License\n`,
     },
     {
+      // Track-1 HISTORY.md entry (new-from-base). For the parallel Track-2 entry
+      // format (adapt-existing), see packages/engine/src/output/adapt-staging.ts
+      // stageAdaptHistory(). Both must use the same ATX heading style; keep them in sync.
       path: `HISTORY.md`,
       content: `## 1.0 (${yyyy}-${mm}-${dd})\n* Initial release.\n`,
     },

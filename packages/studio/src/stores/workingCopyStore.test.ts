@@ -254,6 +254,17 @@ describe("workingCopyStore — instantiateFromExisting (Track 2)", () => {
     expect(useWorkingCopyStore.getState().identity).not.toBeNull();
   });
 
+  it("sets identity.keyboardId from the loaded keyboard's id (preserve-identity contract)", () => {
+    // Regression guard: downstream consumers (serializeWorkingCopy zip filename,
+    // MechanismGallery scaffoldSpec, lint identity checks) read identity.keyboardId
+    // — undefined here is a defect per spec v1.3.1 §3c.
+    const vfs = createVirtualFS();
+    const ir = makeTestIR([]);
+    useWorkingCopyStore.getState().instantiateFromExisting(basicKbdus, { vfs, ir });
+    const s = useWorkingCopyStore.getState();
+    expect(s.identity?.keyboardId).toBe(basicKbdus.id);
+  });
+
   it("clears carve deletion state on instantiation", () => {
     const oldIr = makeTestIR([]);
     useWorkingCopyStore.getState().setIR(oldIr);
