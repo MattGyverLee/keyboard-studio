@@ -79,8 +79,21 @@ export interface ProjectWorkingCopyVfsInput {
   /** Synchronous resolver. Pass `() => undefined` when no pattern library is available. */
   getPattern: (id: string) => Pattern | undefined;
   /** Identity overlay. Pass `null` to skip identity projection. */
-  identity: { displayName?: string; copyright?: string; version?: string; bcp47?: string } | null;
+  identity: IdentityOverlay | null;
 }
+
+/**
+ * Shape of the optional identity overlay accepted by {@link ProjectWorkingCopyVfsInput}.
+ *
+ * Exported so callers (e.g. serializeWorkingCopy) can type their local overlay
+ * variable against this single source rather than repeating the inline literal.
+ */
+export type IdentityOverlay = {
+  displayName?: string;
+  copyright?: string;
+  version?: string;
+  bcp47?: string;
+};
 
 export interface ProjectWorkingCopyVfsResult {
   /** Warnings from any of the three projection steps (empty when all is well). */
