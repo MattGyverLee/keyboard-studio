@@ -536,9 +536,15 @@ function TouchPreviewPane({ baseKeyboard, stage, retry }: TouchPreviewPaneProps)
 
 export interface TouchGalleryProps {
   onComplete: (assignments: TouchAssignment[]) => void;
+  /**
+   * Called when the user clicks Back on the very first character (or from the
+   * empty-inventory guard). Should navigate back to Phase C ("mechanisms").
+   * Phase C will be in its locked/read-only state — no unlock is performed.
+   */
+  onBack: () => void;
 }
 
-export function TouchGallery({ onComplete }: TouchGalleryProps) {
+export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
   const baseVfs = useWorkingCopyStore((s) => s.baseVfs);
   const baseIr = useWorkingCopyStore((s) => s.baseIr);
   const identity = useWorkingCopyStore((s) => s.identity);
@@ -546,6 +552,10 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
 
   // Character inventory — same source MechanismGallery uses.
   const inventory = useWorkingCopyStore((s) => s.session.confirmedInventory);
+
+  // Draft persistence — read on mount; write on every charTouch/skippedChars change.
+  const touchDraft = useWorkingCopyStore((s) => s.touchDraft);
+  const setTouchDraft = useWorkingCopyStore((s) => s.setTouchDraft);
 
   // Derive keyboardId from identity (Track 1) or baseKeyboard (Track 2).
   const keyboardId = identity?.keyboardId ?? baseKeyboard?.id ?? null;
@@ -568,7 +578,13 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
   // ---------------------------------------------------------------------------
 
   // Local map of explicitly-configured characters: char -> TouchAssignment.
-  const [charTouch, setCharTouch] = useState<Map<string, TouchAssignment>>(new Map());
+  // Rehydrated from the store draft on mount so back-navigation from Phase C
+  // preserves work already done in Phase E.
+  const [charTouch, setCharTouch] = useState<Map<string, TouchAssignment>>(() =>
+    touchDraft !== null
+      ? new Map(touchDraft.charTouchEntries)
+      : new Map(),
+  );
 
   // Minimal Keyman-default phone layout — fallback when baseIr is not yet set.
   // Not derived from desktop rules; used only when baseIr === null.
@@ -619,8 +635,29 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
 
   const { stage, retry } = useKeyboardArtifact(baseKeyboard, scaffoldSpec, vfsTransform);
 
-  // Skipped characters.
-  const [skippedChars, setSkippedChars] = useState<Set<string>>(new Set());
+  // Skipped characters. Rehydrated from store draft on mount.
+  const [skippedChars, setSkippedChars] = useState<Set<string>>(() =>
+    touchDraft !== null
+      ? new Set(touchDraft.skippedChars)
+      : new Set(),
+  );
+
+  // Visited-character history stack (most-recently-visited at the end).
+  // Populated by forward navigation; popped by the Back handler.
+  // Using a history stack rather than index-1 arithmetic because the per-char
+  // loop uses wrap-around logic (advanceToNext can skip already-configured chars),
+  // so the actual sequence visited is not simply inventory[i-1].
+  const [charHistory, setCharHistory] = useState<string[]>([]);
+
+  // Write charTouch + skippedChars back to the store draft whenever they change
+  // so that back-navigation (unmount) preserves in-progress work.
+  useEffect(() => {
+    setTouchDraft({
+      charTouchEntries: [...charTouch.entries()],
+      skippedChars: [...skippedChars],
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [charTouch, skippedChars]);
 
   // Current character index.
   const [currentChar, setCurrentChar] = useState<string | null>(null);
@@ -745,12 +782,22 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
     const after = inventory
       .slice(idx + 1)
       .find((c) => !nextCharTouch.has(c) && !nextSkipped.has(c));
-    if (after !== undefined) { setCurrentChar(after); return; }
+    if (after !== undefined) {
+      setCharHistory((h) => [...h, afterChar]);
+      setCurrentChar(after);
+      return;
+    }
     const wrap = inventory
       .slice(0, idx)
       .find((c) => !nextCharTouch.has(c) && !nextSkipped.has(c));
-    if (wrap !== undefined) { setCurrentChar(wrap); return; }
-    // All done — stay; isDone will be true.
+    if (wrap !== undefined) {
+      setCharHistory((h) => [...h, afterChar]);
+      setCurrentChar(wrap);
+      return;
+    }
+    // All done — push afterChar so Back from all-done state returns here.
+    setCharHistory((h) => [...h, afterChar]);
+    // Stay; isDone will be true and currentChar will be set to null separately.
   }
 
   // ---------------------------------------------------------------------------
@@ -805,19 +852,42 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
 
   const handleSkip = useCallback(() => {
     if (currentChar === null) return;
+    const skippedFrom = currentChar;
     const next = new Set([...skippedChars, currentChar]);
     setSkippedChars(next);
     const idx = inventory.indexOf(currentChar);
     const after = inventory
       .slice(idx + 1)
       .find((c) => !charTouch.has(c) && !next.has(c) && c !== currentChar);
-    if (after !== undefined) { setCurrentChar(after); return; }
+    if (after !== undefined) {
+      setCharHistory((h) => [...h, skippedFrom]);
+      setCurrentChar(after);
+      return;
+    }
     const wrap = inventory
       .slice(0, idx)
       .find((c) => !charTouch.has(c) && !next.has(c) && c !== currentChar);
-    if (wrap !== undefined) { setCurrentChar(wrap); return; }
+    if (wrap !== undefined) {
+      setCharHistory((h) => [...h, skippedFrom]);
+      setCurrentChar(wrap);
+      return;
+    }
+    setCharHistory((h) => [...h, skippedFrom]);
     setCurrentChar(null);
   }, [currentChar, inventory, charTouch, skippedChars]);
+
+  // Back handler — pops the history stack to return to the previous character.
+  // When history is empty (first character or empty-inventory guard) calls onBack
+  // to return to Phase C (locked/read-only; no unlock is performed).
+  const handleBack = useCallback(() => {
+    if (charHistory.length === 0) {
+      onBack();
+      return;
+    }
+    const prev = charHistory[charHistory.length - 1] ?? null;
+    setCharHistory((h) => h.slice(0, -1));
+    setCurrentChar(prev);
+  }, [charHistory, onBack]);
 
   const handleRemoveConfigured = useCallback((char: string) => {
     setCharTouch((prev) => {
@@ -858,7 +928,7 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
   const { touchFindings, touchLintRunning } = useTouchLint(editedVfsForLint, keyboardId);
 
   // ---------------------------------------------------------------------------
-  // Shared styles
+  // Shared styles — defined before guards so they can be referenced in guard renders
   // ---------------------------------------------------------------------------
 
   const pageStyle: CSSProperties = {
@@ -890,18 +960,27 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
   if (inventory.length === 0) {
     return (
       <div style={{ ...pageStyle, padding: "24px 32px" }}>
-        <div
-          style={{
-            maxWidth: 560,
-            margin: "60px auto",
-            textAlign: "center",
-            color: TEXT_DIM,
-          }}
-        >
-          <p style={{ fontSize: 15 }}>
-            No characters in inventory yet. Complete the Survey (Phase B) to
-            confirm which characters your keyboard must produce.
-          </p>
+        <div style={{ maxWidth: 560, margin: "0 auto" }}>
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Back to mechanisms"
+            style={ghostBtn}
+          >
+            &larr; Back
+          </button>
+          <div
+            style={{
+              margin: "60px auto",
+              textAlign: "center",
+              color: TEXT_DIM,
+            }}
+          >
+            <p style={{ fontSize: 15 }}>
+              No characters in inventory yet. Complete the Survey (Phase B) to
+              confirm which characters your keyboard must produce.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -939,25 +1018,35 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
           <p style={{ margin: 0, fontSize: 14, color: TEXT_DIM }}>
             All characters configured for touch.
           </p>
-          <button
-            type="button"
-            onClick={handleContinue}
-            aria-label="Continue to next phase"
-            style={{
-              padding: "10px 24px",
-              background: BLUE_ACTION,
-              border: "none",
-              borderRadius: 6,
-              color: "#e6edf3",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-              fontFamily: FONT,
-              alignSelf: "flex-start",
-            }}
-          >
-            Done
-          </button>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label="Back to previous character"
+              style={ghostBtn}
+            >
+              &larr; Back
+            </button>
+            <button
+              type="button"
+              onClick={handleContinue}
+              aria-label="Continue to next phase"
+              style={{
+                padding: "10px 24px",
+                background: BLUE_ACTION,
+                border: "none",
+                borderRadius: 6,
+                color: "#e6edf3",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: FONT,
+                alignSelf: "flex-start",
+              }}
+            >
+              Done
+            </button>
+          </div>
         </div>
       )}
 
@@ -998,6 +1087,22 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
                 {cpStr(currentChar)}
               </span>
             </div>
+          </div>
+
+          {/* Back button — present in both sub-states for consistent placement */}
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label={
+                charHistory.length === 0
+                  ? "Back to mechanisms (Phase C)"
+                  : "Back to previous character"
+              }
+              style={ghostBtn}
+            >
+              &larr; Back
+            </button>
           </div>
 
           {/* Touch access prompt card (shown until dismissed) */}

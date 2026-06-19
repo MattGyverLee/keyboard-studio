@@ -1350,6 +1350,31 @@ export function MechanismGallery({
             </button>
           )}
 
+          {/* Locked — always show a forward escape so the user cannot be trapped
+              after navigating back from Phase E. Editing is disabled by locked but
+              onComplete is always callable. */}
+          {locked && onComplete !== undefined && (
+            <button
+              type="button"
+              onClick={onComplete}
+              aria-label="Continue to touch layout (desktop layout locked)"
+              style={{
+                padding: "9px 20px",
+                background: BLUE_ACTION,
+                border: "none",
+                borderRadius: 6,
+                color: "#e6edf3",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: FONT,
+                alignSelf: "flex-start",
+              }}
+            >
+              Continue to touch layout &rarr;
+            </button>
+          )}
+
           {/* All-done / empty states */}
           {effectiveLettersToAdd.length === 0 && (
             <div

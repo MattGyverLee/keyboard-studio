@@ -338,3 +338,166 @@ describe("TouchGallery — vfsTransform reflects edits (Defect A)", () => {
     void initialCallCount;
   });
 });
+
+// ---------------------------------------------------------------------------
+// Back navigation — within Phase E and first-step → onBack
+// ---------------------------------------------------------------------------
+
+describe("TouchGallery — back navigation", () => {
+  it("Back button on the first character calls onBack (history empty)", async () => {
+    seedStore({ withInventory: ["ä"] });
+    const onBack = vi.fn();
+
+    await act(async () => {
+      render(<TouchGallery onComplete={vi.fn()} onBack={onBack} />);
+    });
+
+    // Find and click the Back button. History is empty on first char so onBack fires.
+    const backBtns = screen.queryAllByRole("button", { name: /back/i });
+    const backBtn = backBtns.find((b) => b.textContent?.includes("Back")) ?? null;
+    expect(backBtn).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(backBtn!);
+    });
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("Back from character 2 returns to character 1 (history-based)", async () => {
+    seedStore({ withInventory: ["ä", "ö"] });
+    const onBack = vi.fn();
+
+    await act(async () => {
+      render(<TouchGallery onComplete={vi.fn()} onBack={onBack} />);
+    });
+
+    // Accept "Already in layout" for "ä" — this calls handleSuggestionAccept
+    // which calls advanceToNext, pushing "ä" onto history and advancing to "ö".
+    const allButtons = screen.queryAllByRole("button");
+    const alreadyBtn = allButtons.find(
+      (b) => b.textContent?.toLowerCase().includes("already in layout"),
+    ) ?? null;
+    expect(alreadyBtn).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(alreadyBtn!);
+    });
+
+    // Should now be on "ö" — find and click Back.
+    const backBtnsAfter = screen.queryAllByRole("button", { name: /back/i });
+    const backBtn = backBtnsAfter.find((b) => b.textContent?.includes("Back")) ?? null;
+    expect(backBtn).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(backBtn!);
+    });
+
+    // onBack should NOT have been called — we went back within Phase E.
+    expect(onBack).not.toHaveBeenCalled();
+
+    // The "ä" character heading should now be visible (we returned to char 1).
+    // Use the per-char "Touch mapping" label which is unique to the per-char UI.
+    const headings = screen.queryAllByText(/Touch mapping/i);
+    expect(headings.length).toBeGreaterThan(0);
+  });
+
+  it("Back from empty-inventory guard calls onBack", async () => {
+    seedStore(); // no inventory
+    const onBack = vi.fn();
+
+    await act(async () => {
+      render(<TouchGallery onComplete={vi.fn()} onBack={onBack} />);
+    });
+
+    // The guard renders a Back button that calls onBack directly.
+    const backBtn = screen.queryByRole("button", { name: /back/i });
+    expect(backBtn).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(backBtn!);
+    });
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("Back from all-done state returns to the last visited character (non-null currentChar)", async () => {
+    // With a two-character inventory, skip "ä" then skip "ö" to reach the
+    // all-done state (currentChar becomes null via handleSkip's setCurrentChar(null)).
+    // Clicking Back should pop the history and restore currentChar to the last
+    // visited character.
+    seedStore({ withInventory: ["ä", "ö"] });
+    const onBack = vi.fn();
+
+    await act(async () => {
+      render(<TouchGallery onComplete={vi.fn()} onBack={onBack} />);
+    });
+
+    // Skip "ä" — advances to "ö".
+    const skipBtns1 = screen.queryAllByRole("button");
+    const skipBtn1 = skipBtns1.find((b) => b.textContent?.toLowerCase() === "skip") ?? null;
+    expect(skipBtn1).not.toBeNull();
+    await act(async () => { fireEvent.click(skipBtn1!); });
+
+    // Skip "ö" — all done, currentChar becomes null.
+    const skipBtns2 = screen.queryAllByRole("button");
+    const skipBtn2 = skipBtns2.find((b) => b.textContent?.toLowerCase() === "skip") ?? null;
+    expect(skipBtn2).not.toBeNull();
+    await act(async () => { fireEvent.click(skipBtn2!); });
+
+    // Now in all-done state — a Back button and Done button should be visible.
+    const allDoneBackBtn = screen.queryByRole("button", { name: /back to previous character/i });
+    expect(allDoneBackBtn).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.click(allDoneBackBtn!);
+    });
+
+    // onBack must NOT have been called — we returned within Phase E.
+    expect(onBack).not.toHaveBeenCalled();
+
+    // currentChar is back to a known character — the per-char heading "Touch mapping"
+    // should reappear.
+    const headings = screen.queryAllByText(/Touch mapping/i);
+    expect(headings.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Draft persistence — store round-trip
+// ---------------------------------------------------------------------------
+
+describe("TouchGallery — draft persistence across unmount/remount", () => {
+  it("charTouch is restored from store draft on remount", async () => {
+    seedStore({ withInventory: ["ä", "ö"] });
+
+    // First mount — accept "Already in layout" for "ä".
+    const { unmount } = await act(async () =>
+      render(<TouchGallery onComplete={vi.fn()} onBack={vi.fn()} />),
+    );
+
+    const allButtons = screen.queryAllByRole("button");
+    const alreadyBtn = allButtons.find(
+      (b) => b.textContent?.toLowerCase().includes("already in layout"),
+    ) ?? null;
+    expect(alreadyBtn).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(alreadyBtn!);
+    });
+
+    // Unmount — simulates navigating back to Phase C.
+    unmount();
+
+    // The store draft should now have "ä" in charTouchEntries.
+    const draft = useWorkingCopyStore.getState().touchDraft;
+    expect(draft).not.toBeNull();
+    expect(draft?.charTouchEntries.some(([char]) => char === "ä")).toBe(true);
+
+    // Remount — a new TouchGallery instance should rehydrate from the draft.
+    await act(async () => {
+      render(<TouchGallery onComplete={vi.fn()} onBack={vi.fn()} />);
+    });
+
+    // The "Configured" chip row should show "ä" (it was persisted).
+    const configuredGroup = screen.queryByRole("group", { name: /configured characters/i });
+    expect(configuredGroup).not.toBeNull();
+    const chipButton = screen.queryByRole("button", { name: new RegExp("ä") });
+    expect(chipButton).not.toBeNull();
+  });
+});

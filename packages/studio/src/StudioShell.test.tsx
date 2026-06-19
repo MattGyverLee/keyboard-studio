@@ -32,6 +32,7 @@ const {
   mockPhaseFBackRef,
   mockTouchECompleteRef,
   mockTouchEAssignmentsRef,
+  mockTouchEBackRef,
 } = vi.hoisted(() => {
   // These refs are updated by mock components so the latest callback is always
   // available to the test when it fires a button click.
@@ -51,6 +52,8 @@ const {
   const mockTouchECompleteRef = { current: null as null | ((a: unknown[]) => void) };
   // Tests set this before clicking e-complete to control the emitted assignments.
   const mockTouchEAssignmentsRef = { current: [] as unknown[] };
+  // onBack callback ref.
+  const mockTouchEBackRef = { current: null as null | (() => void) };
   return {
     mockIdentityCompleteRef,
     mockBaseResolvedRef,
@@ -65,6 +68,7 @@ const {
     mockPhaseFBackRef,
     mockTouchECompleteRef,
     mockTouchEAssignmentsRef,
+    mockTouchEBackRef,
   };
 });
 
@@ -82,6 +86,7 @@ const _mockPhaseFDoneRef = mockPhaseFDoneRef;
 const _mockPhaseFBackRef = mockPhaseFBackRef;
 const _mockTouchECompleteRef = mockTouchECompleteRef;
 const _mockTouchEAssignmentsRef = mockTouchEAssignmentsRef;
+const _mockTouchEBackRef = mockTouchEBackRef;
 
 // ---------------------------------------------------------------------------
 // Mock child survey components — shallow stubs that record callbacks.
@@ -236,8 +241,9 @@ vi.mock("./components/MechanismGallery.tsx", () => ({
 }));
 
 vi.mock("./components/TouchGallery", () => ({
-  TouchGallery: ({ onComplete }: { onComplete: (a: unknown[]) => void }) => {
+  TouchGallery: ({ onComplete, onBack }: { onComplete: (a: unknown[]) => void; onBack: () => void }) => {
     _mockTouchECompleteRef.current = onComplete;
+    _mockTouchEBackRef.current = onBack;
     return (
       <div data-testid="stage-E">
         <button
@@ -246,6 +252,13 @@ vi.mock("./components/TouchGallery", () => ({
           onClick={() => onComplete(_mockTouchEAssignmentsRef.current)}
         >
           Continue
+        </button>
+        <button
+          type="button"
+          data-testid="e-back"
+          onClick={onBack}
+        >
+          Back
         </button>
       </div>
     );
@@ -653,6 +666,50 @@ describe("SurveyView — PhaseF done navigates to #output", () => {
 
     // navigateTo should have been called with 'output'.
     expect(navigateTo).toHaveBeenCalledWith("output");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Back from Phase E returns to "mechanisms" stage
+// ---------------------------------------------------------------------------
+
+describe("SurveyView — Phase E back-navigation returns to mechanisms", () => {
+  it("onBack passed to TouchGallery sets stage to mechanisms", async () => {
+    await act(async () => {
+      render(<SurveyView baseKeyboard={null} />);
+    });
+
+    // Advance to Phase E.
+    advanceToMechanisms();
+    fireEvent.click(screen.getByTestId("mechanisms-complete"));
+    expect(screen.getByTestId("stage-E")).toBeTruthy();
+
+    // Click the back button in the Phase E mock.
+    fireEvent.click(screen.getByTestId("e-back"));
+
+    // Should be back at mechanisms.
+    expect(screen.getByTestId("stage-mechanisms")).toBeTruthy();
+    expect(screen.queryByTestId("stage-E")).toBeNull();
+  });
+
+  it("after returning to mechanisms from E, can advance to E again", async () => {
+    await act(async () => {
+      render(<SurveyView baseKeyboard={null} />);
+    });
+
+    // Advance to Phase E.
+    advanceToMechanisms();
+    fireEvent.click(screen.getByTestId("mechanisms-complete"));
+    expect(screen.getByTestId("stage-E")).toBeTruthy();
+
+    // Go back to mechanisms.
+    fireEvent.click(screen.getByTestId("e-back"));
+    expect(screen.getByTestId("stage-mechanisms")).toBeTruthy();
+
+    // Advance forward again — the mechanisms "Complete" button still calls onComplete.
+    fireEvent.click(screen.getByTestId("mechanisms-complete"));
+    expect(screen.getByTestId("stage-E")).toBeTruthy();
+    expect(screen.queryByTestId("stage-mechanisms")).toBeNull();
   });
 });
 

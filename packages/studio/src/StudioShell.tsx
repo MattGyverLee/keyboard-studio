@@ -500,7 +500,10 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
   if (stage === "E") {
     return (
       <div style={{ height: "100%", overflow: "hidden" }}>
-        <TouchGallery onComplete={handlePhaseEComplete} />
+        <TouchGallery
+          onComplete={handlePhaseEComplete}
+          onBack={() => setStage("mechanisms")}
+        />
       </div>
     );
   }

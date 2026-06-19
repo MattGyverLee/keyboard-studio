@@ -148,6 +148,21 @@ export interface WorkingCopyState {
    * Null until Phase E completes.
    */
   touchLayoutJson: string | null;
+  /**
+   * In-progress Phase E (touch gallery) draft state — persisted across
+   * unmount/remount when the user navigates back to Phase C and returns.
+   *
+   * - `charTouchEntries`: serializable form of the `charTouch` Map
+   *   (array of [char, TouchAssignment] pairs so it survives JSON round-trips).
+   * - `skippedChars`: array form of the `skippedChars` Set.
+   *
+   * Null until Phase E first mounts and writes back state. Cleared on reset
+   * and on a new instantiation.
+   */
+  touchDraft: {
+    charTouchEntries: Array<[string, TouchAssignment]>;
+    skippedChars: string[];
+  } | null;
 
   // -- Actions (irStore) -------------------------------------------------------
   /** Set the carve working IR, clearing carve deletion state. */
@@ -197,6 +212,14 @@ export interface WorkingCopyState {
    * `JSON.stringify(scaffoldTouchLayout(ir), null, 2)` from the call site.
    */
   setTouchLayoutJson: (json: string) => void;
+  /**
+   * Persist the in-progress Phase E draft so it survives an unmount/remount
+   * caused by back-navigation to Phase C. Call from TouchGallery whenever
+   * charTouch or skippedChars change (or on unmount). Pass null to clear.
+   */
+  setTouchDraft: (
+    draft: { charTouchEntries: Array<[string, TouchAssignment]>; skippedChars: string[] } | null,
+  ) => void;
   /**
    * Reset the entire working copy to initial state. Clears all slots
    * including base keyboard, base VFS, base IR, identity, carve IR,
@@ -285,7 +308,7 @@ const INITIAL_STATE: Omit<
   | "setIR" | "clearIR" | "deleteNode" | "undoDelete" | "restoreNode"
   | "isDeleted" | "keepAll" | "recordPhase" | "recordAssignments"
   | "setIrAxes" | "lockDesktop" | "unlockDesktop" | "recordTouchAssignments"
-  | "setTouchLayoutJson" | "reset"
+  | "setTouchLayoutJson" | "setTouchDraft" | "reset"
   | "instantiateFromBase" | "instantiateFromExisting" | "setIdentity" | "isInstantiated"
 > = {
   // instantiation mode
@@ -304,6 +327,7 @@ const INITIAL_STATE: Omit<
   desktopLocked: false,
   touchAssignments: [],
   touchLayoutJson: null,
+  touchDraft: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -395,6 +419,9 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
   setTouchLayoutJson: (json) =>
     set({ touchLayoutJson: json }),
 
+  setTouchDraft: (draft) =>
+    set({ touchDraft: draft }),
+
   reset: () =>
     set({
       ...INITIAL_STATE,
@@ -439,6 +466,7 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       desktopLocked: false,
       touchAssignments: [],
       touchLayoutJson: null,
+      touchDraft: null,
     });
   },
 
@@ -468,6 +496,7 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       desktopLocked: false,
       touchAssignments: [],
       touchLayoutJson: null,
+      touchDraft: null,
     }),
 
   setIdentity: (patch) =>
