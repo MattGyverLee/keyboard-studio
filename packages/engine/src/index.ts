@@ -47,7 +47,8 @@ export type {
 } from "./loader/fetchKeyboardSourceToVfs.js";
 
 // Issues #46/#47 — output service (zip download + GitHub OAuth fork+PR).
-export { createOutputService, toZip, serializeToZip } from "./output/index.js";
+export { createOutputService, toZip, serializeToZip, createGitHubOutputService } from "./output/index.js";
+export type { GitHubOutputConfig, GitHubFetchFn } from "./output/index.js";
 
 // Issue #233 — KeyboardIR codec public surface.
 export { parse as parseKmn, emit as emitKmn, parseKvks, parseTouchLayout, emitTouchLayout, OPAQUE_REASONS } from "./codec/index.js";

@@ -18,7 +18,7 @@
 // serializeWorkingCopy returns null so the caller can show a "nothing to download"
 // state.
 
-import type { Pattern, MechanismAssignment } from "@keyboard-studio/contracts";
+import type { Pattern, MechanismAssignment, VirtualFS } from "@keyboard-studio/contracts";
 import { createVirtualFS } from "@keyboard-studio/contracts";
 import { useWorkingCopyStore } from "../stores/workingCopyStore.ts";
 import { getToZip, getPatternLibraryService } from "./services.ts";
@@ -47,20 +47,46 @@ export interface SerializeWorkingCopyResult {
   version: string;
 }
 
+/**
+ * Result of {@link projectWorkingCopyForOutput} — the projected (cloned)
+ * VirtualFS plus the metadata callers need, BEFORE serialization.
+ *
+ * The zip path ({@link serializeWorkingCopy}) feeds {@link vfs} to toZip; the
+ * GitHub fork+PR path feeds the same {@link vfs} to publishPR. Both consume the
+ * identical projected tree so the downloaded artifact and the committed PR are
+ * guaranteed equivalent.
+ */
+export interface ProjectWorkingCopyForOutputResult {
+  /** The projected (cloned) VirtualFS — never the store's original baseVfs. */
+  vfs: VirtualFS;
+  /** Author-chosen keyboard id (identity.keyboardId) or the base id (filename / branch). */
+  keyboardId: string;
+  /** Author-chosen display name (identity.displayName) or the base displayName. */
+  displayName: string;
+  /** Keyboard version (identity has no version field yet, so the base version). */
+  version: string;
+  /** Warnings from projection steps (carve, assignments, identity). May be empty. */
+  warnings: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
 
 /**
- * Build the full projected VFS for the current working copy and zip it.
+ * Build the full projected (cloned) VFS for the current working copy.
+ *
+ * This is the shared projection step for BOTH output paths — the zip download
+ * ({@link serializeWorkingCopy}) and the GitHub fork+PR path (publishPR). It
+ * returns the projected VirtualFS itself (not zip bytes) so the PR path can
+ * commit the same tree the zip would contain.
  *
  * Returns `null` when the working copy has not been instantiated (no base VFS
  * or base IR). The caller should guard on this and display an appropriate
- * "nothing to download" message or disable the download button.
+ * "nothing to download" message or disable the submit button.
  *
  * All assignments are resolved via the browser pattern library (async). The
- * function never writes to disk — the zip bytes are returned as a `Uint8Array`
- * and the caller is responsible for creating a `Blob` / object URL.
+ * function never writes to disk — it clones baseVfs and projects onto the clone.
  *
  * Projection order matches {@link projectWorkingCopyVfs} exactly:
  *   1. Carve deletions
@@ -73,8 +99,9 @@ export interface SerializeWorkingCopyResult {
  *
  * @see projectWorkingCopyVfs — the pure projection helper this function uses
  * @see useWorkingCopyTransform — the hook that uses the same helper for the OSK preview
+ * @see serializeWorkingCopy — wraps this and zips the result for download
  */
-export async function serializeWorkingCopy(): Promise<SerializeWorkingCopyResult | null> {
+export async function projectWorkingCopyForOutput(): Promise<ProjectWorkingCopyForOutputResult | null> {
   // 1. Read current working-copy store state.
   const state = useWorkingCopyStore.getState();
   const { baseVfs, baseIr, baseKeyboard, deletedNodeIds, phaseResults, identity, touchLayoutJson, instantiationMode } = state;
@@ -237,10 +264,57 @@ export async function serializeWorkingCopy(): Promise<SerializeWorkingCopyResult
     identity: identityForProjection,
   });
 
-  // 6. Serialize to zip.
-  const toZip = await getToZip();
-  const bytes = await toZip(clonedVfs);
-
+  // 6. Merge the adapt-path warnings (HISTORY/.kps staging) with the projection
+  //    warnings. Both output paths (zip + PR) surface the same set.
+  //
+  //    No internal-path mismatch warning is emitted when identity.keyboardId
+  //    differs from the base id: projectWorkingCopyVfs's targetKeyboardId rename
+  //    pass (run in step 5 above) now rewrites source/<baseId>.* → source/<newId>.*
+  //    and the in-file id references, so the output is internally consistent.
   const warnings = [...adaptWarnings, ...projectionWarnings];
-  return { bytes, warnings, keyboardId: outputKeyboardId, version };
+
+  // Return the projected VFS plus metadata. `version` carries main's computed /
+  // bumped value (the adapt-existing path reassigns it above), so BOTH the zip
+  // filename and the PR path get the correct release version.
+  return {
+    vfs: clonedVfs,
+    keyboardId: outputKeyboardId,
+    displayName: identity?.displayName ?? baseKeyboard.displayName,
+    version,
+    warnings,
+  };
+}
+
+/**
+ * Build the full projected VFS for the current working copy and zip it.
+ *
+ * Returns `null` when the working copy has not been instantiated (no base VFS
+ * or base IR). The caller should guard on this and display an appropriate
+ * "nothing to download" message or disable the download button.
+ *
+ * Delegates the projection to {@link projectWorkingCopyForOutput} (the same
+ * pure helper the GitHub fork+PR path consumes), then serializes the projected
+ * VFS to zip via the toZip service accessor. The public return shape
+ * ({@link SerializeWorkingCopyResult}) is a superset of the projection metadata
+ * plus the zip bytes — PreviewShell, the existing tests, and the
+ * `<id>-<version>.zip` filename all depend on the `version` field.
+ *
+ * @see projectWorkingCopyForOutput — the projection helper (returns the VFS)
+ */
+export async function serializeWorkingCopy(): Promise<SerializeWorkingCopyResult | null> {
+  const projected = await projectWorkingCopyForOutput();
+  if (projected === null) {
+    return null;
+  }
+
+  // Serialize to zip.
+  const toZip = await getToZip();
+  const bytes = await toZip(projected.vfs);
+
+  return {
+    bytes,
+    warnings: projected.warnings,
+    keyboardId: projected.keyboardId,
+    version: projected.version,
+  };
 }

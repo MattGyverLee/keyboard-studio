@@ -133,7 +133,7 @@ exactly.
 
 > Keep this section up to date as work lands. Update it whenever a delivery
 > option moves from "not started" to "in progress" or "done".
-> Last updated: 2026-06-18
+> Last updated: 2026-06-19
 
 ### Pipeline prerequisites (must exist before any delivery option works)
 
@@ -168,8 +168,8 @@ exactly.
 | `createGitHubOutputService()` factory | **Done** | Injectable `GitHubFetchFn` for testability; default delegates to global fetch |
 | GitHub OAuth App registration | Not started | Infrastructure — register an OAuth App at github.com/settings/developers |
 | OAuth token-exchange backend | **Done (code) / deploy pending** | `utilities/oauth-backend/` — Fastify v5 service; `POST /oauth/exchange`, `POST /oauth/refresh`, `GET /oauth/health`; client secret server-side only; 30 vitest specs (service implemented; deploy target + GitHub OAuth App registration still pending) |
-| Studio UI — OAuth authorise flow | Not started | PKCE web-app flow; engine receives the token, does not manage the OAuth exchange |
-| Studio UI — "Submit PR" button | Not started | Wire `verifyToken` → gate button; call `publishPR` on confirm |
+| Studio UI — OAuth authorise flow | **Done** | Issue #148 — `packages/studio/src/lib/githubOAuth.ts` (PKCE + sessionStorage token store), `lib/handleOAuthCallback.ts`, `hooks/useGitHubAuth.ts`; engine `verifyToken` consumed via `services.ts` `getGitHubOutputService()`; copyright-attestation gate per spec §12/Scenario E |
+| Studio UI — "Submit PR" button | **Done** | Issue #148 — `components/GitHubSubmitPanel.tsx`; gates on `verifyToken`, calls `publishPR` on confirm via `services.ts` `getGitHubOutputService()`; full `PublishPRError` message matrix; lint-checklist PR-body composer (green/yellow/red) deferred to follow-up — ships editable default body stub |
 
 ### Option B — Org-mediated, abstracted
 
@@ -184,6 +184,6 @@ exactly.
 
 ```
 Option C  [====================]  100%  engine + studio UI done; full end-to-end zip download wired (#32)
-Option A  [================----]   80%  engine + token-exchange backend done; OAuth App + studio UI remaining
+Option A  [==================--]   90%  engine + studio UI done (#148); OAuth App registration + backend deploy remaining
 Option B  [--------------------]    0%  design done (github_flow.md); nothing built
 ```
