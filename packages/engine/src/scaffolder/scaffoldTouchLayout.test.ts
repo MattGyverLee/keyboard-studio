@@ -328,7 +328,10 @@ describe("scaffoldTouchLayout", () => {
       expect(skIds.some((id) => /^U_[0-9A-F]{4,5}$/i.test(id))).toBe(true);
     });
 
-    it("the hint is set to the first successor character for a S-02 key", () => {
+    it("hint is NOT set on a S-02 key — dot comes from platform defaultHint", () => {
+      // scaffoldTouchLayout must not assign a per-key hint. The Keyman runtime
+      // renders the dot (•) automatically when platform defaultHint is "dot"
+      // and the key has sk entries.
       const vkey = "K_A";
       const successorChar = "à";
       const ownedNodeId = freshId("rule");
@@ -354,7 +357,11 @@ describe("scaffoldTouchLayout", () => {
       const allKeys = defaultLayer.rows.flatMap((r) => r.keys);
       const targetKey = allKeys.find((k) => k.id === vkey)!;
 
-      expect(targetKey.hint).toBe(successorChar);
+      // hint must be undefined — no character hint is generated
+      expect(targetKey.hint).toBeUndefined();
+      // sk must still be populated (that behaviour is unchanged)
+      expect(targetKey.sk).toBeDefined();
+      expect(targetKey.sk!.length).toBeGreaterThan(0);
     });
 
     it("a pattern whose strategyId does NOT start with S-02 does not produce sk[]", () => {

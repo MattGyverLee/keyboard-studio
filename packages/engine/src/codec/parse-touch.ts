@@ -203,10 +203,11 @@ export function emitTouchLayout(ir: TouchLayoutIR): string {
     }));
     const platformOut: Record<string, unknown> = {
       layer,
-      // defaultHint is required on TouchLayoutPlatform per the vendor type; the
-      // kmc-kmn writer does not hard-require it at runtime, but emit "longpress"
-      // as a safe default so the output is schema-conformant.
-      defaultHint: "longpress",
+      // defaultHint is required on TouchLayoutPlatform per the vendor type.
+      // "dot" causes the Keyman runtime to render a generic dot (•) hint on any
+      // key that has longpress sub-keys (sk), rather than showing the first
+      // sub-key character. Per-key explicit `hint` fields still override this.
+      defaultHint: "dot",
     };
     if (platform.font !== undefined) platformOut["font"] = platform.font;
     out[platform.id] = platformOut;

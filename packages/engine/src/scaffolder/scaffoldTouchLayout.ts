@@ -274,12 +274,10 @@ function buildTouchKey(
   };
 
   // Populate sk[] from deadkey successors if the vkey has any.
+  // No per-key hint is set here — the dot (•) is supplied automatically by the
+  // Keyman runtime because the platform defaultHint is "dot".
   const successors = deadkeySuccessors.get(vkey);
   if (successors && successors.length > 0) {
-    const firstSuccessor = successors[0];
-    if (firstSuccessor !== undefined) {
-      key.hint = firstSuccessor; // corner hint signals a longpress menu exists
-    }
     key.sk = successors.map((ch) => ({
       nodeId: minter.mint("touchKey"),
       // U_<UPPERHEX> id: Keyman outputs the codepoint from this id form — no
@@ -387,14 +385,12 @@ function augmentExistingPhoneLayers(
 
         if (newSk.length === 0) return key;
 
-        const firstSuccessor = successors[0];
         const augmented: TouchKeyIR = {
           ...key,
           sk: [...existingSk, ...newSk],
         };
-        if (augmented.hint === undefined && firstSuccessor !== undefined) {
-          augmented.hint = firstSuccessor;
-        }
+        // No per-key hint set here — the dot (•) is supplied automatically by
+        // the Keyman runtime because the platform defaultHint is "dot".
         return augmented;
       });
 

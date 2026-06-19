@@ -171,10 +171,9 @@ export function applyTouchAssignments(
         sk: [...existingSk, newSkKey],
       };
 
-      // Set hint only when not already set (do NOT overwrite deadkey-derived hint).
-      if (updated.hint === undefined) {
-        updated.hint = char;
-      }
+      // No per-key hint set here. The dot (•) is supplied automatically by the
+      // Keyman runtime because the platform defaultHint is "dot"; an explicit
+      // hint would override the dot and re-reveal a character.
 
       setWorkingKey(hostKey, updated);
       continue;

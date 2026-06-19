@@ -281,12 +281,14 @@ describe("emitTouchLayout", () => {
     }
   });
 
-  it("emits defaultHint on every platform (schema-conformant output)", () => {
+  it("emits defaultHint 'dot' on every platform (dot hint — no char revealed)", () => {
+    // "dot" causes the Keyman runtime to render a generic • on any key with
+    // longpress sub-keys, rather than showing the first sub-key character.
     const ir = parseTouchLayout(MULTI_PLATFORM_TOUCH);
     const json = emitTouchLayout(ir);
     const reparsed = JSON.parse(json) as Record<string, { defaultHint?: string }>;
     for (const [pid, platform] of Object.entries(reparsed)) {
-      expect(platform.defaultHint, `platform "${pid}" must have defaultHint`).toBeTruthy();
+      expect(platform.defaultHint, `platform "${pid}" must have defaultHint`).toBe("dot");
     }
   });
 

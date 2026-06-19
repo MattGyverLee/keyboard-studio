@@ -140,16 +140,20 @@ describe("applyTouchAssignments — longpress", () => {
     expect(key.sk![0]!.output).toBeUndefined();
   });
 
-  it("sets hint when hint was previously undefined", () => {
+  it("does NOT set a per-key hint — dot comes from platform defaultHint", () => {
+    // applyTouchAssignments must not assign a hint; the Keyman runtime renders
+    // the dot automatically when defaultHint is "dot" and sk is non-empty.
     const layout = makeLayout([makeKey("K_A")]);
     const { layout: out } = applyTouchAssignments(layout, [longpress("K_A", "á")]);
-    expect(getKey(out, "K_A")!.hint).toBe("á");
+    expect(getKey(out, "K_A")!.hint).toBeUndefined();
   });
 
-  it("does NOT overwrite an existing hint (deadkey-derived hint preserved)", () => {
+  it("leaves a pre-existing explicit hint untouched (imported keyboard hint preserved)", () => {
+    // If an imported key already carries an explicit hint, it must not be
+    // cleared or overwritten — applyTouchAssignments never writes hint.
     const layout = makeLayout([makeKey("K_A", { hint: "â" })]);
     const { layout: out } = applyTouchAssignments(layout, [longpress("K_A", "á")]);
-    // hint stays as "â", not overwritten to "á"
+    // hint remains "â" — it was already set on the key from import, not by us
     expect(getKey(out, "K_A")!.hint).toBe("â");
   });
 });
