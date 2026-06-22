@@ -27,7 +27,8 @@
 
 import { useState, useEffect, useMemo, useCallback, type CSSProperties } from "react";
 import type { TouchAssignment } from "@keyboard-studio/contracts";
-import { buildMinimalPhoneTouchLayout, emitTouchLayout } from "@keyboard-studio/engine";
+import { createVirtualFS } from "@keyboard-studio/contracts";
+import { buildTouchLayoutJson } from "../lib/buildTouchLayoutJson.ts";
 import { useWorkingCopyStore } from "../stores/workingCopyStore.ts";
 import { LintSummary } from "../lint/LintSummary.tsx";
 import { useTouchLint } from "../hooks/useTouchLint.ts";
@@ -534,15 +535,26 @@ function TouchPreviewPane({ baseKeyboard, stage, retry }: TouchPreviewPaneProps)
 
 export interface TouchGalleryProps {
   onComplete: (assignments: TouchAssignment[]) => void;
+  /**
+   * Called when the user clicks Back on the very first character (or from the
+   * empty-inventory guard). Should navigate back to Phase C ("mechanisms").
+   * Phase C will be in its locked/read-only state — no unlock is performed.
+   */
+  onBack: () => void;
 }
 
-export function TouchGallery({ onComplete }: TouchGalleryProps) {
+export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
   const baseVfs = useWorkingCopyStore((s) => s.baseVfs);
+  const baseIr = useWorkingCopyStore((s) => s.baseIr);
   const identity = useWorkingCopyStore((s) => s.identity);
   const baseKeyboard = useWorkingCopyStore((s) => s.baseKeyboard);
 
   // Character inventory — same source MechanismGallery uses.
   const inventory = useWorkingCopyStore((s) => s.session.confirmedInventory);
+
+  // Draft persistence — read on mount; write on every charTouch/skippedChars change.
+  const touchDraft = useWorkingCopyStore((s) => s.touchDraft);
+  const setTouchDraft = useWorkingCopyStore((s) => s.setTouchDraft);
 
   // Derive keyboardId from identity (Track 1) or baseKeyboard (Track 2).
   const keyboardId = identity?.keyboardId ?? baseKeyboard?.id ?? null;
@@ -556,38 +568,97 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
       identity?.keyboardId != null
         ? { keyboardId: identity.keyboardId, displayName: identity.displayName ?? "" }
         : null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [identity?.keyboardId, identity?.displayName],
   );
 
-  // Minimal Keyman-default phone layout — injected only when the keyboard
-  // has no existing .keyman-touch-layout. Not derived from desktop rules.
-  const minimalTouchJson = useMemo(() => emitTouchLayout(buildMinimalPhoneTouchLayout()), []);
+  // ---------------------------------------------------------------------------
+  // Per-character touch assignment state (declared early — memos below depend on it)
+  // ---------------------------------------------------------------------------
 
-  // VFS transform: inject a minimal touch layout only when the base keyboard
-  // has none. Keyboards that already ship a .keyman-touch-layout use theirs.
+  // Local map of explicitly-configured characters: char -> TouchAssignment.
+  // Rehydrated from the store draft on mount so back-navigation from Phase C
+  // preserves work already done in Phase E.
+  const [charTouch, setCharTouch] = useState<Map<string, TouchAssignment>>(() =>
+    touchDraft !== null
+      ? new Map(touchDraft.charTouchEntries)
+      : new Map(),
+  );
+
+  // Stable primitive key serializing the current charTouch map so useMemo fires
+  // exactly when the author's edits change (mirrors assignmentsKey in
+  // useWorkingCopyTransform.ts lines ~100-111 — same pattern, different source).
+  const touchKey = useMemo(
+    () =>
+      [...charTouch.values()]
+        .map(
+          (a) =>
+            `${a.target}:${a.mechanisms
+              .map((m) => `${m.patternId}/${JSON.stringify(m.slotValues ?? {})}`)
+              .join(",")}`,
+        )
+        .join("|"),
+    [charTouch],
+  );
+
+  // Build applied touch layout JSON only when the author has made real (non-inherited)
+  // touch edits. When there are no such edits, return null so the VFS is left
+  // untouched and KMW renders its own polished native default (or the keyboard's
+  // shipped .keyman-touch-layout file is used verbatim).
+  //
+  // "Real edit" = at least one assignment whose patternId !== "touch_inherited".
+  // This filter matches handleContinue exactly (the single source of truth).
+  const touchLayoutJson = useMemo(() => {
+    const appliedEdits = [...charTouch.values()].filter(
+      (a) => a.mechanisms[0]?.patternId !== "touch_inherited",
+    );
+    if (appliedEdits.length === 0) return null;
+    if (baseIr === null) return null;
+    return buildTouchLayoutJson(baseIr, appliedEdits).json;
+    // touchKey drives re-evaluation when charTouch changes (Map identity is
+    // not stable; the key is). baseIr is a stable snapshot post-lockDesktop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseIr, touchKey]);
+
+  // VFS transform: inject the generated touch layout only when the author has
+  // made real (non-inherited) touch edits. When touchLayoutJson is null — either
+  // because no real edits exist or because the emit pipeline failed — leave the
+  // VFS untouched so KMW renders its own polished native default (or the
+  // keyboard's shipped .keyman-touch-layout file is used verbatim).
   const vfsTransform = useMemo<VfsTransform>(
     () => (vfs, kbId) => {
-      const touchPath = `source/${kbId}.keyman-touch-layout`;
-      if (vfs.get(touchPath) === undefined) {
-        vfs.set(touchPath, minimalTouchJson);
+      if (touchLayoutJson !== null) {
+        vfs.set(`source/${kbId}.keyman-touch-layout`, touchLayoutJson);
       }
       return { warnings: [] };
     },
-    [minimalTouchJson],
+    [touchLayoutJson],
   );
 
   const { stage, retry } = useKeyboardArtifact(baseKeyboard, scaffoldSpec, vfsTransform);
 
-  // ---------------------------------------------------------------------------
-  // Per-character touch assignment state
-  // ---------------------------------------------------------------------------
+  // Skipped characters. Rehydrated from store draft on mount.
+  const [skippedChars, setSkippedChars] = useState<Set<string>>(() =>
+    touchDraft !== null
+      ? new Set(touchDraft.skippedChars)
+      : new Set(),
+  );
 
-  // Local map of explicitly-configured characters: char -> TouchAssignment.
-  const [charTouch, setCharTouch] = useState<Map<string, TouchAssignment>>(new Map());
+  // Visited-character history stack (most-recently-visited at the end).
+  // Populated by forward navigation; popped by the Back handler.
+  // Using a history stack rather than index-1 arithmetic because the per-char
+  // loop uses wrap-around logic (advanceToNext can skip already-configured chars),
+  // so the actual sequence visited is not simply inventory[i-1].
+  const [charHistory, setCharHistory] = useState<string[]>([]);
 
-  // Skipped characters.
-  const [skippedChars, setSkippedChars] = useState<Set<string>>(new Set());
+  // Write charTouch + skippedChars back to the store draft whenever they change
+  // so that back-navigation (unmount) preserves in-progress work.
+  useEffect(() => {
+    setTouchDraft({
+      charTouchEntries: [...charTouch.entries()],
+      skippedChars: [...skippedChars],
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [charTouch, skippedChars]);
 
   // Current character index.
   const [currentChar, setCurrentChar] = useState<string | null>(null);
@@ -712,12 +783,22 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
     const after = inventory
       .slice(idx + 1)
       .find((c) => !nextCharTouch.has(c) && !nextSkipped.has(c));
-    if (after !== undefined) { setCurrentChar(after); return; }
+    if (after !== undefined) {
+      setCharHistory((h) => [...h, afterChar]);
+      setCurrentChar(after);
+      return;
+    }
     const wrap = inventory
       .slice(0, idx)
       .find((c) => !nextCharTouch.has(c) && !nextSkipped.has(c));
-    if (wrap !== undefined) { setCurrentChar(wrap); return; }
-    // All done — stay; isDone will be true.
+    if (wrap !== undefined) {
+      setCharHistory((h) => [...h, afterChar]);
+      setCurrentChar(wrap);
+      return;
+    }
+    // All done — push afterChar so Back from all-done state returns here.
+    setCharHistory((h) => [...h, afterChar]);
+    // Stay; isDone will be true and currentChar will be set to null separately.
   }
 
   // ---------------------------------------------------------------------------
@@ -772,19 +853,42 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
 
   const handleSkip = useCallback(() => {
     if (currentChar === null) return;
+    const skippedFrom = currentChar;
     const next = new Set([...skippedChars, currentChar]);
     setSkippedChars(next);
     const idx = inventory.indexOf(currentChar);
     const after = inventory
       .slice(idx + 1)
       .find((c) => !charTouch.has(c) && !next.has(c) && c !== currentChar);
-    if (after !== undefined) { setCurrentChar(after); return; }
+    if (after !== undefined) {
+      setCharHistory((h) => [...h, skippedFrom]);
+      setCurrentChar(after);
+      return;
+    }
     const wrap = inventory
       .slice(0, idx)
       .find((c) => !charTouch.has(c) && !next.has(c) && c !== currentChar);
-    if (wrap !== undefined) { setCurrentChar(wrap); return; }
+    if (wrap !== undefined) {
+      setCharHistory((h) => [...h, skippedFrom]);
+      setCurrentChar(wrap);
+      return;
+    }
+    setCharHistory((h) => [...h, skippedFrom]);
     setCurrentChar(null);
   }, [currentChar, inventory, charTouch, skippedChars]);
+
+  // Back handler — pops the history stack to return to the previous character.
+  // When history is empty (first character or empty-inventory guard) calls onBack
+  // to return to Phase C (locked/read-only; no unlock is performed).
+  const handleBack = useCallback(() => {
+    if (charHistory.length === 0) {
+      onBack();
+      return;
+    }
+    const prev = charHistory[charHistory.length - 1] ?? null;
+    setCharHistory((h) => h.slice(0, -1));
+    setCurrentChar(prev);
+  }, [charHistory, onBack]);
 
   const handleRemoveConfigured = useCallback((char: string) => {
     setCharTouch((prev) => {
@@ -807,11 +911,24 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
     onComplete(assignments);
   }, [charTouch, onComplete]);
 
-  // Touch lint — runs on the base VFS via the single debounce cycle.
-  const { touchFindings, touchLintRunning } = useTouchLint(baseVfs, keyboardId);
+  // Projected VFS for lint — clones baseVfs and overwrites the touch layout path
+  // with the same touchLayoutJson the preview uses (lint, preview, output agree).
+  // When touchLayoutJson is null (baseIr not yet set) lint sees the raw baseVfs.
+  // keyboardId in deps so the path key stays correct if the id changes.
+  const editedVfsForLint = useMemo(() => {
+    if (baseVfs === null) return null;
+    if (touchLayoutJson === null || keyboardId === null) return baseVfs;
+    const cloned = createVirtualFS(baseVfs.entries());
+    cloned.set(`source/${keyboardId}.keyman-touch-layout`, touchLayoutJson);
+    return cloned;
+  }, [baseVfs, touchLayoutJson, keyboardId]);
+
+  // Touch lint — runs on the projected (edited) VFS so checks 18.1–18.5 reflect
+  // Phase E edits. The existing 300ms debounce inside useTouchLint is unchanged.
+  const { touchFindings, touchLintRunning } = useTouchLint(editedVfsForLint, keyboardId);
 
   // ---------------------------------------------------------------------------
-  // Shared styles
+  // Shared styles — defined before guards so they can be referenced in guard renders
   // ---------------------------------------------------------------------------
 
   const pageStyle: CSSProperties = {
@@ -843,18 +960,27 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
   if (inventory.length === 0) {
     return (
       <div style={{ ...pageStyle, padding: "24px 32px" }}>
-        <div
-          style={{
-            maxWidth: 560,
-            margin: "60px auto",
-            textAlign: "center",
-            color: TEXT_DIM,
-          }}
-        >
-          <p style={{ fontSize: 15 }}>
-            No characters in inventory yet. Complete the Survey (Phase B) to
-            confirm which characters your keyboard must produce.
-          </p>
+        <div style={{ maxWidth: 560, margin: "0 auto" }}>
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Back to mechanisms"
+            style={ghostBtn}
+          >
+            &larr; Back
+          </button>
+          <div
+            style={{
+              margin: "60px auto",
+              textAlign: "center",
+              color: TEXT_DIM,
+            }}
+          >
+            <p style={{ fontSize: 15 }}>
+              No characters in inventory yet. Complete the Survey (Phase B) to
+              confirm which characters your keyboard must produce.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -892,25 +1018,35 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
           <p style={{ margin: 0, fontSize: 14, color: TEXT_DIM }}>
             All characters configured for touch.
           </p>
-          <button
-            type="button"
-            onClick={handleContinue}
-            aria-label="Continue to next phase"
-            style={{
-              padding: "10px 24px",
-              background: BLUE_ACTION,
-              border: "none",
-              borderRadius: 6,
-              color: "#e6edf3",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-              fontFamily: FONT,
-              alignSelf: "flex-start",
-            }}
-          >
-            Done
-          </button>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label="Back to previous character"
+              style={ghostBtn}
+            >
+              &larr; Back
+            </button>
+            <button
+              type="button"
+              onClick={handleContinue}
+              aria-label="Continue to next phase"
+              style={{
+                padding: "10px 24px",
+                background: BLUE_ACTION,
+                border: "none",
+                borderRadius: 6,
+                color: "#e6edf3",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: FONT,
+                alignSelf: "flex-start",
+              }}
+            >
+              Done
+            </button>
+          </div>
         </div>
       )}
 
@@ -951,6 +1087,22 @@ export function TouchGallery({ onComplete }: TouchGalleryProps) {
                 {cpStr(currentChar)}
               </span>
             </div>
+          </div>
+
+          {/* Back button — present in both sub-states for consistent placement */}
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label={
+                charHistory.length === 0
+                  ? "Back to mechanisms (Phase C)"
+                  : "Back to previous character"
+              }
+              style={ghostBtn}
+            >
+              &larr; Back
+            </button>
           </div>
 
           {/* Touch access prompt card (shown until dismissed) */}

@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { useResizablePanes } from "./hooks/useResizablePanes.ts";
 import type { BaseKeyboard, Pattern, SurveyPhaseResult, TouchAssignment } from "@keyboard-studio/contracts";
-import { scaffoldTouchLayout } from "@keyboard-studio/engine";
+import { buildTouchLayoutJson } from "./lib/buildTouchLayoutJson.ts";
 import { useWorkingCopyStore } from "./stores/workingCopyStore.ts";
 import { instantiateFromBaseIfConfirmed } from "./lib/confirmRebase.ts";
 import { IdentityLite, Prefill, PhaseB, PhaseF, type IdentityLiteResult } from "./survey/index.ts";
@@ -290,7 +290,7 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
   const lockDesktop = useWorkingCopyStore((s) => s.lockDesktop);
   const recordTouchAssignments = useWorkingCopyStore((s) => s.recordTouchAssignments);
   const setTouchLayoutJson = useWorkingCopyStore((s) => s.setTouchLayoutJson);
-  const ir = useWorkingCopyStore((s) => s.ir);
+  const baseIr = useWorkingCopyStore((s) => s.baseIr);
 
   // Derive KMN source from the working copy's base VFS (the scaffolded snapshot)
   // so the validator can produce findings while the survey is in progress.
@@ -370,12 +370,28 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
   }
   function handlePhaseEComplete(assignments: TouchAssignment[]) {
     recordTouchAssignments(assignments);
-    // Persist the scaffolded touch layout JSON so serializeWorkingCopy can
-    // inject it into source/<keyboardId>.keyman-touch-layout at output time.
-    // Option B: base VFS is immutable after instantiation; JSON stored as a
-    // side-car string and written into the cloned VFS before zipping.
-    if (ir !== null) {
-      setTouchLayoutJson(JSON.stringify(scaffoldTouchLayout(ir), null, 2));
+    // assignments arriving here are already filtered to non-inherited by
+    // TouchGallery.handleContinue — do NOT double-filter.
+    //
+    // Inject-only-when-real-edits policy: if there are no non-inherited
+    // assignments, clear any previously stored touch layout and let KMW use
+    // its own native default (or the keyboard's shipped .keyman-touch-layout).
+    // Only generate and store a layout when there is something real to inject.
+    if (assignments.length === 0 || baseIr === null) {
+      setTouchLayoutJson(null);
+    } else {
+      try {
+        const { json, warnings } = buildTouchLayoutJson(baseIr, assignments);
+        if (warnings.length > 0) {
+          console.error("[handlePhaseEComplete] buildTouchLayoutJson warnings:", warnings);
+        }
+        // json is null when the emit pipeline threw — omit the touch layout
+        // rather than injecting null/empty. setStage("F") still runs below.
+        setTouchLayoutJson(json);
+      } catch (err) {
+        console.error("[handlePhaseEComplete] buildTouchLayoutJson threw unexpectedly:", err);
+        setTouchLayoutJson(null);
+      }
     }
     setStage("F");
   }
@@ -487,7 +503,10 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
   if (stage === "E") {
     return (
       <div style={{ height: "100%", overflow: "hidden" }}>
-        <TouchGallery onComplete={handlePhaseEComplete} />
+        <TouchGallery
+          onComplete={handlePhaseEComplete}
+          onBack={() => setStage("mechanisms")}
+        />
       </div>
     );
   }

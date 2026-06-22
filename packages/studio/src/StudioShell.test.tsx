@@ -30,6 +30,9 @@ const {
   mockMechBackRef,
   mockPhaseFDoneRef,
   mockPhaseFBackRef,
+  mockTouchECompleteRef,
+  mockTouchEAssignmentsRef,
+  mockTouchEBackRef,
 } = vi.hoisted(() => {
   // These refs are updated by mock components so the latest callback is always
   // available to the test when it fires a button click.
@@ -44,6 +47,13 @@ const {
   const mockMechBackRef = { current: null as null | (() => void) };
   const mockPhaseFDoneRef = { current: null as null | ((...args: unknown[]) => void) };
   const mockPhaseFBackRef = { current: null as null | (() => void) };
+  // TouchGallery mock: ref holds the onComplete callback so tests can fire it
+  // with arbitrary assignments, and ref holds the assignments to emit.
+  const mockTouchECompleteRef = { current: null as null | ((a: unknown[]) => void) };
+  // Tests set this before clicking e-complete to control the emitted assignments.
+  const mockTouchEAssignmentsRef = { current: [] as unknown[] };
+  // onBack callback ref.
+  const mockTouchEBackRef = { current: null as null | (() => void) };
   return {
     mockIdentityCompleteRef,
     mockBaseResolvedRef,
@@ -56,6 +66,9 @@ const {
     mockMechBackRef,
     mockPhaseFDoneRef,
     mockPhaseFBackRef,
+    mockTouchECompleteRef,
+    mockTouchEAssignmentsRef,
+    mockTouchEBackRef,
   };
 });
 
@@ -71,6 +84,9 @@ const _mockMechDoneRef = mockMechDoneRef;
 const _mockMechBackRef = mockMechBackRef;
 const _mockPhaseFDoneRef = mockPhaseFDoneRef;
 const _mockPhaseFBackRef = mockPhaseFBackRef;
+const _mockTouchECompleteRef = mockTouchECompleteRef;
+const _mockTouchEAssignmentsRef = mockTouchEAssignmentsRef;
+const _mockTouchEBackRef = mockTouchEBackRef;
 
 // ---------------------------------------------------------------------------
 // Mock child survey components — shallow stubs that record callbacks.
@@ -225,17 +241,28 @@ vi.mock("./components/MechanismGallery.tsx", () => ({
 }));
 
 vi.mock("./components/TouchGallery", () => ({
-  TouchGallery: ({ onComplete }: { onComplete: (a: unknown[]) => void }) => (
-    <div data-testid="stage-E">
-      <button
-        type="button"
-        data-testid="e-complete"
-        onClick={() => onComplete([])}
-      >
-        Continue
-      </button>
-    </div>
-  ),
+  TouchGallery: ({ onComplete, onBack }: { onComplete: (a: unknown[]) => void; onBack: () => void }) => {
+    _mockTouchECompleteRef.current = onComplete;
+    _mockTouchEBackRef.current = onBack;
+    return (
+      <div data-testid="stage-E">
+        <button
+          type="button"
+          data-testid="e-complete"
+          onClick={() => onComplete(_mockTouchEAssignmentsRef.current)}
+        >
+          Continue
+        </button>
+        <button
+          type="button"
+          data-testid="e-back"
+          onClick={onBack}
+        >
+          Back
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock("./components/UnsupportedScriptStub.tsx", () => ({
@@ -311,6 +338,18 @@ vi.mock("./lib/confirmRebase.ts", () => ({
   instantiateFromBaseIfConfirmed: vi.fn(),
 }));
 
+// Mock buildTouchLayoutJson so Defect B tests never call real engine code.
+// Returns a deterministic JSON string that includes the assignment info.
+vi.mock("./lib/buildTouchLayoutJson.ts", () => ({
+  buildTouchLayoutJson: (
+    _baseIr: unknown,
+    assignments: Array<{ target: string; mechanisms: Array<{ patternId: string; slotValues?: Record<string, string> }> }>,
+  ) => ({
+    json: JSON.stringify({ _mock: true, assignments }),
+    warnings: [],
+  }),
+}));
+
 // Shallow stub for PreviewShell — routing tests assert on the marker div, not
 // the internal pipeline. The real PreviewShell is covered by PreviewShell.test.tsx.
 vi.mock("./components/PreviewShell.tsx", () => ({
@@ -334,6 +373,8 @@ vi.mock("./lib/navigate.ts", () => ({
 
 import { SurveyView, StudioShell } from "./StudioShell.tsx";
 import { navigateTo } from "./lib/navigate.ts";
+import { makeTestIR, basicKbdus } from "@keyboard-studio/contracts/fixtures";
+import { createVirtualFS } from "@keyboard-studio/contracts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -635,6 +676,50 @@ describe("SurveyView — PhaseF done navigates to #output", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Back from Phase E returns to "mechanisms" stage
+// ---------------------------------------------------------------------------
+
+describe("SurveyView — Phase E back-navigation returns to mechanisms", () => {
+  it("onBack passed to TouchGallery sets stage to mechanisms", async () => {
+    await act(async () => {
+      render(<SurveyView baseKeyboard={null} />);
+    });
+
+    // Advance to Phase E.
+    advanceToMechanisms();
+    fireEvent.click(screen.getByTestId("mechanisms-complete"));
+    expect(screen.getByTestId("stage-E")).toBeTruthy();
+
+    // Click the back button in the Phase E mock.
+    fireEvent.click(screen.getByTestId("e-back"));
+
+    // Should be back at mechanisms.
+    expect(screen.getByTestId("stage-mechanisms")).toBeTruthy();
+    expect(screen.queryByTestId("stage-E")).toBeNull();
+  });
+
+  it("after returning to mechanisms from E, can advance to E again", async () => {
+    await act(async () => {
+      render(<SurveyView baseKeyboard={null} />);
+    });
+
+    // Advance to Phase E.
+    advanceToMechanisms();
+    fireEvent.click(screen.getByTestId("mechanisms-complete"));
+    expect(screen.getByTestId("stage-E")).toBeTruthy();
+
+    // Go back to mechanisms.
+    fireEvent.click(screen.getByTestId("e-back"));
+    expect(screen.getByTestId("stage-mechanisms")).toBeTruthy();
+
+    // Advance forward again — the mechanisms "Complete" button still calls onComplete.
+    fireEvent.click(screen.getByTestId("mechanisms-complete"));
+    expect(screen.getByTestId("stage-E")).toBeTruthy();
+    expect(screen.queryByTestId("stage-mechanisms")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Track 2 (Adapt) routing — issue #388
 // ---------------------------------------------------------------------------
 //
@@ -689,5 +774,112 @@ describe("SurveyView — Track 2 (adapt) routing", () => {
     fireEvent.click(screen.getByTestId("project-name-next"));
     expect(screen.getByTestId("stage-prefill")).toBeTruthy();
     expect(screen.queryByTestId("stage-project-name")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Defect B regression — handlePhaseEComplete applies assignments to output
+// ---------------------------------------------------------------------------
+//
+// handlePhaseEComplete must call setTouchLayoutJson with JSON derived from
+// buildTouchLayoutJson(baseIr, assignments) — NOT scaffoldTouchLayout(ir)
+// with the assignments ignored. We seed baseIr into the store, emit a
+// longpress assignment from the TouchGallery mock, and assert the stored
+// touchLayoutJson contains the assignment data.
+
+describe("SurveyView — handlePhaseEComplete applies assignments to output (Defect B)", () => {
+  it("setTouchLayoutJson is called with JSON containing the emitted assignment", async () => {
+    await act(async () => {
+      render(<SurveyView baseKeyboard={null} />);
+    });
+
+    // Seed baseIr into the store so handlePhaseEComplete can call buildTouchLayoutJson.
+    // The mock buildTouchLayoutJson serialises its `assignments` arg into the JSON,
+    // so we can assert the round-trip without touching real engine code.
+    const fakeIr = makeTestIR([]);
+    act(() => {
+      useWorkingCopyStore.getState().instantiateFromBase(basicKbdus, {
+        vfs: createVirtualFS([]),
+        ir: fakeIr,
+      });
+    });
+
+    // Set the assignments the TouchGallery mock will emit when e-complete fires.
+    // A longpress of "ä" on K_A is the canonical Defect B example.
+    const longpressAssignment = {
+      scope: "individual" as const,
+      target: "ä",
+      modality: "touch" as const,
+      mechanisms: [{ patternId: "longpress_alternates", slotValues: { hostKey: "K_A", char: "ä" } }],
+      source: "user" as const,
+    };
+    _mockTouchEAssignmentsRef.current = [longpressAssignment];
+
+    // Navigate to stage E and fire the TouchGallery complete button.
+    advanceToMechanisms();
+    fireEvent.click(screen.getByTestId("mechanisms-complete"));
+    // Stage E is now shown.
+    expect(screen.getByTestId("stage-E")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("e-complete"));
+    });
+
+    // The mock buildTouchLayoutJson encodes the assignments into the JSON.
+    // Verify the stored touchLayoutJson contains the assignment target "ä".
+    const stored = useWorkingCopyStore.getState().touchLayoutJson;
+    expect(stored).not.toBeNull();
+    expect(stored).toContain("longpress_alternates");
+    expect(stored).toContain("K_A");
+  });
+
+  it("setTouchLayoutJson(null) when baseIr is null (no real edits possible)", async () => {
+    await act(async () => {
+      render(<SurveyView baseKeyboard={null} />);
+    });
+
+    // baseIr is null — store is not seeded. handlePhaseEComplete must call
+    // setTouchLayoutJson(null) rather than attempting to build a layout.
+    _mockTouchEAssignmentsRef.current = [];
+
+    advanceToMechanisms();
+    fireEvent.click(screen.getByTestId("mechanisms-complete"));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("e-complete"));
+    });
+
+    // Store baseIr is null → touchLayoutJson must remain null.
+    expect(useWorkingCopyStore.getState().touchLayoutJson).toBeNull();
+  });
+
+  it("setTouchLayoutJson(null) when assignments is empty even with baseIr set", async () => {
+    await act(async () => {
+      render(<SurveyView baseKeyboard={null} />);
+    });
+
+    // Seed baseIr so the branch condition is clear: assignments empty → null,
+    // regardless of baseIr presence.
+    const fakeIr = makeTestIR([]);
+    act(() => {
+      useWorkingCopyStore.getState().instantiateFromBase(basicKbdus, {
+        vfs: createVirtualFS([]),
+        ir: fakeIr,
+      });
+    });
+
+    // Empty assignments — no real touch edits were made.
+    _mockTouchEAssignmentsRef.current = [];
+
+    advanceToMechanisms();
+    fireEvent.click(screen.getByTestId("mechanisms-complete"));
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("e-complete"));
+    });
+
+    // No real edits → touchLayoutJson must be null so serializeWorkingCopy
+    // leaves the VFS untouched and KMW uses its native default.
+    expect(useWorkingCopyStore.getState().touchLayoutJson).toBeNull();
   });
 });

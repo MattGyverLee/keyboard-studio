@@ -24,7 +24,13 @@ interface RawKey {
   nextlayer?: string;
   sk?: RawKey[];
   multitap?: RawKey[];
-  // other visual/positioning fields ignored
+  /** Wire format encodes sp as a JSON string (e.g. `"sp": "1"`); also accept a number for robustness. */
+  sp?: string | number;
+  /** Wire format encodes width as a JSON string (e.g. `"width": "100"`); also accept a number for robustness. */
+  width?: string | number;
+  /** Wire format encodes pad as a JSON string (e.g. `"pad": "50"`); also accept a number for robustness. */
+  pad?: string | number;
+  hint?: string;
   [key: string]: unknown;
 }
 
@@ -59,6 +65,19 @@ function convertKey(raw: RawKey, minter: NodeIdMinter): TouchKeyIR {
   if (raw.text !== undefined) key.text = raw.text;
   if (raw.output !== undefined) key.output = raw.output;
   if (raw.nextlayer !== undefined) key.nextlayer = raw.nextlayer;
+  if (typeof raw.hint === "string" && raw.hint.length > 0) key.hint = raw.hint;
+  if (raw.sp !== undefined && raw.sp !== "") {
+    const spNum = typeof raw.sp === "number" ? raw.sp : Number(raw.sp);
+    if (Number.isFinite(spNum)) key.sp = spNum;
+  }
+  if (raw.width !== undefined && raw.width !== "") {
+    const widthNum = typeof raw.width === "number" ? raw.width : Number(raw.width);
+    if (Number.isFinite(widthNum)) key.width = widthNum;
+  }
+  if (raw.pad !== undefined && raw.pad !== "") {
+    const padNum = typeof raw.pad === "number" ? raw.pad : Number(raw.pad);
+    if (Number.isFinite(padNum)) key.pad = padNum;
+  }
   if (Array.isArray(raw.sk) && raw.sk.length > 0) {
     key.sk = raw.sk.map(sk => convertKey(sk, minter));
   }
@@ -149,6 +168,7 @@ function emitKey(key: TouchKeyIR): EmittedKey {
   if (key.hint !== undefined) out["hint"] = key.hint;
   if (key.sp !== undefined) out["sp"] = String(key.sp);
   if (key.width !== undefined) out["width"] = String(key.width);
+  if (key.pad !== undefined) out["pad"] = String(key.pad);
   if (key.nextlayer !== undefined) out["nextlayer"] = key.nextlayer;
   if (key.sk !== undefined && key.sk.length > 0) {
     out["sk"] = key.sk.map(emitKey);
@@ -181,9 +201,21 @@ export function emitTouchLayout(ir: TouchLayoutIR): string {
   for (const platform of ir.platforms) {
     const layer = platform.layers.map((l) => ({
       id: l.id,
-      row: l.rows.map((r) => ({ key: r.keys.map(emitKey) })),
+      row: l.rows.map((r, rowIdx) => ({
+        // row.id is required by the kmc-kmn TouchLayoutFileWriter (fixup calls
+        // row.id.toString()); emit 1-based numeric ids matching the Keyman schema.
+        id: rowIdx + 1,
+        key: r.keys.map(emitKey),
+      })),
     }));
-    const platformOut: Record<string, unknown> = { layer };
+    const platformOut: Record<string, unknown> = {
+      layer,
+      // defaultHint is required on TouchLayoutPlatform per the vendor type.
+      // "dot" causes the Keyman runtime to render a generic dot (•) hint on any
+      // key that has longpress sub-keys (sk), rather than showing the first
+      // sub-key character. Per-key explicit `hint` fields still override this.
+      defaultHint: "dot",
+    };
     if (platform.font !== undefined) platformOut["font"] = platform.font;
     out[platform.id] = platformOut;
   }

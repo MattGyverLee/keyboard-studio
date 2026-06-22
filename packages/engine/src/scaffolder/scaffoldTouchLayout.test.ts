@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scaffoldTouchLayout } from "./scaffoldTouchLayout.js";
+import { scaffoldTouchLayout, buildMinimalPhoneTouchLayout } from "./scaffoldTouchLayout.js";
 import type {
   KeyboardIR,
   IRGroup,
@@ -91,6 +91,15 @@ function makeS02Pattern(
 }
 
 // ---------------------------------------------------------------------------
+// Helper: get the phone platform + named layer
+// ---------------------------------------------------------------------------
+
+function getLayer(result: TouchLayoutIR, layerId: string) {
+  const phone = result.platforms.find((p) => p.id === "phone")!;
+  return phone.layers.find((l) => l.id === layerId);
+}
+
+// ---------------------------------------------------------------------------
 // Test suite
 // ---------------------------------------------------------------------------
 
@@ -116,19 +125,33 @@ describe("scaffoldTouchLayout", () => {
     it("the phone platform has a default layer", () => {
       const ir = makeMinimalIR();
       const result = scaffoldTouchLayout(ir);
-
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const defaultLayer = phone.layers.find((l) => l.id === "default");
-      expect(defaultLayer).toBeDefined();
+      expect(getLayer(result, "default")).toBeDefined();
     });
 
-    it("the phone platform has at least one row in the default layer", () => {
+    it("the phone platform has a shift layer", () => {
       const ir = makeMinimalIR();
       const result = scaffoldTouchLayout(ir);
+      expect(getLayer(result, "shift")).toBeDefined();
+    });
 
+    it("the phone platform has a numeric layer", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      expect(getLayer(result, "numeric")).toBeDefined();
+    });
+
+    it("the phone platform has exactly 3 layers (default + shift + numeric) when no RALT rules", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
       const phone = result.platforms.find((p) => p.id === "phone")!;
-      const defaultLayer = phone.layers.find((l) => l.id === "default")!;
-      expect(defaultLayer.rows.length).toBeGreaterThanOrEqual(1);
+      expect(phone.layers.map((l) => l.id)).toEqual(["default", "shift", "numeric"]);
+    });
+
+    it("the phone platform has 4 rows in the default layer (3 char rows + 1 functional)", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      expect(defaultLayer.rows).toHaveLength(4);
     });
 
     it("does not mutate the input IR", () => {
@@ -144,17 +167,186 @@ describe("scaffoldTouchLayout", () => {
     });
   });
 
-  describe("default layer mapping", () => {
-    it("IR with a simple base-layer key (no modifiers) produces a phone platform touch key with the matching output", () => {
-      // Rule: K_A with no modifiers → 'a'
+  // ---------------------------------------------------------------------------
+  // CRITICAL: ≤10 keys/row in every layer
+  // ---------------------------------------------------------------------------
+
+  describe("compact layout — ≤10 keys per row in every layer", () => {
+    it("every row in every layer of the generated phone platform has ≤10 keys", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const phone = result.platforms.find((p) => p.id === "phone")!;
+
+      for (const layer of phone.layers) {
+        for (let i = 0; i < layer.rows.length; i++) {
+          const row = layer.rows[i]!;
+          expect(
+            row.keys.length,
+            `layer "${layer.id}" row ${i} has ${row.keys.length} keys (max 10)`,
+          ).toBeLessThanOrEqual(10);
+        }
+      }
+    });
+
+    it("buildMinimalPhoneTouchLayout: every row in every layer has ≤10 keys", () => {
+      const layout = buildMinimalPhoneTouchLayout();
+      const phone = layout.platforms.find((p) => p.id === "phone")!;
+
+      for (const layer of phone.layers) {
+        for (let i = 0; i < layer.rows.length; i++) {
+          const row = layer.rows[i]!;
+          expect(
+            row.keys.length,
+            `layer "${layer.id}" row ${i} has ${row.keys.length} keys (max 10)`,
+          ).toBeLessThanOrEqual(10);
+        }
+      }
+    });
+
+    it("default layer row 0 (QWERTY) has exactly 10 keys", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      expect(defaultLayer.rows[0]!.keys).toHaveLength(10);
+    });
+
+    it("default layer row 1 (ASDF) has exactly 10 keys (9 letters + spacer)", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      expect(defaultLayer.rows[1]!.keys).toHaveLength(10);
+    });
+
+    it("default layer row 2 (ZXCV) has exactly 10 keys", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      expect(defaultLayer.rows[2]!.keys).toHaveLength(10);
+    });
+
+    it("default layer row 3 (functional) has exactly 4 keys", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      expect(defaultLayer.rows[3]!.keys).toHaveLength(4);
+    });
+
+    it("numeric layer row 0 has exactly 10 keys", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      expect(numLayer.rows[0]!.keys).toHaveLength(10);
+    });
+
+    it("numeric layer row 1 has exactly 10 keys (9 symbols + spacer)", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      expect(numLayer.rows[1]!.keys).toHaveLength(10);
+    });
+
+    it("numeric layer row 2 has exactly 9 keys", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      expect(numLayer.rows[2]!.keys).toHaveLength(9);
+    });
+
+    it("numeric layer row 3 (functional) has exactly 4 keys", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      expect(numLayer.rows[3]!.keys).toHaveLength(4);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Layer switch wiring
+  // ---------------------------------------------------------------------------
+
+  describe("layer switch wiring", () => {
+    it("default layer K_SHIFT has sp:1 and nextlayer:'shift'", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      const funcRow = defaultLayer.rows[2]!;
+      const shift = funcRow.keys.find((k) => k.id === "K_SHIFT");
+      expect(shift).toBeDefined();
+      expect(shift?.text).toBe("*Shift*");
+      expect(shift?.sp).toBe(1);
+      expect(shift?.nextlayer).toBe("shift");
+    });
+
+    it("shift layer K_SHIFT has sp:2 and nextlayer:'default'", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const shiftLayer = getLayer(result, "shift")!;
+      const row2 = shiftLayer.rows[2]!;
+      const shift = row2.keys.find((k) => k.id === "K_SHIFT");
+      expect(shift).toBeDefined();
+      expect(shift?.text).toBe("*Shift*");
+      expect(shift?.sp).toBe(2);
+      expect(shift?.nextlayer).toBe("default");
+    });
+
+    it("default layer K_NUMLOCK has nextlayer:'numeric'", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      const funcRow = defaultLayer.rows[3]!;
+      const numlock = funcRow.keys.find((k) => k.id === "K_NUMLOCK");
+      expect(numlock).toBeDefined();
+      expect(numlock?.text).toBe("*123*");
+      expect(numlock?.sp).toBe(1);
+      expect(numlock?.nextlayer).toBe("numeric");
+    });
+
+    it("shift layer K_NUMLOCK has nextlayer:'numeric'", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const shiftLayer = getLayer(result, "shift")!;
+      const funcRow = shiftLayer.rows[3]!;
+      const numlock = funcRow.keys.find((k) => k.id === "K_NUMLOCK");
+      expect(numlock?.nextlayer).toBe("numeric");
+    });
+
+    it("numeric layer K_LOWER has nextlayer:'default' (abc switch)", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const funcRow = numLayer.rows[3]!;
+      const lower = funcRow.keys.find((k) => k.id === "K_LOWER");
+      expect(lower).toBeDefined();
+      expect(lower?.text).toBe("*abc*");
+      expect(lower?.sp).toBe(1);
+      expect(lower?.nextlayer).toBe("default");
+    });
+
+    it("K_SHIFT has no sk[] on default or shift layer", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const phone = result.platforms.find((p) => p.id === "phone")!;
+
+      for (const layer of ["default", "shift"] as const) {
+        const lyr = phone.layers.find((l) => l.id === layer)!;
+        const row2 = lyr.rows[2]!;
+        const shift = row2.keys.find((k) => k.id === "K_SHIFT");
+        expect(shift?.sk, `K_SHIFT sk on layer ${layer}`).toBeUndefined();
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Key text population (letter keys from keyMap)
+  // ---------------------------------------------------------------------------
+
+  describe("letter key text from keyMap", () => {
+    it("default layer K_A uses keyboard mapping when present", () => {
       const rule = makeCharRule("K_A", [], "a");
       const ir = makeMinimalIR({ groups: [makeGroup([rule])] });
 
       const result = scaffoldTouchLayout(ir);
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const defaultLayer = phone.layers.find((l) => l.id === "default")!;
-
-      // Find the K_A key across all rows.
+      const defaultLayer = getLayer(result, "default")!;
       const allKeys = defaultLayer.rows.flatMap((r) => r.keys);
       const kaKey = allKeys.find((k) => k.id === "K_A");
       expect(kaKey).toBeDefined();
@@ -162,49 +354,342 @@ describe("scaffoldTouchLayout", () => {
       expect(kaKey?.text).toBe("a");
     });
 
-    it("default layer does not carry SHIFT-modified output", () => {
-      // Rule: K_A with SHIFT → 'A'
+    it("shift layer K_A uses shift keyMap mapping", () => {
       const rule = makeCharRule("K_A", ["SHIFT"], "A");
       const ir = makeMinimalIR({ groups: [makeGroup([rule])] });
 
       const result = scaffoldTouchLayout(ir);
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const defaultLayer = phone.layers.find((l) => l.id === "default")!;
+      const shiftLayer = getLayer(result, "shift")!;
+      const allKeys = shiftLayer.rows.flatMap((r) => r.keys);
+      const kaKey = allKeys.find((k) => k.id === "K_A");
+      expect(kaKey?.output).toBe("A");
+    });
 
+    it("default layer does not carry SHIFT-modified output", () => {
+      const rule = makeCharRule("K_A", ["SHIFT"], "A");
+      const ir = makeMinimalIR({ groups: [makeGroup([rule])] });
+
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
       const allKeys = defaultLayer.rows.flatMap((r) => r.keys);
       const kaKey = allKeys.find((k) => k.id === "K_A");
-      // The key exists in the default layer (seeded from QWERTY), but without
-      // a desktop base-layer rule its output should be absent (not 'A').
+      // The key uses the US fallback 'a', not the SHIFT-mapped 'A'.
       if (kaKey !== undefined) {
         expect(kaKey.output).not.toBe("A");
       }
     });
-  });
 
-  describe("shift layer", () => {
-    it("IR with a SHIFT-modified key produces a shift layer on the phone platform", () => {
-      const rule = makeCharRule("K_A", ["SHIFT"], "A");
-      const ir = makeMinimalIR({ groups: [makeGroup([rule])] });
-
+    it("US fallback keycap is used for unmapped letter keys in default layer (K_A → 'a')", () => {
+      const ir = makeMinimalIR();
       const result = scaffoldTouchLayout(ir);
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const shiftLayer = phone.layers.find((l) => l.id === "shift");
-      expect(shiftLayer).toBeDefined();
+      const defaultLayer = getLayer(result, "default")!;
+      const allKeys = defaultLayer.rows.flatMap((r) => r.keys);
+      expect(allKeys.find((k) => k.id === "K_A")?.text).toBe("a");
     });
 
-    it("shift layer contains the correct output for the SHIFT-modified key", () => {
-      const rule = makeCharRule("K_A", ["SHIFT"], "A");
-      const ir = makeMinimalIR({ groups: [makeGroup([rule])] });
-
+    it("US fallback keycap for shift layer uses uppercase (K_A → 'A')", () => {
+      const ir = makeMinimalIR();
       const result = scaffoldTouchLayout(ir);
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const shiftLayer = phone.layers.find((l) => l.id === "shift")!;
+      const shiftLayer = getLayer(result, "shift")!;
       const allKeys = shiftLayer.rows.flatMap((r) => r.keys);
-      const kaKey = allKeys.find((k) => k.id === "K_A");
-      expect(kaKey).toBeDefined();
-      expect(kaKey?.output).toBe("A");
+      expect(allKeys.find((k) => k.id === "K_A")?.text).toBe("A");
+    });
+
+    it("default layer row 0 Q key uses US fallback 'q' when unmapped", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      const allKeys = defaultLayer.rows.flatMap((r) => r.keys);
+      expect(allKeys.find((k) => k.id === "K_Q")?.text).toBe("q");
+    });
+
+    it("shift layer row 0 Q key uses US fallback 'Q' when unmapped", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const shiftLayer = getLayer(result, "shift")!;
+      const allKeys = shiftLayer.rows.flatMap((r) => r.keys);
+      expect(allKeys.find((k) => k.id === "K_Q")?.text).toBe("Q");
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Numeric layer literals (fixed, not from keyMap)
+  // ---------------------------------------------------------------------------
+
+  describe("numeric layer literal keys", () => {
+    it("numeric row 0 contains literal digit keys 1–9 and 0", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row0Keys = numLayer.rows[0]!.keys;
+
+      const texts = row0Keys.map((k) => k.text);
+      expect(texts).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]);
+    });
+
+    it("numeric row 1 contains $ @ # % & _ = | \\ and a spacer", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row1Keys = numLayer.rows[1]!.keys;
+
+      // First 9 are symbols, last is spacer (sp:10)
+      const symbolTexts = row1Keys.slice(0, 9).map((k) => k.text);
+      expect(symbolTexts).toEqual(["$", "@", "#", "%", "&", "_", "=", "|", "\\"]);
+      const spacer = row1Keys[9]!;
+      expect(spacer.sp).toBe(10);
+    });
+
+    it("numeric row 2 first key is K_LBRKT with text '[' and pad:110", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const firstKey = numLayer.rows[2]!.keys[0]!;
+      expect(firstKey.id).toBe("K_LBRKT");
+      expect(firstKey.text).toBe("[");
+      expect(firstKey.pad).toBe(110);
+    });
+
+    it("numeric row 2 last key is K_BKSP with sp:1 and width:100", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row2 = numLayer.rows[2]!;
+      const lastKey = row2.keys[row2.keys.length - 1]!;
+      expect(lastKey.id).toBe("K_BKSP");
+      expect(lastKey.text).toBe("*BkSp*");
+      expect(lastKey.sp).toBe(1);
+      expect(lastKey.width).toBe(100);
+    });
+
+    it("numeric row 3 contains K_LOWER, K_LOPT, K_SPACE, K_ENTER", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const funcRow = numLayer.rows[3]!;
+      const ids = funcRow.keys.map((k) => k.id);
+      expect(ids).toContain("K_LOWER");
+      expect(ids).toContain("K_LOPT");
+      expect(ids).toContain("K_SPACE");
+      expect(ids).toContain("K_ENTER");
+    });
+
+    // -----------------------------------------------------------------------
+    // U_ id correctness and uniqueness (P0 fix verification)
+    // -----------------------------------------------------------------------
+
+    it("all literal-character keys in the numeric layer use U_ id form", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+
+      // Collect all keys across all rows; exclude functional/spacer keys.
+      const functionalIds = new Set([
+        "K_LOWER", "K_NUMLOCK", "K_LOPT", "K_SPACE", "K_ENTER",
+        "K_BKSP", "K_LBRKT", "K_RBRKT", "T_ks_sp_numeric",
+      ]);
+
+      for (const row of numLayer.rows) {
+        for (const key of row.keys) {
+          if (functionalIds.has(key.id)) continue;
+          expect(
+            key.id,
+            `literal key with text "${key.text}" should use U_ id form`,
+          ).toMatch(/^U_[0-9A-F]{4,5}$/);
+        }
+      }
+    });
+
+    it("all key ids in the numeric layer are unique", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+
+      const allIds = numLayer.rows.flatMap((row) => row.keys.map((k) => k.id));
+      const uniqueIds = new Set(allIds);
+      expect(
+        uniqueIds.size,
+        `numeric layer has ${allIds.length} keys but only ${uniqueIds.size} unique ids — duplicates: ${
+          allIds.filter((id, i) => allIds.indexOf(id) !== i).join(", ")
+        }`,
+      ).toBe(allIds.length);
+    });
+
+    it("pipe character key has id U_007C", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row1Keys = numLayer.rows[1]!.keys;
+      const pipeKey = row1Keys.find((k) => k.text === "|");
+      expect(pipeKey).toBeDefined();
+      expect(pipeKey!.id).toBe("U_007C");
+    });
+
+    it("backslash character key has id U_005C", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row1Keys = numLayer.rows[1]!.keys;
+      const bslashKey = row1Keys.find((k) => k.text === "\\");
+      expect(bslashKey).toBeDefined();
+      expect(bslashKey!.id).toBe("U_005C");
+    });
+
+    it("dollar sign key has id U_0024", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row1Keys = numLayer.rows[1]!.keys;
+      const dollarKey = row1Keys.find((k) => k.text === "$");
+      expect(dollarKey).toBeDefined();
+      expect(dollarKey!.id).toBe("U_0024");
+    });
+
+    it("digit '1' key in row 0 has id U_0031", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row0Keys = numLayer.rows[0]!.keys;
+      const oneKey = row0Keys.find((k) => k.text === "1");
+      expect(oneKey).toBeDefined();
+      expect(oneKey!.id).toBe("U_0031");
+    });
+
+    it("digit '0' key in row 0 has id U_0030", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row0Keys = numLayer.rows[0]!.keys;
+      const zeroKey = row0Keys.find((k) => k.text === "0");
+      expect(zeroKey).toBeDefined();
+      expect(zeroKey!.id).toBe("U_0030");
+    });
+
+    it("numeric layer row 0 still has ≤10 keys after U_ conversion", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      expect(numLayer.rows[0]!.keys.length).toBeLessThanOrEqual(10);
+    });
+
+    it("numeric layer row 1 still has ≤10 keys after U_ conversion", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      expect(numLayer.rows[1]!.keys.length).toBeLessThanOrEqual(10);
+    });
+
+    it("buildMinimalPhoneTouchLayout numeric layer has all-unique ids", () => {
+      const layout = buildMinimalPhoneTouchLayout();
+      const phone = layout.platforms.find((p) => p.id === "phone")!;
+      const numLayer = phone.layers.find((l) => l.id === "numeric")!;
+
+      const allIds = numLayer.rows.flatMap((row) => row.keys.map((k) => k.id));
+      const uniqueIds = new Set(allIds);
+      expect(
+        uniqueIds.size,
+        `buildMinimalPhoneTouchLayout numeric layer has duplicate ids: ${
+          allIds.filter((id, i) => allIds.indexOf(id) !== i).join(", ")
+        }`,
+      ).toBe(allIds.length);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Functional row: K_LOPT / K_SPACE / K_ENTER widths
+  // ---------------------------------------------------------------------------
+
+  describe("functional row key properties", () => {
+    it("default layer K_LOPT has text:'*Menu*', sp:1, width:120", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      const funcRow = defaultLayer.rows[3]!;
+      const lopt = funcRow.keys.find((k) => k.id === "K_LOPT");
+      expect(lopt?.text).toBe("*Menu*");
+      expect(lopt?.sp).toBe(1);
+      expect(lopt?.width).toBe(120);
+    });
+
+    it("default layer K_SPACE has text:'' and width:610", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      const funcRow = defaultLayer.rows[3]!;
+      const space = funcRow.keys.find((k) => k.id === "K_SPACE");
+      expect(space?.text).toBe("");
+      expect(space?.width).toBe(610);
+    });
+
+    it("default layer K_ENTER has text:'*Enter*', sp:1, width:150", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      const funcRow = defaultLayer.rows[3]!;
+      const enter = funcRow.keys.find((k) => k.id === "K_ENTER");
+      expect(enter?.text).toBe("*Enter*");
+      expect(enter?.sp).toBe(1);
+      expect(enter?.width).toBe(150);
+    });
+
+    it("default layer K_NUMLOCK has text:'*123*', sp:1, width:150", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      const funcRow = defaultLayer.rows[3]!;
+      const numlock = funcRow.keys.find((k) => k.id === "K_NUMLOCK");
+      expect(numlock?.text).toBe("*123*");
+      expect(numlock?.sp).toBe(1);
+      expect(numlock?.width).toBe(150);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Row 1 spacer (ASDF row trailing spacer)
+  // ---------------------------------------------------------------------------
+
+  describe("ASDF row spacer", () => {
+    it("default layer row 1 last key is a spacer with sp:10 and width:10", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      const row1 = defaultLayer.rows[1]!;
+      const lastKey = row1.keys[row1.keys.length - 1]!;
+      expect(lastKey.sp).toBe(10);
+      expect(lastKey.width).toBe(10);
+    });
+
+    it("shift layer row 1 spacer has id 'T_ks_sp_shift'", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const shiftLayer = getLayer(result, "shift")!;
+      const row1 = shiftLayer.rows[1]!;
+      const lastKey = row1.keys[row1.keys.length - 1]!;
+      expect(lastKey.id).toBe("T_ks_sp_shift");
+    });
+
+    it("default layer row 1 spacer has id 'T_ks_sp_default'", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      const row1 = defaultLayer.rows[1]!;
+      const lastKey = row1.keys[row1.keys.length - 1]!;
+      expect(lastKey.id).toBe("T_ks_sp_default");
+    });
+
+    it("default layer row 1 K_A has pad:50", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const defaultLayer = getLayer(result, "default")!;
+      const row1 = defaultLayer.rows[1]!;
+      const ka = row1.keys.find((k) => k.id === "K_A");
+      expect(ka?.pad).toBe(50);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // altgr layer
+  // ---------------------------------------------------------------------------
 
   describe("altgr layer", () => {
     it("IR with an RALT-modified key produces an altgr layer", () => {
@@ -212,9 +697,7 @@ describe("scaffoldTouchLayout", () => {
       const ir = makeMinimalIR({ groups: [makeGroup([rule])] });
 
       const result = scaffoldTouchLayout(ir);
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const altgrLayer = phone.layers.find((l) => l.id === "altgr");
-      expect(altgrLayer).toBeDefined();
+      expect(getLayer(result, "altgr")).toBeDefined();
     });
 
     it("altgr layer carries the correct output for the RALT key", () => {
@@ -222,8 +705,7 @@ describe("scaffoldTouchLayout", () => {
       const ir = makeMinimalIR({ groups: [makeGroup([rule])] });
 
       const result = scaffoldTouchLayout(ir);
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const altgrLayer = phone.layers.find((l) => l.id === "altgr")!;
+      const altgrLayer = getLayer(result, "altgr")!;
       const allKeys = altgrLayer.rows.flatMap((r) => r.keys);
       const kaKey = allKeys.find((k) => k.id === "K_A");
       expect(kaKey).toBeDefined();
@@ -231,7 +713,6 @@ describe("scaffoldTouchLayout", () => {
     });
 
     it("IR without any RALT keys does NOT produce an altgr layer", () => {
-      // Only base-layer and SHIFT rules — no RALT.
       const rules = [
         makeCharRule("K_A", [], "a"),
         makeCharRule("K_A", ["SHIFT"], "A"),
@@ -240,31 +721,42 @@ describe("scaffoldTouchLayout", () => {
       const ir = makeMinimalIR({ groups: [makeGroup(rules)] });
 
       const result = scaffoldTouchLayout(ir);
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const altgrLayer = phone.layers.find((l) => l.id === "altgr");
-      expect(altgrLayer).toBeUndefined();
+      expect(getLayer(result, "altgr")).toBeUndefined();
     });
 
-    it("RALT+SHIFT combination is NOT mapped to a top-level touch layer (spec §8 rule)", () => {
-      // RALT+SHIFT rules should be ignored; no altgr layer should appear unless
-      // there is at least one RALT-only (no SHIFT) rule present.
+    it("RALT+SHIFT combination is NOT mapped to a top-level touch layer", () => {
       const raltShiftRule = makeCharRule("K_A", ["RALT", "SHIFT"], "Ä");
       const ir = makeMinimalIR({ groups: [makeGroup([raltShiftRule])] });
 
       const result = scaffoldTouchLayout(ir);
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const altgrLayer = phone.layers.find((l) => l.id === "altgr");
-      // RALT+SHIFT → no altgr layer
-      expect(altgrLayer).toBeUndefined();
+      expect(getLayer(result, "altgr")).toBeUndefined();
+    });
+
+    it("altgr layer every row has ≤10 keys", () => {
+      const rule = makeCharRule("K_A", ["RALT"], "à");
+      const ir = makeMinimalIR({ groups: [makeGroup([rule])] });
+
+      const result = scaffoldTouchLayout(ir);
+      const altgrLayer = getLayer(result, "altgr")!;
+      for (let i = 0; i < altgrLayer.rows.length; i++) {
+        const row = altgrLayer.rows[i]!;
+        expect(
+          row.keys.length,
+          `altgr row ${i} has ${row.keys.length} keys (max 10)`,
+        ).toBeLessThanOrEqual(10);
+      }
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // deadkey → sk[]
+  // ---------------------------------------------------------------------------
 
   describe("deadkey → sk[]", () => {
     it("recognized S-02 pattern causes relevant touch key to have non-empty sk[]", () => {
       const vkey = "K_E";
       const successorChar = "é";
 
-      // Build owned rule: deadkey context + vkey + char output
       const ownedNodeId = freshId("rule");
       const deadkeyRule: IRRule = {
         nodeId: ownedNodeId,
@@ -283,8 +775,7 @@ describe("scaffoldTouchLayout", () => {
       });
 
       const result = scaffoldTouchLayout(ir);
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const defaultLayer = phone.layers.find((l) => l.id === "default")!;
+      const defaultLayer = getLayer(result, "default")!;
       const allKeys = defaultLayer.rows.flatMap((r) => r.keys);
       const targetKey = allKeys.find((k) => k.id === vkey);
 
@@ -293,7 +784,7 @@ describe("scaffoldTouchLayout", () => {
       expect(targetKey?.sk?.length).toBeGreaterThan(0);
     });
 
-    it("sk[] entries carry the correct successor character output", () => {
+    it("sk[] entries carry the correct successor character (text; U_-id form)", () => {
       const vkey = "K_E";
       const successorChar = "é";
       const ownedNodeId = freshId("rule");
@@ -314,16 +805,18 @@ describe("scaffoldTouchLayout", () => {
       });
 
       const result = scaffoldTouchLayout(ir);
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const defaultLayer = phone.layers.find((l) => l.id === "default")!;
+      const defaultLayer = getLayer(result, "default")!;
       const allKeys = defaultLayer.rows.flatMap((r) => r.keys);
       const targetKey = allKeys.find((k) => k.id === vkey)!;
 
-      const skOutputs = targetKey.sk!.map((s) => s.output);
-      expect(skOutputs).toContain(successorChar);
+      const skTexts = targetKey.sk!.map((s) => s.text);
+      expect(skTexts).toContain(successorChar);
+      // U_-id form: é = U+00E9 → "U_00E9"
+      const skIds = targetKey.sk!.map((s) => s.id);
+      expect(skIds.some((id) => /^U_[0-9A-F]{4,5}$/i.test(id))).toBe(true);
     });
 
-    it("the hint is set to the first successor character for a S-02 key", () => {
+    it("hint is NOT set on a S-02 key — dot comes from platform defaultHint", () => {
       const vkey = "K_A";
       const successorChar = "à";
       const ownedNodeId = freshId("rule");
@@ -344,16 +837,16 @@ describe("scaffoldTouchLayout", () => {
       });
 
       const result = scaffoldTouchLayout(ir);
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const defaultLayer = phone.layers.find((l) => l.id === "default")!;
+      const defaultLayer = getLayer(result, "default")!;
       const allKeys = defaultLayer.rows.flatMap((r) => r.keys);
       const targetKey = allKeys.find((k) => k.id === vkey)!;
 
-      expect(targetKey.hint).toBe(successorChar);
+      expect(targetKey.hint).toBeUndefined();
+      expect(targetKey.sk).toBeDefined();
+      expect(targetKey.sk!.length).toBeGreaterThan(0);
     });
 
     it("a pattern whose strategyId does NOT start with S-02 does not produce sk[]", () => {
-      // S-01 pattern — should not generate longpress sk[] entries.
       const vkey = "K_A";
       const pattern: Pattern = {
         id: "test_s01_pattern",
@@ -376,17 +869,110 @@ describe("scaffoldTouchLayout", () => {
       const ir = makeMinimalIR({ recognizedPatterns: [pattern] });
       const result = scaffoldTouchLayout(ir);
 
-      const phone = result.platforms.find((p) => p.id === "phone")!;
-      const defaultLayer = phone.layers.find((l) => l.id === "default")!;
+      const defaultLayer = getLayer(result, "default")!;
       const allKeys = defaultLayer.rows.flatMap((r) => r.keys);
       const kaKey = allKeys.find((k) => k.id === vkey);
 
-      // Key may or may not exist in the layout, but sk must not be populated.
       if (kaKey !== undefined) {
         expect(kaKey.sk === undefined || kaKey.sk.length === 0).toBe(true);
       }
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // buildMinimalPhoneTouchLayout — canonical compact structure
+  // ---------------------------------------------------------------------------
+
+  describe("buildMinimalPhoneTouchLayout — compact 3-layer structure", () => {
+    it("returns a 3-layer phone layout (default + shift + numeric)", () => {
+      const layout = buildMinimalPhoneTouchLayout();
+      const phone = layout.platforms.find((p) => p.id === "phone")!;
+      expect(phone).toBeDefined();
+      const ids = phone.layers.map((l) => l.id);
+      expect(ids).toContain("default");
+      expect(ids).toContain("shift");
+      expect(ids).toContain("numeric");
+    });
+
+    it("default layer has 4 rows", () => {
+      const layout = buildMinimalPhoneTouchLayout();
+      const phone = layout.platforms.find((p) => p.id === "phone")!;
+      const defaultLayer = phone.layers.find((l) => l.id === "default")!;
+      expect(defaultLayer.rows).toHaveLength(4);
+    });
+
+    it("every row in every layer has ≤10 keys", () => {
+      const layout = buildMinimalPhoneTouchLayout();
+      const phone = layout.platforms.find((p) => p.id === "phone")!;
+      for (const layer of phone.layers) {
+        for (let i = 0; i < layer.rows.length; i++) {
+          const row = layer.rows[i]!;
+          expect(
+            row.keys.length,
+            `layer "${layer.id}" row ${i} has ${row.keys.length} keys`,
+          ).toBeLessThanOrEqual(10);
+        }
+      }
+    });
+
+    it("default layer K_SHIFT (row 2) has sp:1 nextlayer:'shift'", () => {
+      const layout = buildMinimalPhoneTouchLayout();
+      const phone = layout.platforms.find((p) => p.id === "phone")!;
+      const defaultLayer = phone.layers.find((l) => l.id === "default")!;
+      const row2 = defaultLayer.rows[2]!;
+      const shift = row2.keys.find((k) => k.id === "K_SHIFT");
+      expect(shift?.sp).toBe(1);
+      expect(shift?.nextlayer).toBe("shift");
+      expect(shift?.text).toBe("*Shift*");
+    });
+
+    it("shift layer K_SHIFT (row 2) has sp:2 nextlayer:'default'", () => {
+      const layout = buildMinimalPhoneTouchLayout();
+      const phone = layout.platforms.find((p) => p.id === "phone")!;
+      const shiftLayer = phone.layers.find((l) => l.id === "shift")!;
+      const row2 = shiftLayer.rows[2]!;
+      const shift = row2.keys.find((k) => k.id === "K_SHIFT");
+      expect(shift?.sp).toBe(2);
+      expect(shift?.nextlayer).toBe("default");
+    });
+
+    it("K_LOPT has text:'*Menu*', K_ENTER has text:'*Enter*'", () => {
+      const layout = buildMinimalPhoneTouchLayout();
+      const phone = layout.platforms.find((p) => p.id === "phone")!;
+      const defaultLayer = phone.layers.find((l) => l.id === "default")!;
+      const funcRow = defaultLayer.rows[3]!;
+
+      const lopt = funcRow.keys.find((k) => k.id === "K_LOPT");
+      const enter = funcRow.keys.find((k) => k.id === "K_ENTER");
+
+      expect(lopt?.text).toBe("*Menu*");
+      expect(enter?.text).toBe("*Enter*");
+    });
+
+    it("default layer uses lowercase US keycaps (K_A → 'a', K_Q → 'q')", () => {
+      const layout = buildMinimalPhoneTouchLayout();
+      const phone = layout.platforms.find((p) => p.id === "phone")!;
+      const defaultLayer = phone.layers.find((l) => l.id === "default")!;
+      const allKeys = defaultLayer.rows.flatMap((r) => r.keys);
+
+      expect(allKeys.find((k) => k.id === "K_A")?.text).toBe("a");
+      expect(allKeys.find((k) => k.id === "K_Q")?.text).toBe("q");
+    });
+
+    it("shift layer uses uppercase US keycaps (K_A → 'A', K_Q → 'Q')", () => {
+      const layout = buildMinimalPhoneTouchLayout();
+      const phone = layout.platforms.find((p) => p.id === "phone")!;
+      const shiftLayer = phone.layers.find((l) => l.id === "shift")!;
+      const allKeys = shiftLayer.rows.flatMap((r) => r.keys);
+
+      expect(allKeys.find((k) => k.id === "K_A")?.text).toBe("A");
+      expect(allKeys.find((k) => k.id === "K_Q")?.text).toBe("Q");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // augments existing touchLayout (Case B)
+  // ---------------------------------------------------------------------------
 
   describe("augments existing touchLayout", () => {
     it("when ir.touchLayout is already set, the function returns a TouchLayoutIR without throwing", () => {
@@ -477,7 +1063,6 @@ describe("scaffoldTouchLayout", () => {
 
       const phone = result.platforms.find((p) => p.id === "phone");
       expect(phone).toBeDefined();
-      // The tablet platform must also still be present.
       const tablet = result.platforms.find((p) => p.id === "tablet");
       expect(tablet).toBeDefined();
     });
@@ -505,7 +1090,6 @@ describe("scaffoldTouchLayout", () => {
       const ir = makeMinimalIR({ touchLayout: existingTouchLayout });
       const result = scaffoldTouchLayout(ir);
 
-      // The existing nodeId should be preserved.
       expect(result.nodeIds).toContainEqual(existingNodeEntry);
     });
 
@@ -560,8 +1144,8 @@ describe("scaffoldTouchLayout", () => {
       expect(targetKey).toBeDefined();
       expect(targetKey?.sk).toBeDefined();
       expect(targetKey?.sk?.length).toBeGreaterThan(0);
-      const skOutputs = targetKey?.sk?.map((s) => s.output);
-      expect(skOutputs).toContain(successorChar);
+      const skTexts = targetKey?.sk?.map((s) => s.text);
+      expect(skTexts).toContain(successorChar);
     });
   });
 });

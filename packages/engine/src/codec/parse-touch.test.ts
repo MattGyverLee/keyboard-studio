@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTouchLayout } from "./parse-touch.js";
+import { parseTouchLayout, emitTouchLayout } from "./parse-touch.js";
 
 const MINIMAL_TOUCH = JSON.stringify({
   tablet: {
@@ -175,5 +175,230 @@ describe("parseTouchLayout", () => {
 
   it("throws TypeError on JSON array", () => {
     expect(() => parseTouchLayout("[]")).toThrow(TypeError);
+  });
+
+  // sp / width / hint preservation -----------------------------------------
+
+  it("parses sp, width, and hint from string wire values to correct IR types", () => {
+    const json = JSON.stringify({
+      phone: {
+        layer: [{
+          id: "default",
+          row: [{
+            id: 1,
+            key: [{ id: "K_A", text: "a", sp: "1", width: "150", hint: "x" }],
+          }],
+        }],
+      },
+    });
+    const ir = parseTouchLayout(json);
+    const key = ir.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(key?.sp).toBe(1);
+    expect(key?.width).toBe(150);
+    expect(key?.hint).toBe("x");
+  });
+
+  it("parses sp and width when supplied as numbers (robustness)", () => {
+    const json = JSON.stringify({
+      phone: {
+        layer: [{
+          id: "default",
+          row: [{
+            id: 1,
+            key: [{ id: "K_B", text: "b", sp: 2, width: 200 }],
+          }],
+        }],
+      },
+    });
+    const ir = parseTouchLayout(json);
+    const key = ir.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(key?.sp).toBe(2);
+    expect(key?.width).toBe(200);
+  });
+
+  it("leaves sp, width, hint undefined when absent from raw key", () => {
+    const ir = parseTouchLayout(MINIMAL_TOUCH);
+    const key = ir.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(key?.sp).toBeUndefined();
+    expect(key?.width).toBeUndefined();
+    expect(key?.hint).toBeUndefined();
+  });
+
+  it("does not set sp or width when raw values are empty strings or NaN-producing", () => {
+    const json = JSON.stringify({
+      phone: {
+        layer: [{
+          id: "default",
+          row: [{
+            id: 1,
+            key: [{ id: "K_C", text: "c", sp: "", width: "notanumber" }],
+          }],
+        }],
+      },
+    });
+    const ir = parseTouchLayout(json);
+    const key = ir.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(key?.sp).toBeUndefined();
+    expect(key?.width).toBeUndefined();
+  });
+
+  it("sp=0 is preserved (falsy but valid spacer key class)", () => {
+    const json = JSON.stringify({
+      phone: {
+        layer: [{
+          id: "default",
+          row: [{
+            id: 1,
+            key: [{ id: "K_SP0", sp: "0", width: "50" }],
+          }],
+        }],
+      },
+    });
+    const ir = parseTouchLayout(json);
+    const key = ir.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(key?.sp).toBe(0);
+    expect(key?.width).toBe(50);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// emitTouchLayout — kmc-kmn compat: row id + platform defaultHint
+// ---------------------------------------------------------------------------
+
+describe("emitTouchLayout", () => {
+  it("emits numeric row id on every row (required by TouchLayoutFileWriter.fixup)", () => {
+    // Parse a fixture that has row ids, then emit and re-parse to confirm
+    // the emitted JSON includes id on every row.
+    const ir = parseTouchLayout(MULTI_PLATFORM_TOUCH);
+    const json = emitTouchLayout(ir);
+    const reparsed = JSON.parse(json) as Record<string, { layer: Array<{ row: Array<{ id?: number }> }> }>;
+    for (const [, platform] of Object.entries(reparsed)) {
+      for (const layer of platform.layer) {
+        for (let i = 0; i < layer.row.length; i++) {
+          expect(layer.row[i]!.id, `row[${i}].id must be present`).toBe(i + 1);
+        }
+      }
+    }
+  });
+
+  it("emits defaultHint 'dot' on every platform (dot hint — no char revealed)", () => {
+    // "dot" causes the Keyman runtime to render a generic • on any key with
+    // longpress sub-keys, rather than showing the first sub-key character.
+    const ir = parseTouchLayout(MULTI_PLATFORM_TOUCH);
+    const json = emitTouchLayout(ir);
+    const reparsed = JSON.parse(json) as Record<string, { defaultHint?: string }>;
+    for (const [pid, platform] of Object.entries(reparsed)) {
+      expect(platform.defaultHint, `platform "${pid}" must have defaultHint`).toBe("dot");
+    }
+  });
+
+  it("round-trips sp/width/hint: parse → emit → reparse preserves numeric IR and string wire values", () => {
+    const source = JSON.stringify({
+      phone: {
+        layer: [{
+          id: "default",
+          row: [{
+            id: 1,
+            key: [{ id: "K_A", text: "a", sp: "1", width: "150", hint: "x" }],
+          }],
+        }],
+      },
+    });
+    const ir = parseTouchLayout(source);
+    // IR must have numeric sp/width
+    const irKey = ir.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(irKey?.sp).toBe(1);
+    expect(irKey?.width).toBe(150);
+    expect(irKey?.hint).toBe("x");
+
+    // Emitted JSON must re-encode sp/width as strings
+    const emitted = emitTouchLayout(ir);
+    const reparsed = JSON.parse(emitted) as Record<string, { layer: Array<{ row: Array<{ key: Array<{ sp?: string; width?: string; hint?: string }> }> }> }>;
+    const wireKey = reparsed["phone"]?.layer[0]?.row[0]?.key[0];
+    expect(wireKey?.sp).toBe("1");
+    expect(wireKey?.width).toBe("150");
+    expect(wireKey?.hint).toBe("x");
+
+    // Re-parsed IR from emitted JSON should also have numeric sp/width
+    const ir2 = parseTouchLayout(emitted);
+    const irKey2 = ir2.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(irKey2?.sp).toBe(1);
+    expect(irKey2?.width).toBe(150);
+    expect(irKey2?.hint).toBe("x");
+  });
+
+  it("round-trips pad: parse → emit → reparse preserves pad as numeric IR and string wire value", () => {
+    // FIX 2: pad is now parsed from the wire format and emitted back as a string.
+    const source = JSON.stringify({
+      phone: {
+        layer: [{
+          id: "default",
+          row: [{
+            id: 1,
+            key: [{ id: "K_Z", text: "z", pad: "50" }],
+          }],
+        }],
+      },
+    });
+    // Parse: wire string "50" → IR number 50
+    const ir = parseTouchLayout(source);
+    const irKey = ir.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(irKey?.pad).toBe(50);
+
+    // Emit: IR number 50 → wire string "50"
+    const emitted = emitTouchLayout(ir);
+    const reparsed = JSON.parse(emitted) as Record<string, { layer: Array<{ row: Array<{ key: Array<{ pad?: string }> }> }> }>;
+    const wireKey = reparsed["phone"]?.layer[0]?.row[0]?.key[0];
+    expect(wireKey?.pad).toBe("50");
+
+    // Re-parse the emitted JSON: wire string "50" → IR number 50 again
+    const ir2 = parseTouchLayout(emitted);
+    const irKey2 = ir2.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(irKey2?.pad).toBe(50);
+  });
+
+  it("parses pad when supplied as a number (robustness)", () => {
+    const json = JSON.stringify({
+      phone: {
+        layer: [{
+          id: "default",
+          row: [{
+            id: 1,
+            key: [{ id: "K_Z", pad: 172 }],
+          }],
+        }],
+      },
+    });
+    const ir = parseTouchLayout(json);
+    const key = ir.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(key?.pad).toBe(172);
+  });
+
+  it("does not set pad when raw value is empty string or NaN-producing", () => {
+    const json = JSON.stringify({
+      phone: {
+        layer: [{
+          id: "default",
+          row: [{
+            id: 1,
+            key: [{ id: "K_Z", pad: "" }],
+          }],
+        }],
+      },
+    });
+    const ir = parseTouchLayout(json);
+    const key = ir.platforms[0]?.layers[0]?.rows[0]?.keys[0];
+    expect(key?.pad).toBeUndefined();
+  });
+
+  it("round-trips key ids and text through emit → reparse", () => {
+    const ir = parseTouchLayout(SUBKEY_TOUCH);
+    const json = emitTouchLayout(ir);
+    const reparsed = JSON.parse(json) as Record<string, { layer: Array<{ row: Array<{ key: Array<{ id: string; sk?: Array<{ id: string }> }> }> }> }>;
+    const tabletLayer = reparsed["tablet"]?.layer[0];
+    const parentKey = tabletLayer?.row[0]?.key[0];
+    expect(parentKey?.id).toBe("U_0028");
+    expect(parentKey?.sk?.length).toBe(2);
+    expect(parentKey?.sk?.[0]?.id).toBe("U_005B");
   });
 });

@@ -15,8 +15,8 @@
  * .keyman-touch-layout file), that data is used as the base for the phone
  * platform and any existing keys are augmented with sk[] entries derived
  * from the deadkey patterns.  If ir.touchLayout is absent, a phone platform
- * is generated from scratch using a QWERTY-shaped row structure derived from
- * the desktop key positions.
+ * is generated from scratch using the compact 3-layer QWERTY structure
+ * (default + shift + numeric), with ≤10 keys per row.
  *
  * The function is pure — it does not mutate the IR or access any store.
  *
@@ -30,36 +30,53 @@ import type {
   IRRule,
 } from "@keyboard-studio/contracts";
 import { NodeIdMinter } from "../codec/node-ids.js";
+import { charToUnicodeKeyId } from "../codec/touch-ids.js";
 
 // ---------------------------------------------------------------------------
-// QWERTY physical-keyboard row layout (phone platform seed)
-// Standard US-QWERTY row ordering by physical position (top → bottom).
-// Used only when no existing touch layout is present in the IR.
+// US fallback keycaps for unmapped keys
+//
+// When the keyMap has no entry for a template key id, we fall back to
+// the standard US keycap for that key id. Letters use lower/upper case;
+// symbol keys use default/shifted values.
 // ---------------------------------------------------------------------------
 
-/**
- * Standard QWERTY virtual-key rows for the phone platform seed.
- * Row 0 is the number row, rows 1–3 are the letter rows.
- */
-const QWERTY_ROWS: ReadonlyArray<ReadonlyArray<string>> = [
-  // Row 0 — number / symbol row
-  ["K_1", "K_2", "K_3", "K_4", "K_5", "K_6", "K_7", "K_8", "K_9", "K_0"],
-  // Row 1 — QWERTY
-  [
-    "K_Q", "K_W", "K_E", "K_R", "K_T",
-    "K_Y", "K_U", "K_I", "K_O", "K_P",
-  ],
-  // Row 2 — ASDF
-  [
-    "K_A", "K_S", "K_D", "K_F", "K_G",
-    "K_H", "K_J", "K_K", "K_L", "K_QUOTE",
-  ],
-  // Row 3 — ZXCV
-  [
-    "K_Z", "K_X", "K_C", "K_V",
-    "K_B", "K_N", "K_M",
-  ],
-];
+/** [defaultLayer cap, shiftLayer cap] */
+const US_KEYCAPS: Readonly<Record<string, [string, string]>> = {
+  K_1: ["1", "!"],   K_2: ["2", "@"],   K_3: ["3", "#"],   K_4: ["4", "$"],
+  K_5: ["5", "%"],   K_6: ["6", "^"],   K_7: ["7", "&"],   K_8: ["8", "*"],
+  K_9: ["9", "("],   K_0: ["0", ")"],
+  K_HYPHEN:  ["-", "_"],  K_EQUAL:   ["=", "+"],
+  K_Q: ["q", "Q"],   K_W: ["w", "W"],   K_E: ["e", "E"],   K_R: ["r", "R"],
+  K_T: ["t", "T"],   K_Y: ["y", "Y"],   K_U: ["u", "U"],   K_I: ["i", "I"],
+  K_O: ["o", "O"],   K_P: ["p", "P"],
+  K_LBRKT:   ["[", "{"],  K_RBRKT:   ["]", "}"],
+  K_A: ["a", "A"],   K_S: ["s", "S"],   K_D: ["d", "D"],   K_F: ["f", "F"],
+  K_G: ["g", "G"],   K_H: ["h", "H"],   K_J: ["j", "J"],   K_K: ["k", "K"],
+  K_L: ["l", "L"],
+  K_COLON:   [";", ":"],  K_QUOTE:   ["'", "\""],  K_BKSLASH: ["\\", "|"],
+  K_Z: ["z", "Z"],   K_X: ["x", "X"],   K_C: ["c", "C"],   K_V: ["v", "V"],
+  K_B: ["b", "B"],   K_N: ["n", "N"],   K_M: ["m", "M"],
+  K_COMMA:   [",", "<"],  K_PERIOD:  [".", ">"],   K_SLASH:   ["/", "?"],
+  K_BKQUOTE: ["`", "~"],
+};
+
+// ---------------------------------------------------------------------------
+// Compact phone layout row definitions
+//
+// Three layers: default, shift, numeric.
+// Every row in every layer has ≤10 keys (including spacers).
+// Modeled on the naijatype experimental keyboard pattern.
+// ---------------------------------------------------------------------------
+
+/** Compact QWERTY row 1 (10 keys): Q–P */
+const COMPACT_ROW1_VKEYS = [
+  "K_Q", "K_W", "K_E", "K_R", "K_T", "K_Y", "K_U", "K_I", "K_O", "K_P",
+] as const;
+
+/** Compact ASDF row 2 (9 letters + 1 spacer = 10 entries): A–L + spacer */
+const COMPACT_ROW2_VKEYS = [
+  "K_A", "K_S", "K_D", "K_F", "K_G", "K_H", "K_J", "K_K", "K_L",
+] as const;
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -75,7 +92,7 @@ type KeyMap = Map<string, Map<LayerId, string>>;
 type DeadkeySuccessors = Map<string, string[]>;
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Desktop rule processing helpers
 // ---------------------------------------------------------------------------
 
 /**
@@ -230,103 +247,401 @@ function buildDeadkeySuccessors(ir: KeyboardIR): DeadkeySuccessors {
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// Compact phone layer builder
+// ---------------------------------------------------------------------------
+
 /**
- * Build a single TouchKeyIR for a given vkey, using the keyMap for primary
- * output and the deadkey successors for sk[].
+ * Resolve the display text for a character key in a given layer.
+ *
+ * Priority:
+ *  1. keyMap entry for (vkey, layerId) — the keyboard's own mapping.
+ *  2. US fallback keycap for the vkey (index 0 = default, index 1 = shift).
+ *  3. Empty string (key exists in template but has no known mapping).
  */
-function buildTouchKey(
+function resolveKeyText(
   vkey: string,
-  layer: LayerId,
+  layerId: "default" | "shift" | "altgr",
+  keyMap: KeyMap,
+): string {
+  const mapped = keyMap.get(vkey)?.get(layerId);
+  if (mapped !== undefined) return mapped;
+
+  const fallback = US_KEYCAPS[vkey];
+  if (fallback !== undefined) {
+    return layerId === "shift" ? fallback[1] : fallback[0];
+  }
+
+  return "";
+}
+
+/**
+ * Build a compact phone layout letter key from a vkey for the given layer.
+ * Attaches deadkey sk[] to keys in the default layer.
+ */
+function buildLetterKey(
+  vkey: string,
+  layerId: "default" | "shift",
   keyMap: KeyMap,
   deadkeySuccessors: DeadkeySuccessors,
   minter: NodeIdMinter,
+  pad?: number,
+  nextlayer?: string,
 ): TouchKeyIR {
-  const nodeId = minter.mint("touchKey");
-  const layerMap = keyMap.get(vkey);
-  const output = layerMap?.get(layer);
-
+  const text = resolveKeyText(vkey, layerId, keyMap);
   const key: TouchKeyIR = {
-    nodeId,
+    nodeId: minter.mint("touchKey"),
     id: vkey,
-    ...(output !== undefined ? { text: output, output } : {}),
+    ...(text !== "" ? { text, output: text } : {}),
+    ...(pad !== undefined ? { pad } : {}),
+    ...(nextlayer !== undefined ? { nextlayer } : {}),
   };
 
-  // Populate sk[] from deadkey successors if the vkey has any.
-  const successors = deadkeySuccessors.get(vkey);
-  if (successors && successors.length > 0) {
-    const firstSuccessor = successors[0];
-    if (firstSuccessor !== undefined) {
-      key.hint = firstSuccessor; // corner hint signals a longpress menu exists
+  // Attach deadkey sk[] to keys in the default layer only
+  if (layerId === "default") {
+    const successors = deadkeySuccessors.get(vkey);
+    if (successors && successors.length > 0) {
+      key.sk = successors.map((ch) => ({
+        nodeId: minter.mint("touchKey"),
+        id: charToUnicodeKeyId(ch),
+        text: ch,
+      }));
     }
-    key.sk = successors.map((ch) => ({
-      nodeId: minter.mint("touchKey"),
-      id: `${vkey}_sk_${ch.codePointAt(0)?.toString(16) ?? "?"}`,
-      text: ch,
-      output: ch,
-    }));
   }
 
   return key;
 }
 
 /**
- * Build one row of TouchKeyIR nodes for the given layer.
+ * Build the compact QWERTY phone default + shift layers (and optionally
+ * altgr) from the compact row structure, populating key text from keyMap.
+ *
+ * Layout structure (≤10 keys per row in every layer):
+ *
+ * default / shift layers:
+ *   Row 0 (10): Q W E R T Y U I O P
+ *   Row 1 (10): A(pad:50) S D F G H J K L  + spacer(sp:10,w:10)
+ *   Row 2 (10): K_SHIFT(sp:1→shift / sp:2→default) Z X C V B N M  K_PERIOD  K_BKSP(sp:1)
+ *   Row 3  (4): K_NUMLOCK("*123*",sp:1,w:150,nextlayer:numeric)
+ *               K_LOPT("*Menu*",sp:1,w:120)
+ *               K_SPACE("", width:610)
+ *               K_ENTER("*Enter*",sp:1,w:150)
+ *
+ * numeric layer:
+ *   Row 0 (10): 1 2 3 4 5 6 7 8 9 0 (literal)
+ *   Row 1 (10): $(pad:50) @ # % & _ = | \  + spacer(sp:10,w:10)
+ *   Row 2  (9): [(pad:110) ( ) ] + - * /  K_BKSP(sp:1,w:100)
+ *   Row 3  (4): K_LOWER("*abc*",sp:1,w:150,nextlayer:default) K_LOPT K_SPACE K_ENTER
+ *
+ * Shift key:
+ *   default layer → sp:1, nextlayer:"shift"
+ *   shift layer   → sp:2, nextlayer:"default"
+ * No sk[] on touch shift key (desktop modifier sk array omitted).
+ *
+ * @param keyMap           Vkey → layer → char map from the desktop rules.
+ * @param deadkeySuccessors Vkey → successor-chars[] map from S-02 patterns.
+ * @param minter           NodeIdMinter for stable ids.
  */
-function buildRow(
-  vkeys: ReadonlyArray<string>,
-  layer: LayerId,
-  keyMap: KeyMap,
-  deadkeySuccessors: DeadkeySuccessors,
-  minter: NodeIdMinter,
-): TouchKeyIR[] {
-  return vkeys.map((vkey) =>
-    buildTouchKey(vkey, layer, keyMap, deadkeySuccessors, minter),
-  );
-}
-
-/**
- * Build the required functional bottom row (options, space, backspace, enter).
- * These keys are mandatory in every layer for kmcmplib to produce artifacts.
- * sp:1 = special (system) key; width is in Keyman touch-layout units (total ~1000).
- */
-export function buildFunctionalRow(minter: NodeIdMinter): TouchKeyIR[] {
-  return [
-    { nodeId: minter.mint("touchKey"), id: "K_LOPT",  sp: 1, width: 100 },
-    { nodeId: minter.mint("touchKey"), id: "K_SPACE",  text: " ", output: " ", width: 700 },
-    { nodeId: minter.mint("touchKey"), id: "K_BKSP",  sp: 1, width: 100 },
-    { nodeId: minter.mint("touchKey"), id: "K_ENTER", sp: 1, width: 100 },
-  ];
-}
-
-// ---------------------------------------------------------------------------
-// Layer builders
-// ---------------------------------------------------------------------------
-
-/**
- * Build the three standard phone layers (default, shift, altgr) from the
- * key map, using the QWERTY row template as the key population.
- */
-function buildPhoneLayersFromDesktop(
+function buildCanonicalPhoneLayers(
   keyMap: KeyMap,
   deadkeySuccessors: DeadkeySuccessors,
   minter: NodeIdMinter,
 ): TouchLayoutIR["platforms"][number]["layers"] {
   const layers: TouchLayoutIR["platforms"][number]["layers"] = [];
 
-  const layersToEmit: LayerId[] = ["default", "shift"];
+  // -------------------------------------------------------------------------
+  // default and shift layers
+  // -------------------------------------------------------------------------
+  const letterLayers: Array<"default" | "shift"> = ["default", "shift"];
 
-  // Only emit "altgr" when at least one key has an altgr mapping.
-  const hasAltgr = [...keyMap.values()].some((m) => m.has("altgr"));
-  if (hasAltgr) layersToEmit.push("altgr");
+  for (const layerId of letterLayers) {
+    const isDefault = layerId === "default";
 
-  for (const layerId of layersToEmit) {
-    const rows = [
-      ...QWERTY_ROWS.map((rowVkeys) => ({
-        keys: buildRow(rowVkeys, layerId, keyMap, deadkeySuccessors, minter),
-      })),
-      { keys: buildFunctionalRow(minter) },
+    // Row 0: Q W E R T Y U I O P (10 keys)
+    const row0Keys: TouchKeyIR[] = COMPACT_ROW1_VKEYS.map((vkey) =>
+      buildLetterKey(vkey, layerId, keyMap, deadkeySuccessors, minter,
+        undefined, isDefault ? undefined : "default"),
+    );
+
+    // Row 1: A(pad:50) S D F G H J K L  spacer (9 letters + 1 spacer = 10)
+    const row1Keys: TouchKeyIR[] = [
+      buildLetterKey("K_A", layerId, keyMap, deadkeySuccessors, minter,
+        50, isDefault ? undefined : "default"),
+      ...COMPACT_ROW2_VKEYS.slice(1).map((vkey) =>
+        buildLetterKey(vkey, layerId, keyMap, deadkeySuccessors, minter,
+          undefined, isDefault ? undefined : "default"),
+      ),
+      // trailing spacer
+      {
+        nodeId: minter.mint("touchKey"),
+        id: `T_ks_sp_${layerId}`,
+        text: "",
+        sp: 10,
+        width: 10,
+      } satisfies TouchKeyIR,
     ];
-    layers.push({ id: layerId, rows });
+
+    // Row 2: K_SHIFT  Z X C V B N M  K_PERIOD  K_BKSP (10 keys)
+    const shiftSp = isDefault ? 1 : 2;
+    const shiftNextlayer = isDefault ? "shift" : "default";
+    const row2Keys: TouchKeyIR[] = [
+      {
+        nodeId: minter.mint("touchKey"),
+        id: "K_SHIFT",
+        text: "*Shift*",
+        sp: shiftSp,
+        nextlayer: shiftNextlayer,
+      },
+      buildLetterKey("K_Z", layerId, keyMap, deadkeySuccessors, minter,
+        undefined, isDefault ? undefined : "default"),
+      buildLetterKey("K_X", layerId, keyMap, deadkeySuccessors, minter,
+        undefined, isDefault ? undefined : "default"),
+      buildLetterKey("K_C", layerId, keyMap, deadkeySuccessors, minter,
+        undefined, isDefault ? undefined : "default"),
+      buildLetterKey("K_V", layerId, keyMap, deadkeySuccessors, minter,
+        undefined, isDefault ? undefined : "default"),
+      buildLetterKey("K_B", layerId, keyMap, deadkeySuccessors, minter,
+        undefined, isDefault ? undefined : "default"),
+      buildLetterKey("K_N", layerId, keyMap, deadkeySuccessors, minter,
+        undefined, isDefault ? undefined : "default"),
+      buildLetterKey("K_M", layerId, keyMap, deadkeySuccessors, minter,
+        undefined, isDefault ? undefined : "default"),
+      {
+        nodeId: minter.mint("touchKey"),
+        id: "K_PERIOD",
+        text: ".",
+        ...(isDefault ? {} : { nextlayer: "default" }),
+      },
+      {
+        nodeId: minter.mint("touchKey"),
+        id: "K_BKSP",
+        text: "*BkSp*",
+        sp: 1,
+      },
+    ];
+
+    // Row 3: functional (4 keys)
+    const row3Keys: TouchKeyIR[] = [
+      {
+        nodeId: minter.mint("touchKey"),
+        id: "K_NUMLOCK",
+        text: "*123*",
+        sp: 1,
+        width: 150,
+        nextlayer: "numeric",
+      },
+      {
+        nodeId: minter.mint("touchKey"),
+        id: "K_LOPT",
+        text: "*Menu*",
+        sp: 1,
+        width: 120,
+      },
+      {
+        nodeId: minter.mint("touchKey"),
+        id: "K_SPACE",
+        text: "",
+        width: 610,
+      },
+      {
+        nodeId: minter.mint("touchKey"),
+        id: "K_ENTER",
+        text: "*Enter*",
+        sp: 1,
+        width: 150,
+      },
+    ];
+
+    layers.push({
+      id: layerId,
+      rows: [
+        { keys: row0Keys },
+        { keys: row1Keys },
+        { keys: row2Keys },
+        { keys: row3Keys },
+      ],
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // numeric layer (fixed literal keys — not from keyMap)
+  //
+  // All literal-character keys use U_<UPPERHEX> ids so Keyman outputs the
+  // Unicode codepoint directly without routing through the keyboard's rules.
+  // This also guarantees globally unique ids within the layer (no two keys
+  // can share a U_ id, unlike K_BKSLASH which would have collided for | and \).
+  // -------------------------------------------------------------------------
+  // Row 0 (10): 1 2 3 4 5 6 7 8 9 0
+  const numRow0Keys: TouchKeyIR[] = (
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"] as const
+  ).map((ch) => ({
+    nodeId: minter.mint("touchKey"),
+    id: charToUnicodeKeyId(ch),
+    text: ch,
+  }));
+
+  // Row 1 (9 symbol keys + 1 spacer = 10): $(pad:50) @ # % & _ = | \  spacer
+  const numRow1Symbols: Array<[string, number | undefined]> = [
+    ["$", 50], ["@", undefined], ["#", undefined], ["%", undefined],
+    ["&", undefined], ["_", undefined], ["=", undefined],
+    ["|", undefined], ["\\", undefined],
+  ];
+  const numRow1Keys: TouchKeyIR[] = [
+    ...numRow1Symbols.map(([ch, pad]) => ({
+      nodeId: minter.mint("touchKey"),
+      id: charToUnicodeKeyId(ch),
+      text: ch,
+      ...(pad !== undefined ? { pad } : {}),
+    })),
+    // trailing spacer
+    { nodeId: minter.mint("touchKey"), id: "T_ks_sp_numeric", text: "", sp: 10, width: 10 },
+  ];
+
+  // Row 2 (9 keys): [(pad:110) ( ) ] + - * /  K_BKSP(sp:1,w:100)
+  // [ and ] keep K_LBRKT / K_RBRKT so they route through the keyboard rules
+  // (they are punctuation keys, not fixed-value literals).
+  // ( ) + - * / are literal characters → U_ ids.
+  const numRow2Keys: TouchKeyIR[] = [
+    { nodeId: minter.mint("touchKey"), id: "K_LBRKT",              text: "[",      pad: 110 },
+    { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("("), text: "(" },
+    { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId(")"), text: ")" },
+    { nodeId: minter.mint("touchKey"), id: "K_RBRKT",              text: "]" },
+    { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("+"), text: "+" },
+    { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("-"), text: "-" },
+    { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("*"), text: "*" },
+    { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("/"), text: "/" },
+    { nodeId: minter.mint("touchKey"), id: "K_BKSP",               text: "*BkSp*", sp: 1, width: 100 },
+  ];
+
+  // Row 3 (4 functional keys): *abc* *Menu* space *Enter*
+  const numRow3Keys: TouchKeyIR[] = [
+    {
+      nodeId: minter.mint("touchKey"),
+      id: "K_LOWER",
+      text: "*abc*",
+      sp: 1,
+      width: 150,
+      nextlayer: "default",
+    },
+    {
+      nodeId: minter.mint("touchKey"),
+      id: "K_LOPT",
+      text: "*Menu*",
+      sp: 1,
+      width: 120,
+    },
+    {
+      nodeId: minter.mint("touchKey"),
+      id: "K_SPACE",
+      text: "",
+      width: 610,
+    },
+    {
+      nodeId: minter.mint("touchKey"),
+      id: "K_ENTER",
+      text: "*Enter*",
+      sp: 1,
+      width: 150,
+    },
+  ];
+
+  layers.push({
+    id: "numeric",
+    rows: [
+      { keys: numRow0Keys },
+      { keys: numRow1Keys },
+      { keys: numRow2Keys },
+      { keys: numRow3Keys },
+    ],
+  });
+
+  // altgr layer: only emit when at least one key has an altgr mapping.
+  // Uses same row structure as default but with altgr text values.
+  const hasAltgr = [...keyMap.values()].some((m) => m.has("altgr"));
+  if (hasAltgr) {
+    // Row 0: Q W E R T Y U I O P with altgr text
+    const altRow0Keys: TouchKeyIR[] = COMPACT_ROW1_VKEYS.map((vkey) => {
+      const text = resolveKeyText(vkey, "altgr", keyMap);
+      return {
+        nodeId: minter.mint("touchKey"),
+        id: vkey,
+        ...(text !== "" ? { text, output: text } : {}),
+      };
+    });
+
+    // Row 1: A(pad:50) S D F G H J K L  spacer
+    const altRow1Keys: TouchKeyIR[] = [
+      (() => {
+        const text = resolveKeyText("K_A", "altgr", keyMap);
+        return {
+          nodeId: minter.mint("touchKey"),
+          id: "K_A",
+          ...(text !== "" ? { text, output: text } : {}),
+          pad: 50,
+        };
+      })(),
+      ...COMPACT_ROW2_VKEYS.slice(1).map((vkey) => {
+        const text = resolveKeyText(vkey, "altgr", keyMap);
+        return {
+          nodeId: minter.mint("touchKey"),
+          id: vkey,
+          ...(text !== "" ? { text, output: text } : {}),
+        };
+      }),
+      {
+        nodeId: minter.mint("touchKey"),
+        id: "T_ks_sp_altgr",
+        text: "",
+        sp: 10,
+        width: 10,
+      } satisfies TouchKeyIR,
+    ];
+
+    // Row 2: K_SHIFT  Z X C V B N M  K_PERIOD  K_BKSP
+    const altRow2Keys: TouchKeyIR[] = [
+      {
+        nodeId: minter.mint("touchKey"),
+        id: "K_SHIFT",
+        text: "*Shift*",
+        sp: 1,
+        nextlayer: "shift",
+      },
+      ...["K_Z", "K_X", "K_C", "K_V", "K_B", "K_N", "K_M"].map((vkey) => {
+        const text = resolveKeyText(vkey, "altgr", keyMap);
+        return {
+          nodeId: minter.mint("touchKey"),
+          id: vkey,
+          ...(text !== "" ? { text, output: text } : {}),
+        };
+      }),
+      { nodeId: minter.mint("touchKey"), id: "K_PERIOD", text: "." },
+      { nodeId: minter.mint("touchKey"), id: "K_BKSP",   text: "*BkSp*", sp: 1 },
+    ];
+
+    // Row 3: same functional row as default
+    const altRow3Keys: TouchKeyIR[] = [
+      {
+        nodeId: minter.mint("touchKey"),
+        id: "K_NUMLOCK",
+        text: "*123*",
+        sp: 1,
+        width: 150,
+        nextlayer: "numeric",
+      },
+      { nodeId: minter.mint("touchKey"), id: "K_LOPT",  text: "*Menu*",  sp: 1, width: 120 },
+      { nodeId: minter.mint("touchKey"), id: "K_SPACE", text: "",                width: 610 },
+      { nodeId: minter.mint("touchKey"), id: "K_ENTER", text: "*Enter*", sp: 1, width: 150 },
+    ];
+
+    layers.push({
+      id: "altgr",
+      rows: [
+        { keys: altRow0Keys },
+        { keys: altRow1Keys },
+        { keys: altRow2Keys },
+        { keys: altRow3Keys },
+      ],
+    });
   }
 
   return layers;
@@ -353,24 +668,23 @@ function augmentExistingPhoneLayers(
 
         const existingSk = key.sk ?? [];
         const newSk: TouchKeyIR[] = successors
-          .filter((ch) => !existingSk.some((s) => s.output === ch))
+          .filter((ch) => !existingSk.some((s) => s.text === ch))
           .map((ch) => ({
             nodeId: minter.mint("touchKey"),
-            id: `${key.id}_sk_${ch.codePointAt(0)?.toString(16) ?? "?"}`,
+            // U_<UPPERHEX> id: Keyman outputs the codepoint from this id form — no
+            // `output` field needed. `text` provides the on-key glyph display.
+            id: charToUnicodeKeyId(ch),
             text: ch,
-            output: ch,
           }));
 
         if (newSk.length === 0) return key;
 
-        const firstSuccessor = successors[0];
         const augmented: TouchKeyIR = {
           ...key,
           sk: [...existingSk, ...newSk],
         };
-        if (augmented.hint === undefined && firstSuccessor !== undefined) {
-          augmented.hint = firstSuccessor;
-        }
+        // No per-key hint set here — the dot (•) is supplied automatically by
+        // the Keyman runtime because the platform defaultHint is "dot".
         return augmented;
       });
 
@@ -388,51 +702,27 @@ function augmentExistingPhoneLayers(
 // ---------------------------------------------------------------------------
 
 /**
- * Build a fixed minimal phone touch layout — NOT derived from desktop rules.
+ * Build a compact phone touch layout — three layers (default + shift + numeric)
+ * with ≤10 keys per row and standard US keycaps for all character keys.
  *
- * Returns a hardcoded QWERTY-shaped layout with a default layer (lower-case),
- * a shift layer (upper-case), and the required functional row on both.
- * This is used as the Phase E preview seed when the keyboard has no existing
- * .keyman-touch-layout; it is intentionally simple and independent of the IR.
+ * This is intentionally independent of the IR — it is used as a seed by the
+ * Phase E longpress compile regression test.
  *
  * @see spec.md §8 Phase E (touch gallery)
  */
 export function buildMinimalPhoneTouchLayout(): TouchLayoutIR {
   const minter = new NodeIdMinter();
 
-  const ROWS: Array<Array<[string, string]>> = [
-    [["K_Q","q"],["K_W","w"],["K_E","e"],["K_R","r"],["K_T","t"],
-     ["K_Y","y"],["K_U","u"],["K_I","i"],["K_O","o"],["K_P","p"]],
-    [["K_A","a"],["K_S","s"],["K_D","d"],["K_F","f"],["K_G","g"],
-     ["K_H","h"],["K_J","j"],["K_K","k"],["K_L","l"]],
-    [["K_Z","z"],["K_X","x"],["K_C","c"],["K_V","v"],
-     ["K_B","b"],["K_N","n"],["K_M","m"]],
-  ];
+  // Use an empty keyMap — all text falls back to US_KEYCAPS.
+  const emptyKeyMap: KeyMap = new Map();
+  const emptyDeadkeys: DeadkeySuccessors = new Map();
 
-  const SHIFT_ROWS: Array<Array<[string, string]>> = ROWS.map(row =>
-    row.map(([id, ch]) => [id, ch.toUpperCase()] as [string, string])
-  );
-
-  function makeRow(pairs: Array<[string, string]>): { keys: TouchKeyIR[] } {
-    return {
-      keys: pairs.map(([id, ch]) => ({
-        nodeId: minter.mint("touchKey"),
-        id,
-        text: ch,
-        output: ch,
-      })),
-    };
-  }
-
-  const funcRow = { keys: buildFunctionalRow(minter) };
+  const layers = buildCanonicalPhoneLayers(emptyKeyMap, emptyDeadkeys, minter);
 
   return {
     platforms: [{
       id: "phone",
-      layers: [
-        { id: "default", rows: [...ROWS.map(makeRow), funcRow] },
-        { id: "shift",   rows: [...SHIFT_ROWS.map(makeRow), funcRow] },
-      ],
+      layers,
     }],
     nodeIds: [],
   };
@@ -441,9 +731,10 @@ export function buildMinimalPhoneTouchLayout(): TouchLayoutIR {
 /**
  * Derive a {@link TouchLayoutIR} for the phone platform from the keyboard IR.
  *
- * - If `ir.touchLayout` is absent, generates a minimal phone platform seeded
- *   from the QWERTY row template, populated with characters from the desktop
- *   rules, and augmented with sk[] (longpress menu) from deadkey patterns.
+ * - If `ir.touchLayout` is absent, generates a compact phone platform using
+ *   the three-layer QWERTY structure (default + shift + numeric, ≤10 keys/row),
+ *   populated with characters from the desktop rules and augmented with sk[]
+ *   from deadkey patterns.
  * - If `ir.touchLayout` is present, uses it as the base. The phone platform
  *   within it (or a new one if absent) is augmented with deadkey sk[] entries.
  *
@@ -460,10 +751,11 @@ export function scaffoldTouchLayout(ir: KeyboardIR): TouchLayoutIR {
   const deadkeySuccessors = buildDeadkeySuccessors(ir);
 
   // ------------------------------------------------------------------
-  // Case A: no existing touch layout — generate from scratch.
+  // Case A: no existing touch layout — generate from scratch using
+  //         the compact 3-layer phone template.
   // ------------------------------------------------------------------
   if (ir.touchLayout === undefined) {
-    const phoneLayers = buildPhoneLayersFromDesktop(
+    const phoneLayers = buildCanonicalPhoneLayers(
       keyMap,
       deadkeySuccessors,
       minter,
@@ -497,7 +789,7 @@ export function scaffoldTouchLayout(ir: KeyboardIR): TouchLayoutIR {
     });
   } else {
     // No phone platform in the existing layout — synthesize one and append.
-    const phoneLayers = buildPhoneLayersFromDesktop(
+    const phoneLayers = buildCanonicalPhoneLayers(
       keyMap,
       deadkeySuccessors,
       minter,
