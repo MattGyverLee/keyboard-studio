@@ -590,8 +590,10 @@ describe("MechanismGallery — added chip row", () => {
         name: /Added characters/i,
       });
       expect(group).toBeTruthy();
-      // Chip for "á" exists.
-      expect(screen.getByRole("button", { name: /Remove.*á/i })).toBeTruthy();
+      // Chip for "á" exists. Use the "Remove U+00E1 á" aria-label (the "Added
+      // characters" chip) rather than the per-method badge ("Remove method … for á")
+      // to avoid an ambiguous query now that both buttons match /Remove.*á/i.
+      expect(screen.getByRole("button", { name: "Remove U+00E1 á" })).toBeTruthy();
     });
   });
 
@@ -604,10 +606,12 @@ describe("MechanismGallery — added chip row", () => {
     fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Remove.*á/i })).toBeTruthy();
+      // Wait for the "Added characters" chip (exact aria-label) to appear.
+      expect(screen.getByRole("button", { name: "Remove U+00E1 á" })).toBeTruthy();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Remove.*á/i }));
+    // Click the "Added characters" chip to remove the whole assignment.
+    fireEvent.click(screen.getByRole("button", { name: "Remove U+00E1 á" }));
 
     // Assignment removed from store.
     await waitFor(() => {
@@ -759,6 +763,127 @@ describe("MechanismGallery — preview ready state", () => {
       render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
     });
     expect(screen.queryByText(/Apply warnings/i)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Heading and subheading — gallery-QoL rename
+// ---------------------------------------------------------------------------
+
+describe("MechanismGallery — heading", () => {
+  it("renders 'Mechanism Gallery' as the main heading", async () => {
+    seedInventory(["á"]);
+    await act(async () => {
+      render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
+    });
+    expect(screen.getByRole("heading", { level: 1, name: /Mechanism Gallery/i })).toBeTruthy();
+  });
+
+  it("renders 'Desktop' as a subheading label in the header area", async () => {
+    seedInventory(["á"]);
+    await act(async () => {
+      render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
+    });
+    // "Desktop" is rendered as a <span> sibling to the <h1> (not inside it).
+    expect(screen.getByText(/^Desktop$/i)).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-method delete badge — gallery-QoL new behaviour
+// ---------------------------------------------------------------------------
+
+describe("MechanismGallery — per-method delete badge", () => {
+  it("applying two different methods to one char yields two per-method badges", async () => {
+    seedInventory(["á"]);
+    await act(async () => {
+      render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
+    });
+
+    // --- Apply first method: deadkey (pre-filled base letter 'a' from á → NFD) ---
+    // Expand the deadkey card and click Apply.
+    fireEvent.click(screen.getByText(/Tap a trigger key, then a letter/i));
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
+
+    // --- Apply second method: sequence ---
+    // Expand the sequence card.
+    fireEvent.click(screen.getByText(/Type a sequence/i));
+
+    // Fill in the two sequence inputs.
+    const seqInputs = screen.queryAllByRole("textbox");
+    const firstInput = seqInputs.find(
+      (el) => el.getAttribute("aria-label")?.toLowerCase().includes("first"),
+    );
+    const secondInput = seqInputs.find(
+      (el) => el.getAttribute("aria-label")?.toLowerCase().includes("second"),
+    );
+    expect(firstInput).toBeDefined();
+    expect(secondInput).toBeDefined();
+    await act(async () => {
+      fireEvent.change(firstInput!, { target: { value: "e" } });
+      fireEvent.change(secondInput!, { target: { value: "a" } });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
+
+    // Two per-method badges should now be visible (deadkey + sequence).
+    await waitFor(() => {
+      const methodBadges = screen.queryAllByRole("button", {
+        name: /^Remove method/i,
+      });
+      expect(methodBadges.length).toBe(2);
+    });
+  });
+
+  it("clicking one per-method badge removes only that method (the other remains)", async () => {
+    seedInventory(["á"]);
+    await act(async () => {
+      render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
+    });
+
+    // Apply deadkey method.
+    fireEvent.click(screen.getByText(/Tap a trigger key, then a letter/i));
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
+
+    // Apply sequence method.
+    fireEvent.click(screen.getByText(/Type a sequence/i));
+    const seqInputs = screen.queryAllByRole("textbox");
+    const firstInput = seqInputs.find(
+      (el) => el.getAttribute("aria-label")?.toLowerCase().includes("first"),
+    );
+    const secondInput = seqInputs.find(
+      (el) => el.getAttribute("aria-label")?.toLowerCase().includes("second"),
+    );
+    await act(async () => {
+      fireEvent.change(firstInput!, { target: { value: "e" } });
+      fireEvent.change(secondInput!, { target: { value: "a" } });
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Apply method for á/i }));
+
+    // Wait for both badges.
+    let deadkeyBadge: HTMLElement | null = null;
+    let seqBadge: HTMLElement | null = null;
+    await waitFor(() => {
+      const badges = screen.queryAllByRole("button", { name: /^Remove method/i });
+      expect(badges.length).toBe(2);
+      deadkeyBadge = badges.find((b) => b.getAttribute("aria-label")?.includes("Deadkey")) ?? null;
+      seqBadge = badges.find((b) => b.getAttribute("aria-label")?.includes("Sequence")) ?? null;
+      expect(deadkeyBadge).not.toBeNull();
+      expect(seqBadge).not.toBeNull();
+    });
+
+    // Click the deadkey badge to remove only that method.
+    await act(async () => {
+      fireEvent.click(deadkeyBadge!);
+    });
+
+    // Sequence badge must still be visible; deadkey badge must be gone.
+    await waitFor(() => {
+      const remaining = screen.queryAllByRole("button", { name: /^Remove method/i });
+      expect(remaining.length).toBe(1);
+      const remainingLabel = remaining[0]!.getAttribute("aria-label") ?? "";
+      expect(remainingLabel).not.toMatch(/Deadkey/i);
+    });
   });
 });
 

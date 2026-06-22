@@ -24,6 +24,8 @@ export interface OSKFrameProps {
   /** Retry callback from useKeyboardArtifact in the parent. */
   retry: () => void;
   onTextChange?: (text: string) => void;
+  /** Called when the user taps a key on the rendered OSK. keyId is the KMW key identifier (e.g. "K_A"). */
+  onKeyTap?: (keyId: string) => void;
 }
 
 export function OSKFrame({
@@ -32,9 +34,10 @@ export function OSKFrame({
   stage,
   retry,
   onTextChange,
+  onKeyTap,
 }: OSKFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const channel = useOskChannel(iframeRef);
+  const channel = useOskChannel(iframeRef, onKeyTap);
   // Working-copy identity drives the bcp47 language tag passed to KMW's
   // setActiveKeyboard — Track 1 (Copy) supplies the author-chosen language,
   // Track 2 (Adapt) leaves it null and we fall back to the base's first

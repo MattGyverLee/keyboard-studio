@@ -410,6 +410,115 @@ describe("applyTouchAssignments — isolation of other layers and platforms", ()
 });
 
 // ---------------------------------------------------------------------------
+// touch_key_replace — new method (feature: gallery QoL)
+// ---------------------------------------------------------------------------
+
+/** Build a touch assignment for touch_key_replace. */
+function keyReplace(hostKey: string, char: string): TouchAssignment {
+  return {
+    scope: "individual",
+    target: char,
+    modality: "touch",
+    mechanisms: [{ patternId: "touch_key_replace", slotValues: { hostKey, char } }],
+    source: "user",
+  };
+}
+
+describe("applyTouchAssignments — touch_key_replace", () => {
+  it("sets key id to charToUnicodeKeyId(char) and text to char", () => {
+    const layout = makeLayout([makeKey("K_X")]);
+    const { layout: out, warnings } = applyTouchAssignments(layout, [keyReplace("K_X", "ñ")]);
+
+    expect(warnings).toHaveLength(0);
+    const key = getKey(out, "K_X");
+    // After replace the key id changes to the U_ form; find by U_ id instead.
+    const phone = out.platforms.find((p) => p.id === "phone")!;
+    const def = phone.layers.find((l) => l.id === "default")!;
+    const allKeys = def.rows.flatMap((r) => r.keys);
+    const replaced = allKeys.find((k) => k.id === "U_00F1");
+    expect(replaced).toBeDefined();
+    expect(replaced!.text).toBe("ñ");
+    // No output field — U_ id is self-describing
+    expect(replaced!.output).toBeUndefined();
+    // Original K_X key no longer present under its old id
+    expect(key).toBeUndefined();
+  });
+
+  it("removes any existing output field from the key", () => {
+    const layout = makeLayout([makeKey("K_X", { output: "x" })]);
+    const { layout: out } = applyTouchAssignments(layout, [keyReplace("K_X", "ñ")]);
+
+    const phone = out.platforms.find((p) => p.id === "phone")!;
+    const def = phone.layers.find((l) => l.id === "default")!;
+    const allKeys = def.rows.flatMap((r) => r.keys);
+    const replaced = allKeys.find((k) => k.id === "U_00F1")!;
+    expect(replaced.output).toBeUndefined();
+  });
+
+  it("preserves the original nodeId from the host key", () => {
+    const hostKey = makeKey("K_X", { nodeId: "node_K_X_original" });
+    const layout = makeLayout([hostKey]);
+    const { layout: out } = applyTouchAssignments(layout, [keyReplace("K_X", "ñ")]);
+
+    const phone = out.platforms.find((p) => p.id === "phone")!;
+    const def = phone.layers.find((l) => l.id === "default")!;
+    const allKeys = def.rows.flatMap((r) => r.keys);
+    const replaced = allKeys.find((k) => k.id === "U_00F1")!;
+    expect(replaced.nodeId).toBe("node_K_X_original");
+  });
+
+  it("preserves existing sk and multitap arrays from the host key", () => {
+    const hostKey = makeKey("K_X", {
+      sk: [{ nodeId: "sk1", id: "U_00E1", text: "á" }],
+      multitap: [{ nodeId: "mt1", id: "U_00E2", text: "â" }],
+    });
+    const layout = makeLayout([hostKey]);
+    const { layout: out } = applyTouchAssignments(layout, [keyReplace("K_X", "ñ")]);
+
+    const phone = out.platforms.find((p) => p.id === "phone")!;
+    const def = phone.layers.find((l) => l.id === "default")!;
+    const allKeys = def.rows.flatMap((r) => r.keys);
+    const replaced = allKeys.find((k) => k.id === "U_00F1")!;
+    expect(replaced.sk).toHaveLength(1);
+    expect(replaced.sk![0]!.text).toBe("á");
+    expect(replaced.multitap).toHaveLength(1);
+    expect(replaced.multitap![0]!.text).toBe("â");
+  });
+
+  it("preserves geometry fields (sp, pad, width, nextlayer) from the host key", () => {
+    const hostKey = makeKey("K_X", { sp: 1, pad: 5, width: 110, nextlayer: "shift" });
+    const layout = makeLayout([hostKey]);
+    const { layout: out } = applyTouchAssignments(layout, [keyReplace("K_X", "ñ")]);
+
+    const phone = out.platforms.find((p) => p.id === "phone")!;
+    const def = phone.layers.find((l) => l.id === "default")!;
+    const allKeys = def.rows.flatMap((r) => r.keys);
+    const replaced = allKeys.find((k) => k.id === "U_00F1")!;
+    expect(replaced.sp).toBe(1);
+    expect(replaced.pad).toBe(5);
+    expect(replaced.width).toBe(110);
+    expect(replaced.nextlayer).toBe("shift");
+  });
+
+  it("warns and skips when the host key is absent", () => {
+    const layout = makeLayout([makeKey("K_A")]);
+    const clone = deepClone(layout);
+    const { layout: out, warnings } = applyTouchAssignments(layout, [keyReplace("K_NONEXISTENT", "ñ")]);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/host key "K_NONEXISTENT" not found/);
+    expect(out).toEqual(clone);
+  });
+
+  it("does not mutate the original layout when replacing a key", () => {
+    const layout = makeLayout([makeKey("K_X")]);
+    const originalClone = deepClone(layout);
+    applyTouchAssignments(layout, [keyReplace("K_X", "ñ")]);
+    expect(layout).toEqual(originalClone);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 7. Emit-side round-trip for sk, flick, and multitap
 // ---------------------------------------------------------------------------
 

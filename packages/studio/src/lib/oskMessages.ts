@@ -55,10 +55,16 @@ export interface TextUpdatedEvent {
   value: string;
 }
 
+export interface KeyTappedEvent {
+  type: "KEY_TAPPED";
+  keyId: string;
+}
+
 export type OskEvent =
   | EngineReadyEvent
   | EngineErrorEvent
-  | TextUpdatedEvent;
+  | TextUpdatedEvent
+  | KeyTappedEvent;
 
 // ---------------------------------------------------------------------------
 // Type guard — validates that an unknown postMessage payload is an OskEvent.
@@ -67,5 +73,5 @@ export type OskEvent =
 export function isOskEvent(data: unknown): data is OskEvent {
   if (typeof data !== "object" || data === null) return false;
   const t = (data as Record<string, unknown>)["type"];
-  return t === "ENGINE_READY" || t === "ENGINE_ERROR" || t === "TEXT_UPDATED";
+  return t === "ENGINE_READY" || t === "ENGINE_ERROR" || t === "TEXT_UPDATED" || t === "KEY_TAPPED";
 }

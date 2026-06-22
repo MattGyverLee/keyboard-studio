@@ -330,7 +330,7 @@ function buildLetterKey(
  * numeric layer:
  *   Row 0 (10): 1 2 3 4 5 6 7 8 9 0 (literal)
  *   Row 1 (10): $(pad:50) @ # % & _ = | \  + spacer(sp:10,w:10)
- *   Row 2  (9): [(pad:110) ( ) ] + - * /  K_BKSP(sp:1,w:100)
+ *   Row 2 (10): spacer(sp:10,w:110) [ ( ) ] + - * /  K_BKSP(sp:1) — K_BKSP at keyIndex 9, no width, matching default/shift/altgr
  *   Row 3  (4): K_LOWER("*abc*",sp:1,w:150,nextlayer:default) K_LOPT K_SPACE K_ENTER
  *
  * Shift key:
@@ -497,12 +497,16 @@ function buildCanonicalPhoneLayers(
     { nodeId: minter.mint("touchKey"), id: "T_ks_sp_numeric", text: "", sp: 10, width: 10 },
   ];
 
-  // Row 2 (9 keys): [(pad:110) ( ) ] + - * /  K_BKSP(sp:1,w:100)
+  // Row 2 (10 keys): leading-spacer [ ( ) ] + - * /  K_BKSP(sp:1, no width)
   // [ and ] keep K_LBRKT / K_RBRKT so they route through the keyboard rules
   // (they are punctuation keys, not fixed-value literals).
   // ( ) + - * / are literal characters → U_ ids.
+  // The leading spacer (width:110) replaces the old pad:110 on K_LBRKT so that
+  // K_BKSP lands at keyIndex 9 — identical to default/shift/altgr layers.
   const numRow2Keys: TouchKeyIR[] = [
-    { nodeId: minter.mint("touchKey"), id: "K_LBRKT",              text: "[",      pad: 110 },
+    // index 0: leading spacer to preserve the ~110px visual indent
+    { nodeId: minter.mint("touchKey"), id: "T_num_r2_lead_sp", text: "", sp: 10, width: 110 },
+    { nodeId: minter.mint("touchKey"), id: "K_LBRKT",              text: "[" },
     { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("("), text: "(" },
     { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId(")"), text: ")" },
     { nodeId: minter.mint("touchKey"), id: "K_RBRKT",              text: "]" },
@@ -510,7 +514,8 @@ function buildCanonicalPhoneLayers(
     { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("-"), text: "-" },
     { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("*"), text: "*" },
     { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("/"), text: "/" },
-    { nodeId: minter.mint("touchKey"), id: "K_BKSP",               text: "*BkSp*", sp: 1, width: 100 },
+    // index 9: K_BKSP — no width, matching default/shift/altgr exactly
+    { nodeId: minter.mint("touchKey"), id: "K_BKSP",               text: "*BkSp*", sp: 1 },
   ];
 
   // Row 3 (4 functional keys): *abc* *Menu* space *Enter*

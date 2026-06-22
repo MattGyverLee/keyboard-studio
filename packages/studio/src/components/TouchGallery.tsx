@@ -37,6 +37,7 @@ import type { ScaffoldSpec, VfsTransform } from "../hooks/useKeyboardArtifact.ts
 import { OskModeToggle } from "./OskModeToggle.tsx";
 import type { OskMode } from "./OskModeToggle.tsx";
 import { OSKFrame } from "./OSKFrame.tsx";
+import { scaffoldTouchLayout } from "@keyboard-studio/engine";
 
 // ---------------------------------------------------------------------------
 // Style constants — dark palette matching MechanismGallery / PhaseB
@@ -58,6 +59,47 @@ const BLUE_ACTION = "#1f6feb";
 function cpStr(char: string): string {
   const cp = char.codePointAt(0)?.toString(16).toUpperCase().padStart(4, "0");
   return `U+${cp ?? "????"}`;
+}
+
+/** Returns true when char is an accented letter decomposable to base + combining mark. */
+function isDecomposableAccented(char: string): boolean {
+  const nfd = char.normalize("NFD");
+  const cps = [...nfd];
+  if (cps.length !== 2) return false;
+  const secondCp = cps[1]?.codePointAt(0) ?? 0;
+  return secondCp >= 0x0300 && secondCp <= 0x036f;
+}
+
+/** Strip K_ prefix from a key id for user-facing display. */
+function hostKeyShortLabel(keyId: string): string {
+  return keyId.startsWith("K_") ? keyId.slice(2) : keyId;
+}
+
+/** Direction code to arrow character. */
+function dirArrow(dir: string): string {
+  if (dir === "n") return "↑"; // up
+  if (dir === "s") return "↓"; // down
+  if (dir === "e") return "→"; // right
+  if (dir === "w") return "←"; // left
+  return dir;
+}
+
+/** Produce a human-readable label for a configured TouchAssignment chip. */
+function touchMethodLabel(a: TouchAssignment): string {
+  const m = a.mechanisms[0];
+  if (!m) return a.target;
+  const patternId = m.patternId;
+  const sv = m.slotValues ?? {};
+  const hkShort = sv["hostKey"] ? hostKeyShortLabel(sv["hostKey"]) : "";
+  if (patternId === "touch_inherited") return `${a.target} · inherited`;
+  if (patternId === "longpress_alternates") return `${a.target} · long-press ${hkShort}`;
+  if (patternId === "flick_gestures") {
+    const dir = sv["direction"] ?? "";
+    return `${a.target} · flick ${hkShort} ${dirArrow(dir)}`.trimEnd();
+  }
+  if (patternId === "multitap") return `${a.target} · multitap ${hkShort}`;
+  if (patternId === "touch_key_replace") return `${a.target} · replace ${hkShort}`;
+  return a.target;
 }
 
 // Physical key options for the long-press / flick / multitap selectors.
@@ -103,7 +145,12 @@ const selectStyle: CSSProperties = {
 // Touch method type
 // ---------------------------------------------------------------------------
 
-type TouchMethod = "touch_inherited" | "longpress_alternates" | "flick_gestures" | "multitap";
+type TouchMethod = "touch_inherited" | "touch_key_replace" | "longpress_alternates" | "flick_gestures" | "multitap";
+
+// Module-level set of valid KEY_OPTIONS values (non-empty) for tap-to-select routing.
+const VALID_HOST_KEYS = new Set(
+  KEY_OPTIONS.filter((o) => o.value !== "").map((o) => o.value),
+);
 
 // ---------------------------------------------------------------------------
 // TouchMethodChooser — 4 expandable cards
@@ -354,6 +401,54 @@ function TouchMethodChooser({
           </div>
         )}
       </div>
+
+      {/* 5. Replace a key */}
+      <div style={cardStyle(method === "touch_key_replace")}>
+        <button
+          type="button"
+          aria-pressed={method === "touch_key_replace"}
+          onClick={() => onMethodChange("touch_key_replace")}
+          style={headerBtnStyle}
+        >
+          <span style={{ fontWeight: 600, color: method === "touch_key_replace" ? ACCENT : TEXT_MAIN }}>
+            Replace a key
+          </span>
+          {method !== "touch_key_replace" && (
+            <span style={{ fontSize: 11, color: TEXT_DIM }}>
+              Make a key type {currentChar} directly on the touch keyboard.
+            </span>
+          )}
+        </button>
+        {method === "touch_key_replace" && (
+          <div style={configStyle}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12,
+                color: TEXT_DIM,
+                fontFamily: FONT,
+              }}
+            >
+              Host key:
+              <select
+                value={hostKey}
+                onChange={(e) => onHostKeyChange(e.target.value)}
+                aria-label="Host key to replace"
+                style={selectStyle}
+              >
+                {KEY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </label>
+            <p style={{ margin: 0, fontSize: 11, color: TEXT_DIM, fontFamily: FONT }}>
+              Make a key type {currentChar} directly on the touch keyboard.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -366,9 +461,10 @@ interface TouchPreviewPaneProps {
   baseKeyboard: import("@keyboard-studio/contracts").BaseKeyboard | null;
   stage: ReturnType<typeof useKeyboardArtifact>["stage"];
   retry: ReturnType<typeof useKeyboardArtifact>["retry"];
+  onKeyTap?: (keyId: string) => void;
 }
 
-function TouchPreviewPane({ baseKeyboard, stage, retry }: TouchPreviewPaneProps) {
+function TouchPreviewPane({ baseKeyboard, stage, retry, onKeyTap }: TouchPreviewPaneProps) {
   const [oskMode, setOskMode] = useState<OskMode>("touch");
 
   const applyWarnings =
@@ -502,6 +598,7 @@ function TouchPreviewPane({ baseKeyboard, stage, retry }: TouchPreviewPaneProps)
           oskMode={oskMode}
           stage={stage}
           retry={retry}
+          {...(onKeyTap !== undefined ? { onKeyTap } : {})}
         />
       </div>
 
@@ -690,6 +787,131 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
   );
 
   // ---------------------------------------------------------------------------
+  // Phase C desktop assignments + detected-chars from scaffoldTouchLayout
+  // ---------------------------------------------------------------------------
+
+  const phaseResults = useWorkingCopyStore((s) => s.phaseResults);
+
+  const desktopAssignments = useMemo(
+    () =>
+      (phaseResults.find((p) => p.phase === "C")?.assignments ?? []).filter(
+        (a) => a.modality === "physical" && a.scope === "individual",
+      ),
+    [phaseResults],
+  );
+
+  const detectedChars = useMemo<Set<string>>(() => {
+    if (baseIr === null) return new Set<string>();
+    try {
+      const layout = scaffoldTouchLayout(baseIr);
+      const set = new Set<string>();
+      const push = (t?: string) => {
+        if (t && t.length > 0 && !t.startsWith("*")) set.add(t);
+      };
+      for (const p of layout.platforms) {
+        for (const layer of p.layers) {
+          for (const row of layer.rows) {
+            for (const k of row.keys) {
+              push(k.text);
+              push(k.output);
+              (k.sk ?? []).forEach((s) => { push(s.text); push(s.output); });
+              (k.multitap ?? []).forEach((s) => { push(s.text); push(s.output); });
+              if (k.flick) {
+                Object.values(k.flick).forEach((s) => {
+                  if (s) { push(s.text); push(s.output); }
+                });
+              }
+            }
+          }
+        }
+      }
+      return set;
+    } catch {
+      return new Set<string>();
+    }
+  }, [baseIr]);
+
+  // ---------------------------------------------------------------------------
+  // Per-character suggestion computation
+  // ---------------------------------------------------------------------------
+
+  type Suggestion =
+    | { kind: "longpress"; hostKey: string }
+    | { kind: "replace"; hostKey: string }
+    | { kind: "already" }
+    | { kind: "none" };
+
+  const suggestion = useMemo<Suggestion>(() => {
+    if (currentChar === null) return { kind: "none" };
+
+    // Find Phase C desktop assignment for this character.
+    const da = desktopAssignments.find((a) => a.target === currentChar);
+    if (da) {
+      const m = da.mechanisms[0];
+      if (!m) return { kind: "none" };
+      const pid = m.patternId;
+      const sid = m.strategyId ?? "";
+      const sv = m.slotValues ?? {};
+
+      // simple_swap / S-01 → replace suggestion
+      if (pid === "simple_swap" || sid === "S-01") {
+        const match = (sv["kmnRules"] ?? "").match(/\+\s*\[([A-Z0-9_]+)\]/);
+        const hk = match?.[1] ?? "";
+        return { kind: "replace", hostKey: hk };
+      }
+
+      // deadkey_single_tap / S-02 → longpress from baseLetters
+      if (pid === "deadkey_single_tap" || sid === "S-02") {
+        const baseLetters = sv["baseLetters"] ?? "";
+        const firstLetter = baseLetters[0];
+        let hk = "";
+        if (firstLetter && /^[a-zA-Z]$/.test(firstLetter)) {
+          hk = `K_${firstLetter.toUpperCase()}`;
+        }
+        return { kind: "longpress", hostKey: hk };
+      }
+
+      // modifier_as_layer_switch / S-08 → longpress from altgrKeyList
+      if (pid === "modifier_as_layer_switch" || sid === "S-08") {
+        const match = (sv["altgrKeyList"] ?? "").match(/\[RALT\s+([A-Z0-9_]+)\]/);
+        const hk = match?.[1] ?? "";
+        return { kind: "longpress", hostKey: hk };
+      }
+
+      // multi_char_sequence / S-03 → longpress best-effort
+      if (pid === "multi_char_sequence" || sid === "S-03") {
+        const firstOut = sv["firstLetterOut"] ?? "";
+        const firstChar = firstOut[0];
+        let hk = "";
+        if (firstChar && /^[a-zA-Z]$/.test(firstChar)) {
+          hk = `K_${firstChar.toUpperCase()}`;
+        }
+        return { kind: "longpress", hostKey: hk };
+      }
+
+      // Assignment exists but unrecognized pattern
+      return { kind: "none" };
+    }
+
+    // No desktop assignment
+    if (detectedChars.has(currentChar)) {
+      return { kind: "already" };
+    }
+
+    if (isDecomposableAccented(currentChar)) {
+      const nfd = currentChar.normalize("NFD");
+      const baseLetter = [...nfd][0] ?? "";
+      let hk = "";
+      if (baseLetter && /^[a-zA-Z]$/.test(baseLetter)) {
+        hk = `K_${baseLetter.toUpperCase()}`;
+      }
+      return { kind: "longpress", hostKey: hk };
+    }
+
+    return { kind: "none" };
+  }, [currentChar, desktopAssignments, detectedChars]);
+
+  // ---------------------------------------------------------------------------
   // Per-character method state — reset when currentChar changes
   // ---------------------------------------------------------------------------
 
@@ -728,7 +950,7 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
     if (currentChar === null) return false;
     if (method === "touch_inherited") return true;
     if (method === "flick_gestures") return hostKey !== "" && flickDirection !== "";
-    // longpress_alternates and multitap require a host key.
+    // longpress_alternates, multitap, and touch_key_replace require a host key.
     return hostKey !== "";
   }, [currentChar, method, hostKey, flickDirection]);
 
@@ -764,6 +986,15 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
         source: "user",
       };
     }
+    if (method === "touch_key_replace") {
+      return {
+        scope: "individual",
+        target: char,
+        modality: "touch",
+        mechanisms: [{ patternId: "touch_key_replace", slotValues: { hostKey, char } }],
+        source: "user",
+      };
+    }
     // multitap
     return {
       scope: "individual",
@@ -796,9 +1027,10 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
       setCurrentChar(wrap);
       return;
     }
-    // All done — push afterChar so Back from all-done state returns here.
+    // All done — push afterChar so Back from the all-done panel returns here,
+    // then clear currentChar so the all-done panel (with its Done button) shows.
     setCharHistory((h) => [...h, afterChar]);
-    // Stay; isDone will be true and currentChar will be set to null separately.
+    setCurrentChar(null);
   }
 
   // ---------------------------------------------------------------------------
@@ -820,8 +1052,48 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
     setSuggestionDismissed(true);
     setAppliedForCurrentChar(true);
     advanceToNext(currentChar, next, skippedChars);
+  // inventory is included so the handler re-captures the latest advanceToNext
+  // (which closes over inventory) if the confirmed inventory ever changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChar, charTouch, skippedChars]);
+  }, [currentChar, charTouch, skippedChars, inventory]);
+
+  // Accept the suggestion: build the suggested assignment and apply it
+  // immediately, then advance to the next character. If no host key could be
+  // derived, fall back to opening the chooser pre-filled at the suggested
+  // method so the user can pick a key.
+  const handleUseSuggestion = useCallback(() => {
+    if (currentChar === null) return;
+    if (suggestion.kind !== "longpress" && suggestion.kind !== "replace") {
+      setSuggestionDismissed(true);
+      return;
+    }
+    const nextMethod: TouchMethod =
+      suggestion.kind === "longpress" ? "longpress_alternates" : "touch_key_replace";
+    const hk = suggestion.hostKey;
+    if (hk === "") {
+      setMethod(nextMethod);
+      setHostKey("");
+      setFlickDirection("");
+      setSuggestionDismissed(true);
+      return;
+    }
+    const assignment: TouchAssignment = {
+      scope: "individual",
+      target: currentChar,
+      modality: "touch",
+      mechanisms: [{ patternId: nextMethod, slotValues: { hostKey: hk, char: currentChar } }],
+      source: "user",
+    };
+    const next = new Map(charTouch);
+    next.set(currentChar, assignment);
+    setCharTouch(next);
+    setSuggestionDismissed(true);
+    setAppliedForCurrentChar(true);
+    advanceToNext(currentChar, next, skippedChars);
+  // inventory is included so the handler re-captures the latest advanceToNext
+  // (which closes over inventory) if the confirmed inventory ever changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestion, currentChar, charTouch, skippedChars, inventory]);
 
   const handleSuggestionChange = useCallback(() => {
     setSuggestionDismissed(true);
@@ -897,6 +1169,24 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
       return next;
     });
   }, []);
+
+  // Tap-to-select routing: when a valid host-key-capable method is active and
+  // the user taps a key in the OSK preview, route that key id to the host key
+  // selector. Ignored for touch_inherited (no host key concept).
+  const handleKeyTap = useCallback(
+    (keyId: string) => {
+      if (!VALID_HOST_KEYS.has(keyId)) return;
+      if (
+        method === "longpress_alternates" ||
+        method === "flick_gestures" ||
+        method === "multitap" ||
+        method === "touch_key_replace"
+      ) {
+        setHostKey(keyId);
+      }
+    },
+    [method],
+  );
 
   // ---------------------------------------------------------------------------
   // onComplete — emit only explicitly-configured characters
@@ -1105,11 +1395,11 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
             </button>
           </div>
 
-          {/* Touch access prompt card (shown until dismissed) */}
+          {/* Suggestion card (shown until dismissed) */}
           {!suggestionDismissed && (
             <div
               role="note"
-              aria-label="Touch access method prompt"
+              aria-label="Touch access method suggestion"
               style={{
                 background: "#0d2218",
                 border: "1px solid #238636",
@@ -1120,55 +1410,201 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
                 gap: 8,
               }}
             >
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 12,
-                  color: "#56d364",
-                  fontFamily: FONT,
-                  fontWeight: 600,
-                }}
-              >
-                This character needs a touch access method. Choose how to make it
-                reachable on a touch keyboard.
-              </p>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={handleSuggestionAccept}
-                  aria-label={`Mark ${cpStr(currentChar)} ${currentChar} as already in touch layout`}
-                  style={{
-                    padding: "5px 14px",
-                    background: "#238636",
-                    border: "none",
-                    borderRadius: 5,
-                    color: "#e6edf3",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontFamily: FONT,
-                  }}
-                >
-                  Already in layout
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSuggestionChange}
-                  aria-label="Choose touch method manually"
-                  style={{
-                    padding: "5px 14px",
-                    background: "transparent",
-                    border: `1px solid ${BORDER}`,
-                    borderRadius: 5,
-                    color: TEXT_DIM,
-                    fontSize: 12,
-                    cursor: "pointer",
-                    fontFamily: FONT,
-                  }}
-                >
-                  Choose method
-                </button>
-              </div>
+              {suggestion.kind === "longpress" && (
+                <>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 12,
+                      color: "#56d364",
+                      fontFamily: FONT,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Suggested: long-press{" "}
+                    {suggestion.hostKey ? hostKeyShortLabel(suggestion.hostKey) : "a key"}{" "}
+                    to reach {currentChar}
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={handleUseSuggestion}
+                      aria-label={`Use suggested long-press method for ${cpStr(currentChar)} ${currentChar}`}
+                      style={{
+                        padding: "5px 14px",
+                        background: "#238636",
+                        border: "none",
+                        borderRadius: 5,
+                        color: "#e6edf3",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        fontFamily: FONT,
+                      }}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSuggestionChange}
+                      aria-label="Choose a different touch method"
+                      style={{
+                        padding: "5px 14px",
+                        background: "transparent",
+                        border: `1px solid ${BORDER}`,
+                        borderRadius: 5,
+                        color: TEXT_DIM,
+                        fontSize: 12,
+                        cursor: "pointer",
+                        fontFamily: FONT,
+                      }}
+                    >
+                      Deny
+                    </button>
+                  </div>
+                </>
+              )}
+              {suggestion.kind === "replace" && (
+                <>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 12,
+                      color: "#56d364",
+                      fontFamily: FONT,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Suggested: replace{" "}
+                    {suggestion.hostKey ? hostKeyShortLabel(suggestion.hostKey) : "a key"}{" "}
+                    with {currentChar}
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={handleUseSuggestion}
+                      aria-label={`Use suggested replace method for ${cpStr(currentChar)} ${currentChar}`}
+                      style={{
+                        padding: "5px 14px",
+                        background: "#238636",
+                        border: "none",
+                        borderRadius: 5,
+                        color: "#e6edf3",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        fontFamily: FONT,
+                      }}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSuggestionChange}
+                      aria-label="Choose a different touch method"
+                      style={{
+                        padding: "5px 14px",
+                        background: "transparent",
+                        border: `1px solid ${BORDER}`,
+                        borderRadius: 5,
+                        color: TEXT_DIM,
+                        fontSize: 12,
+                        cursor: "pointer",
+                        fontFamily: FONT,
+                      }}
+                    >
+                      Deny
+                    </button>
+                  </div>
+                </>
+              )}
+              {suggestion.kind === "already" && (
+                <>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 12,
+                      color: "#56d364",
+                      fontFamily: FONT,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {currentChar} is already on the touch keyboard. Keep it as is?
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={handleSuggestionAccept}
+                      aria-label={`Keep ${cpStr(currentChar)} ${currentChar} as already in touch layout`}
+                      style={{
+                        padding: "5px 14px",
+                        background: "#238636",
+                        border: "none",
+                        borderRadius: 5,
+                        color: "#e6edf3",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        fontFamily: FONT,
+                      }}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSuggestionChange}
+                      aria-label="Make changes to touch method"
+                      style={{
+                        padding: "5px 14px",
+                        background: "transparent",
+                        border: `1px solid ${BORDER}`,
+                        borderRadius: 5,
+                        color: TEXT_DIM,
+                        fontSize: 12,
+                        cursor: "pointer",
+                        fontFamily: FONT,
+                      }}
+                    >
+                      Deny
+                    </button>
+                  </div>
+                </>
+              )}
+              {suggestion.kind === "none" && (
+                <>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 12,
+                      color: "#56d364",
+                      fontFamily: FONT,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Set how {currentChar} is reached on touch.
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={handleSuggestionChange}
+                      aria-label="Choose touch method"
+                      style={{
+                        padding: "5px 14px",
+                        background: "#238636",
+                        border: "none",
+                        borderRadius: 5,
+                        color: "#e6edf3",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        fontFamily: FONT,
+                      }}
+                    >
+                      Choose method
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -1271,7 +1707,7 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
             aria-label="Configured characters — click to remove"
             style={{ display: "flex", flexWrap: "wrap", gap: 6 }}
           >
-            {[...charTouch.keys()].map((c) => (
+            {[...charTouch.entries()].map(([c, assignment]) => (
               <button
                 key={c}
                 type="button"
@@ -1282,18 +1718,19 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 4,
-                  padding: "4px 8px",
+                  padding: "4px 10px",
                   background: "#0d2218",
                   border: "1px solid #238636",
                   borderRadius: 16,
                   color: "#56d364",
-                  fontSize: 13,
+                  fontSize: 12,
                   fontFamily: "monospace",
                   cursor: "pointer",
                   lineHeight: 1.3,
+                  whiteSpace: "nowrap",
                 }}
               >
-                {c}
+                {touchMethodLabel(assignment)}
                 <span
                   aria-hidden="true"
                   style={{ fontSize: 11, color: "#56d364", opacity: 0.7 }}
@@ -1359,9 +1796,23 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
             fontWeight: 600,
             color: ACCENT,
             fontFamily: FONT,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
           }}
         >
-          Touch layout
+          Mechanism Gallery
+          <span
+            style={{
+              fontSize: 12,
+              color: TEXT_DIM,
+              textTransform: "uppercase" as const,
+              letterSpacing: "0.06em",
+              fontWeight: 400,
+            }}
+          >
+            Touch
+          </span>
         </h1>
         <span
           style={{
@@ -1427,6 +1878,7 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
             baseKeyboard={baseKeyboard}
             stage={stage}
             retry={retry}
+            onKeyTap={handleKeyTap}
           />
         </div>
       </div>
