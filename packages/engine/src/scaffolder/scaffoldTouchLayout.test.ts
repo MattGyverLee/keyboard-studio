@@ -245,11 +245,11 @@ describe("scaffoldTouchLayout", () => {
       expect(numLayer.rows[1]!.keys).toHaveLength(10);
     });
 
-    it("numeric layer row 2 has exactly 9 keys", () => {
+    it("numeric layer row 2 has exactly 10 keys (leading spacer + 8 symbols + K_BKSP)", () => {
       const ir = makeMinimalIR();
       const result = scaffoldTouchLayout(ir);
       const numLayer = getLayer(result, "numeric")!;
-      expect(numLayer.rows[2]!.keys).toHaveLength(9);
+      expect(numLayer.rows[2]!.keys).toHaveLength(10);
     });
 
     it("numeric layer row 3 (functional) has exactly 4 keys", () => {
@@ -440,26 +440,34 @@ describe("scaffoldTouchLayout", () => {
       expect(spacer.sp).toBe(10);
     });
 
-    it("numeric row 2 first key is K_LBRKT with text '[' and pad:110", () => {
+    it("numeric row 2 index 0 is leading spacer (sp:10, width:110) and K_LBRKT is at index 1 with text '['", () => {
       const ir = makeMinimalIR();
       const result = scaffoldTouchLayout(ir);
       const numLayer = getLayer(result, "numeric")!;
-      const firstKey = numLayer.rows[2]!.keys[0]!;
-      expect(firstKey.id).toBe("K_LBRKT");
-      expect(firstKey.text).toBe("[");
-      expect(firstKey.pad).toBe(110);
+      const row2Keys = numLayer.rows[2]!.keys;
+      // index 0: leading spacer that preserves the ~110px visual indent
+      const leadSpacer = row2Keys[0]!;
+      expect(leadSpacer.id).toBe("T_num_r2_lead_sp");
+      expect(leadSpacer.sp).toBe(10);
+      expect(leadSpacer.width).toBe(110);
+      // index 1: K_LBRKT (no pad on the key itself)
+      const lbrkt = row2Keys[1]!;
+      expect(lbrkt.id).toBe("K_LBRKT");
+      expect(lbrkt.text).toBe("[");
+      expect(lbrkt.pad).toBeUndefined();
     });
 
-    it("numeric row 2 last key is K_BKSP with sp:1 and width:100", () => {
+    it("numeric row 2 last key is K_BKSP at keyIndex 9 with sp:1 and no width (matches default/shift/altgr)", () => {
       const ir = makeMinimalIR();
       const result = scaffoldTouchLayout(ir);
       const numLayer = getLayer(result, "numeric")!;
       const row2 = numLayer.rows[2]!;
-      const lastKey = row2.keys[row2.keys.length - 1]!;
+      expect(row2.keys).toHaveLength(10);
+      const lastKey = row2.keys[9]!;
       expect(lastKey.id).toBe("K_BKSP");
       expect(lastKey.text).toBe("*BkSp*");
       expect(lastKey.sp).toBe(1);
-      expect(lastKey.width).toBe(100);
+      expect(lastKey.width).toBeUndefined();
     });
 
     it("numeric row 3 contains K_LOWER, K_LOPT, K_SPACE, K_ENTER", () => {
@@ -486,7 +494,7 @@ describe("scaffoldTouchLayout", () => {
       // Collect all keys across all rows; exclude functional/spacer keys.
       const functionalIds = new Set([
         "K_LOWER", "K_NUMLOCK", "K_LOPT", "K_SPACE", "K_ENTER",
-        "K_BKSP", "K_LBRKT", "K_RBRKT", "T_ks_sp_numeric",
+        "K_BKSP", "K_LBRKT", "K_RBRKT", "T_ks_sp_numeric", "T_num_r2_lead_sp",
       ]);
 
       for (const row of numLayer.rows) {
