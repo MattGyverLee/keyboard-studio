@@ -29,6 +29,7 @@ import { useState, useEffect, useMemo, useCallback, type CSSProperties } from "r
 import type { TouchAssignment } from "@keyboard-studio/contracts";
 import { createVirtualFS } from "@keyboard-studio/contracts";
 import { buildTouchLayoutJson } from "../lib/buildTouchLayoutJson.ts";
+import { resolveBaseTouchJson } from "../lib/resolveBaseTouchJson.ts";
 import { useWorkingCopyStore } from "../stores/workingCopyStore.ts";
 import { LintSummary } from "../lint/LintSummary.tsx";
 import { useTouchLint } from "../hooks/useTouchLint.ts";
@@ -613,11 +614,14 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
     );
     if (appliedEdits.length === 0) return null;
     if (baseIr === null) return null;
-    return buildTouchLayoutJson(baseIr, appliedEdits).json;
+    // Case B: base ships a touch layout → apply faithfully onto raw JSON copy.
+    // Case A: no shipped touch layout (or baseVfs not yet loaded) → IR-based path.
+    return buildTouchLayoutJson(baseIr, appliedEdits, resolveBaseTouchJson(baseVfs)).json;
     // touchKey drives re-evaluation when charTouch changes (Map identity is
     // not stable; the key is). baseIr is a stable snapshot post-lockDesktop.
+    // baseVfs is stable after instantiation but included for correctness.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseIr, touchKey]);
+  }, [baseIr, touchKey, baseVfs]);
 
   // VFS transform: inject the generated touch layout only when the author has
   // made real (non-inherited) touch edits. When touchLayoutJson is null — either
