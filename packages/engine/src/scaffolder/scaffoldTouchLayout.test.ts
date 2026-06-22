@@ -473,6 +473,126 @@ describe("scaffoldTouchLayout", () => {
       expect(ids).toContain("K_SPACE");
       expect(ids).toContain("K_ENTER");
     });
+
+    // -----------------------------------------------------------------------
+    // U_ id correctness and uniqueness (P0 fix verification)
+    // -----------------------------------------------------------------------
+
+    it("all literal-character keys in the numeric layer use U_ id form", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+
+      // Collect all keys across all rows; exclude functional/spacer keys.
+      const functionalIds = new Set([
+        "K_LOWER", "K_NUMLOCK", "K_LOPT", "K_SPACE", "K_ENTER",
+        "K_BKSP", "K_LBRKT", "K_RBRKT", "T_ks_sp_numeric",
+      ]);
+
+      for (const row of numLayer.rows) {
+        for (const key of row.keys) {
+          if (functionalIds.has(key.id)) continue;
+          expect(
+            key.id,
+            `literal key with text "${key.text}" should use U_ id form`,
+          ).toMatch(/^U_[0-9A-F]{4,5}$/);
+        }
+      }
+    });
+
+    it("all key ids in the numeric layer are unique", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+
+      const allIds = numLayer.rows.flatMap((row) => row.keys.map((k) => k.id));
+      const uniqueIds = new Set(allIds);
+      expect(
+        uniqueIds.size,
+        `numeric layer has ${allIds.length} keys but only ${uniqueIds.size} unique ids — duplicates: ${
+          allIds.filter((id, i) => allIds.indexOf(id) !== i).join(", ")
+        }`,
+      ).toBe(allIds.length);
+    });
+
+    it("pipe character key has id U_007C", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row1Keys = numLayer.rows[1]!.keys;
+      const pipeKey = row1Keys.find((k) => k.text === "|");
+      expect(pipeKey).toBeDefined();
+      expect(pipeKey!.id).toBe("U_007C");
+    });
+
+    it("backslash character key has id U_005C", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row1Keys = numLayer.rows[1]!.keys;
+      const bslashKey = row1Keys.find((k) => k.text === "\\");
+      expect(bslashKey).toBeDefined();
+      expect(bslashKey!.id).toBe("U_005C");
+    });
+
+    it("dollar sign key has id U_0024", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row1Keys = numLayer.rows[1]!.keys;
+      const dollarKey = row1Keys.find((k) => k.text === "$");
+      expect(dollarKey).toBeDefined();
+      expect(dollarKey!.id).toBe("U_0024");
+    });
+
+    it("digit '1' key in row 0 has id U_0031", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row0Keys = numLayer.rows[0]!.keys;
+      const oneKey = row0Keys.find((k) => k.text === "1");
+      expect(oneKey).toBeDefined();
+      expect(oneKey!.id).toBe("U_0031");
+    });
+
+    it("digit '0' key in row 0 has id U_0030", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      const row0Keys = numLayer.rows[0]!.keys;
+      const zeroKey = row0Keys.find((k) => k.text === "0");
+      expect(zeroKey).toBeDefined();
+      expect(zeroKey!.id).toBe("U_0030");
+    });
+
+    it("numeric layer row 0 still has ≤10 keys after U_ conversion", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      expect(numLayer.rows[0]!.keys.length).toBeLessThanOrEqual(10);
+    });
+
+    it("numeric layer row 1 still has ≤10 keys after U_ conversion", () => {
+      const ir = makeMinimalIR();
+      const result = scaffoldTouchLayout(ir);
+      const numLayer = getLayer(result, "numeric")!;
+      expect(numLayer.rows[1]!.keys.length).toBeLessThanOrEqual(10);
+    });
+
+    it("buildMinimalPhoneTouchLayout numeric layer has all-unique ids", () => {
+      const layout = buildMinimalPhoneTouchLayout();
+      const phone = layout.platforms.find((p) => p.id === "phone")!;
+      const numLayer = phone.layers.find((l) => l.id === "numeric")!;
+
+      const allIds = numLayer.rows.flatMap((row) => row.keys.map((k) => k.id));
+      const uniqueIds = new Set(allIds);
+      expect(
+        uniqueIds.size,
+        `buildMinimalPhoneTouchLayout numeric layer has duplicate ids: ${
+          allIds.filter((id, i) => allIds.indexOf(id) !== i).join(", ")
+        }`,
+      ).toBe(allIds.length);
+    });
   });
 
   // ---------------------------------------------------------------------------

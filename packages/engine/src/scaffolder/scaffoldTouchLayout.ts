@@ -30,28 +30,7 @@ import type {
   IRRule,
 } from "@keyboard-studio/contracts";
 import { NodeIdMinter } from "../codec/node-ids.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Convert a Unicode character to its Keyman touch-layout sub-key id.
- *
- * Keyman derives the output character directly from a `U_<UPPERHEX>` key id —
- * no `output` field is needed alongside it. The hex is uppercase, zero-padded
- * to at least 4 digits (5 for astral planes, e.g. U_1F600).
- *
- * @see applyTouchAssignments.ts — identical helper, kept local to avoid
- *      introducing a cross-module dependency between scaffolder and
- *      pattern-apply.
- */
-function charToUnicodeKeyId(char: string): string {
-  const cp = char.codePointAt(0);
-  if (cp === undefined) return "U_FFFD";
-  const hex = cp.toString(16).toUpperCase().padStart(4, "0");
-  return `U_${hex}`;
-}
+import { charToUnicodeKeyId } from "../codec/touch-ids.js";
 
 // ---------------------------------------------------------------------------
 // US fallback keycaps for unmapped keys
@@ -486,47 +465,52 @@ function buildCanonicalPhoneLayers(
 
   // -------------------------------------------------------------------------
   // numeric layer (fixed literal keys — not from keyMap)
+  //
+  // All literal-character keys use U_<UPPERHEX> ids so Keyman outputs the
+  // Unicode codepoint directly without routing through the keyboard's rules.
+  // This also guarantees globally unique ids within the layer (no two keys
+  // can share a U_ id, unlike K_BKSLASH which would have collided for | and \).
   // -------------------------------------------------------------------------
   // Row 0 (10): 1 2 3 4 5 6 7 8 9 0
-  const numRow0Keys: TouchKeyIR[] = [
-    { nodeId: minter.mint("touchKey"), id: "K_1", text: "1" },
-    { nodeId: minter.mint("touchKey"), id: "K_2", text: "2" },
-    { nodeId: minter.mint("touchKey"), id: "K_3", text: "3" },
-    { nodeId: minter.mint("touchKey"), id: "K_4", text: "4" },
-    { nodeId: minter.mint("touchKey"), id: "K_5", text: "5" },
-    { nodeId: minter.mint("touchKey"), id: "K_6", text: "6" },
-    { nodeId: minter.mint("touchKey"), id: "K_7", text: "7" },
-    { nodeId: minter.mint("touchKey"), id: "K_8", text: "8" },
-    { nodeId: minter.mint("touchKey"), id: "K_9", text: "9" },
-    { nodeId: minter.mint("touchKey"), id: "K_0", text: "0" },
-  ];
+  const numRow0Keys: TouchKeyIR[] = (
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"] as const
+  ).map((ch) => ({
+    nodeId: minter.mint("touchKey"),
+    id: charToUnicodeKeyId(ch),
+    text: ch,
+  }));
 
   // Row 1 (9 symbol keys + 1 spacer = 10): $(pad:50) @ # % & _ = | \  spacer
+  const numRow1Symbols: Array<[string, number | undefined]> = [
+    ["$", 50], ["@", undefined], ["#", undefined], ["%", undefined],
+    ["&", undefined], ["_", undefined], ["=", undefined],
+    ["|", undefined], ["\\", undefined],
+  ];
   const numRow1Keys: TouchKeyIR[] = [
-    { nodeId: minter.mint("touchKey"), id: "K_4",      text: "$", pad: 50 },
-    { nodeId: minter.mint("touchKey"), id: "K_2",      text: "@" },
-    { nodeId: minter.mint("touchKey"), id: "K_3",      text: "#" },
-    { nodeId: minter.mint("touchKey"), id: "K_5",      text: "%" },
-    { nodeId: minter.mint("touchKey"), id: "K_7",      text: "&" },
-    { nodeId: minter.mint("touchKey"), id: "K_HYPHEN", text: "_" },
-    { nodeId: minter.mint("touchKey"), id: "K_EQUAL",  text: "=" },
-    { nodeId: minter.mint("touchKey"), id: "K_BKSLASH", text: "|" },
-    { nodeId: minter.mint("touchKey"), id: "K_BKSLASH", text: "\\" },
+    ...numRow1Symbols.map(([ch, pad]) => ({
+      nodeId: minter.mint("touchKey"),
+      id: charToUnicodeKeyId(ch),
+      text: ch,
+      ...(pad !== undefined ? { pad } : {}),
+    })),
     // trailing spacer
     { nodeId: minter.mint("touchKey"), id: "T_ks_sp_numeric", text: "", sp: 10, width: 10 },
   ];
 
   // Row 2 (9 keys): [(pad:110) ( ) ] + - * /  K_BKSP(sp:1,w:100)
+  // [ and ] keep K_LBRKT / K_RBRKT so they route through the keyboard rules
+  // (they are punctuation keys, not fixed-value literals).
+  // ( ) + - * / are literal characters → U_ ids.
   const numRow2Keys: TouchKeyIR[] = [
-    { nodeId: minter.mint("touchKey"), id: "K_LBRKT",  text: "[",      pad: 110 },
-    { nodeId: minter.mint("touchKey"), id: "K_9",      text: "(" },
-    { nodeId: minter.mint("touchKey"), id: "K_0",      text: ")" },
-    { nodeId: minter.mint("touchKey"), id: "K_RBRKT",  text: "]" },
-    { nodeId: minter.mint("touchKey"), id: "K_EQUAL",  text: "+" },
-    { nodeId: minter.mint("touchKey"), id: "K_HYPHEN", text: "-" },
-    { nodeId: minter.mint("touchKey"), id: "K_8",      text: "*" },
-    { nodeId: minter.mint("touchKey"), id: "K_SLASH",  text: "/" },
-    { nodeId: minter.mint("touchKey"), id: "K_BKSP",   text: "*BkSp*", sp: 1, width: 100 },
+    { nodeId: minter.mint("touchKey"), id: "K_LBRKT",              text: "[",      pad: 110 },
+    { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("("), text: "(" },
+    { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId(")"), text: ")" },
+    { nodeId: minter.mint("touchKey"), id: "K_RBRKT",              text: "]" },
+    { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("+"), text: "+" },
+    { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("-"), text: "-" },
+    { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("*"), text: "*" },
+    { nodeId: minter.mint("touchKey"), id: charToUnicodeKeyId("/"), text: "/" },
+    { nodeId: minter.mint("touchKey"), id: "K_BKSP",               text: "*BkSp*", sp: 1, width: 100 },
   ];
 
   // Row 3 (4 functional keys): *abc* *Menu* space *Enter*

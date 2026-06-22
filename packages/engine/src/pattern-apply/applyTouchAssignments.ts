@@ -12,27 +12,7 @@
 import type { TouchLayoutIR, TouchKeyIR } from "@keyboard-studio/contracts";
 import type { TouchAssignment } from "@keyboard-studio/contracts";
 import { NodeIdMinter } from "../codec/node-ids.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Convert a Unicode character to its Keyman touch-layout sub-key id.
- *
- * Keyman derives the output character directly from a `U_<UPPERHEX>` key id —
- * no `output` field is needed (and including one alongside a U_ id is
- * redundant and can confuse kmc-kmn). The hex is uppercase, zero-padded to at
- * least 4 digits (5 for astral planes, e.g. U_1F600).
- *
- * @see https://help.keyman.com/developer/language/guide/touch-layout-ids
- */
-function charToUnicodeKeyId(char: string): string {
-  const cp = char.codePointAt(0);
-  if (cp === undefined) return "U_FFFD"; // replacement character as fallback
-  const hex = cp.toString(16).toUpperCase().padStart(4, "0");
-  return `U_${hex}`;
-}
+import { charToUnicodeKeyId } from "../codec/touch-ids.js";
 
 // ---------------------------------------------------------------------------
 // Public types

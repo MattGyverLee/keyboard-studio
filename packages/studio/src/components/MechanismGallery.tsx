@@ -147,7 +147,6 @@ function GalleryPreviewWithPatterns({
       identity?.keyboardId != null
         ? { keyboardId: identity.keyboardId, displayName: identity.displayName ?? "" }
         : null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [identity?.keyboardId, identity?.displayName],
   );
 
