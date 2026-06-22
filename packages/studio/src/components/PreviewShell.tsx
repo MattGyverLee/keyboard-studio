@@ -18,6 +18,7 @@ import { useWorkingCopyStore } from "../stores/workingCopyStore.ts";
 import { instantiateFromBaseIfConfirmed } from "../lib/confirmRebase.ts";
 import { useWorkingCopyTransform } from "../hooks/useWorkingCopyTransform.ts";
 import { serializeWorkingCopy } from "../lib/serializeWorkingCopy.ts";
+import { GitHubSubmitPanel } from "./GitHubSubmitPanel.tsx";
 
 // [TEMP] Per-fixture typing hints. Hardcoded until the Pattern schema's
 // `tests` field (spec §5) is wired into the UI to drive these automatically.
@@ -662,6 +663,9 @@ export function PreviewShell() {
                 </button>
               </div>
             )}
+            {/* GitHub OAuth fork+PR delivery (spec §12 "Option A"). Gated on the
+                same working-copy readiness as the .zip download. */}
+            <GitHubSubmitPanel canSubmitArtifact={canDownload} />
             <DiagnosticsPanel diagnostics={diagnostics} />
           </>
         )}

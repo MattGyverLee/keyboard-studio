@@ -4,7 +4,14 @@
 // intentional — services.ts is the designated service boundary. Vite
 // tree-shakes them in real builds. Do NOT add mocks imports elsewhere in
 // packages/studio/src/.
-import type { BaseBrowserService, CharacterDiscoveryService, PatternLibraryService, ScaffolderService, VirtualFS } from "@keyboard-studio/contracts";
+import type {
+  BaseBrowserService,
+  CharacterDiscoveryService,
+  OutputService,
+  PatternLibraryService,
+  ScaffolderService,
+  VirtualFS,
+} from "@keyboard-studio/contracts";
 import { mockBaseBrowser, mockOutputService, mockScaffolder } from "@keyboard-studio/contracts/mocks";
 import { localBaseBrowser, LOCAL_PROXY_BASE } from "./localBaseBrowser.ts";
 import { getPatternLibraryService as getBrowserPatternLibraryService } from "./browserPatternLibrary.ts";
@@ -82,4 +89,24 @@ export async function getToZip(): Promise<(vfs: VirtualFS) => Promise<Uint8Array
   const { toZip } = await import(/* @vite-ignore */ "@keyboard-studio/engine");
   toZipCache = toZip as (vfs: VirtualFS) => Promise<Uint8Array>;
   return toZipCache;
+}
+
+// GitHubOutputService (verifyToken / publishPR — the OAuth fork+PR path,
+// spec §12 "Option A"): when USE_REAL is false returns the mock (which already
+// implements verifyToken/publishPR against fixture data). When real, lazily
+// imports createGitHubOutputService from the engine, which wires the calls to
+// the live GitHub API via fetch. Cached after first construction.
+//
+// Only the verifyToken/publishPR slice of OutputService is exposed here — the
+// zip path goes through getToZip above.
+type GitHubOutputService = Pick<OutputService, "verifyToken" | "publishPR">;
+let gitHubOutputServiceCache: GitHubOutputService | null = null;
+export async function getGitHubOutputService(): Promise<GitHubOutputService> {
+  if (!USE_REAL) return mockOutputService;
+  if (gitHubOutputServiceCache !== null) return gitHubOutputServiceCache;
+  const { createGitHubOutputService } = await import(
+    /* @vite-ignore */ "@keyboard-studio/engine"
+  );
+  gitHubOutputServiceCache = createGitHubOutputService();
+  return gitHubOutputServiceCache;
 }
