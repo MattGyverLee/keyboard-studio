@@ -2,8 +2,8 @@
 //
 // Routes:
 //   #survey  (default)  — full authoring wizard: identity → base → prefill →
-//                         carve (Phase D) → inventory (Phase B) →
-//                         mechanisms (Phase C) → help (Phase F) → done
+//                         B (inventory) → carve (Phase D) →
+//                         mechanisms (Phase C) → E → help (Phase F) → done
 //   #preview            — PreviewShell (OSK preview + diagnostics + download)
 //   #output             — PreviewShell (same combined shell; v1 — split is a later refinement)
 
@@ -106,7 +106,7 @@ function NavBar({ active }: NavBarProps) {
         alignItems: "center",
         gap: 4,
         padding: "0 16px",
-        background: "#0d1117",
+        background: "var(--bg)",
         borderBottom: "1px solid #283040",
         boxSizing: "border-box",
       }}
@@ -147,9 +147,9 @@ const SURVEY_LEFT_MIN_PCT = 25;
 const SURVEY_LEFT_MAX_PCT = 65;
 const SURVEY_LEFT_INIT_PCT = 45;
 
-// Studio wizard stage machine (spec §8 "Workflow ordering"):
+// Studio wizard stage machine (spec §8 "Workflow ordering", issue #508):
 //   identity → base → track → (project-name [copy only]) → prefill →
-//   carve (Phase D) → B → mechanisms (Phase C) → F → done
+//   B → carve (Phase D) → mechanisms (Phase C) → E → F → done
 // Gated scripts route to "unsupported".
 type SurveyStage =
   | "identity"
@@ -358,11 +358,11 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
   }
 
   function handleCarveComplete() {
-    setStage("B");
+    setStage("mechanisms");
   }
   function handlePhaseBComplete(result: SurveyPhaseResult) {
     recordPhase(result);
-    setStage("mechanisms");
+    setStage("carve");
   }
   function handleMechanismsComplete() {
     lockDesktop();
@@ -481,7 +481,7 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
       <div style={{ height: "100%", overflow: "hidden" }}>
         <CarveGallery
           onComplete={handleCarveComplete}
-          onBack={() => setStage("prefill")}
+          onBack={() => setStage("B")}
         />
       </div>
     );
@@ -493,7 +493,7 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
         <MechanismGallery
           selectedBaseKeyboard={localBase}
           onComplete={handleMechanismsComplete}
-          onBack={() => setStage("B")}
+          onBack={() => setStage("carve")}
           {...(corpusPlacementMap !== null ? { placementMap: corpusPlacementMap } : {})}
         />
       </div>
@@ -519,7 +519,7 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
         flexDirection: "row",
         height: "100%",
         width: "100%",
-        background: "#0d1117",
+        background: "var(--bg)",
         overflow: "hidden",
       }}
     >
@@ -579,7 +579,7 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
           <Prefill
             identity={identityResult}
             base={localBase}
-            onConfirm={() => setStage("carve")}
+            onConfirm={() => setStage("B")}
             onBack={() => {
               // Back from prefill returns to track choice (not base picker directly).
               setStage(selectedTrack === "copy" ? "project-name" : "track");
@@ -597,7 +597,7 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
           <PhaseB
             context={surveyContext}
             onComplete={handlePhaseBComplete}
-            onBack={() => setStage("carve")}
+            onBack={() => setStage("prefill")}
             findingsByQuestionId={findingsByQuestionId}
           />
         )}
@@ -727,7 +727,7 @@ export function StudioShell() {
         height: "100vh",
         width: "100vw",
         overflow: "hidden",
-        background: "#0d1117",
+        background: "var(--bg)",
       }}
     >
       <NavBar active={route} />

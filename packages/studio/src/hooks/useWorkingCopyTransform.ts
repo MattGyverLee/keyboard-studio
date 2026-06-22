@@ -78,6 +78,7 @@ export function useWorkingCopyTransform(
   // Layer values — read individually so the memo only fires when they change.
   const baseIr = useWorkingCopyStore((s) => s.baseIr);
   const deletedNodeIds = useWorkingCopyStore((s) => s.deletedNodeIds);
+  const deletedItemIds = useWorkingCopyStore((s) => s.deletedItemIds);
   const identity = useWorkingCopyStore((s) => s.identity);
   // Assignments: physical only (touch is a separate gallery).
   const phaseResults = useWorkingCopyStore((s) => s.phaseResults);
@@ -92,8 +93,8 @@ export function useWorkingCopyTransform(
 
   // Deleted node IDs: sorted, joined string. O(n) but the carve set is small.
   const deletedKey = useMemo(
-    () => [...deletedNodeIds].sort().join("|"),
-    [deletedNodeIds],
+    () => [...deletedNodeIds].sort().join("|") + ";" + [...deletedItemIds].sort().join("|"),
+    [deletedNodeIds, deletedItemIds],
   );
 
   // Assignments key — compact string (scope:target:patternId/slotValues per assignment).
@@ -125,6 +126,7 @@ export function useWorkingCopyTransform(
     if (baseIr === null) return null;
 
     const capturedDeletedIds = deletedNodeIds;
+    const capturedDeletedItemIds = deletedItemIds;
     const capturedAssignments = sessionAssignments;
     const capturedDisplayName = identityDisplayName;
     const capturedKeyboardId = identityKeyboardId;
@@ -168,6 +170,7 @@ export function useWorkingCopyTransform(
           : {}),
         baseIr: capturedBaseIr,
         deletedNodeIds: capturedDeletedIds,
+        deletedItemIds: capturedDeletedItemIds,
         assignments: effectiveAssignments,
         getPattern: (id) => capturedPatternMap?.get(id),
         identity: identityArg,

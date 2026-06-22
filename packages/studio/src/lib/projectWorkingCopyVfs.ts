@@ -75,6 +75,8 @@ export interface ProjectWorkingCopyVfsInput {
   targetKeyboardId?: string;
   baseIr: KeyboardIR;
   deletedNodeIds: ReadonlySet<string>;
+  /** Individual rule nodeIds removed via glyph-level carving (GlyphCell clicks). */
+  deletedItemIds?: ReadonlySet<string>;
   assignments: ReadonlyArray<MechanismAssignment>;
   /** Synchronous resolver. Pass `() => undefined` when no pattern library is available. */
   getPattern: (id: string) => Pattern | undefined;
@@ -124,6 +126,7 @@ export function projectWorkingCopyVfs(
     targetKeyboardId,
     baseIr,
     deletedNodeIds,
+    deletedItemIds = new Set<string>(),
     assignments,
     getPattern,
     identity,
@@ -134,7 +137,10 @@ export function projectWorkingCopyVfs(
   // Step 1: Carve projection — re-emit IR with deleted nodes filtered out.
   // Writes `source/<keyboardId>.kmn` back into vfs. When deletedNodeIds is
   // empty, applyCarveToVfs is a no-op (fast path).
-  const carveResult = applyCarveToVfs(vfs, keyboardId, baseIr, deletedNodeIds);
+  const allDeletedIds = deletedItemIds.size > 0
+    ? new Set([...deletedNodeIds, ...deletedItemIds])
+    : deletedNodeIds;
+  const carveResult = applyCarveToVfs(vfs, keyboardId, baseIr, allDeletedIds);
   warnings.push(...carveResult.warnings);
 
   // Step 2: Assignments projection — inject mechanism pattern fragments.

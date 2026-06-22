@@ -71,6 +71,30 @@ describe("stripDanglingAssetStores", () => {
     expect(kmn).toMatch(/\+ \[K_A\] > 'a'/);
   });
 
+  it("always strips KMW_HELPFILE and KMW_EMBEDJS even when their files are present in the VFS", () => {
+    const withHelp = [
+      "store(&VERSION) '10.0'",
+      "store(&NAME) 'Arabic Izza'",
+      "store(&KMW_HELPFILE) 'arabic_izza.htm'",
+      "store(&KMW_EMBEDJS) 'arabic_izza.js'",
+      "begin Unicode > use(main)",
+      "group(main) using keys",
+      "+ [K_A] > 'a'",
+      "",
+    ].join("\n");
+    const vfs = createVirtualFS([
+      { path: "source/x.kmn", content: withHelp, isBinary: false },
+      // Both help files ARE present in VFS — should still be stripped.
+      { path: "source/arabic_izza.htm", content: "<html/>", isBinary: false },
+      { path: "source/arabic_izza.js", content: "// embed", isBinary: false },
+    ]);
+    const { kmn, stripped } = stripDanglingAssetStores(withHelp, vfs);
+    expect(stripped.sort()).toEqual(["KMW_EMBEDJS", "KMW_HELPFILE"]);
+    expect(kmn).not.toMatch(/&KMW_HELPFILE/);
+    expect(kmn).not.toMatch(/&KMW_EMBEDJS/);
+    expect(kmn).toMatch(/&NAME/);
+  });
+
   it("a base with dangling assets compiles to artifacts AFTER stripping (regression for empty-artifact preview)", async () => {
     const vfs = createVirtualFS([
       { path: "source/x.kmn", content: BASE, isBinary: false },

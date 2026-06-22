@@ -28,7 +28,7 @@ import type {
 
 import { tokenize } from "./tokenize.js";
 import { NodeIdMinter } from "./node-ids.js";
-import { OPAQUE_REASONS } from "./opaque-reasons.js";
+import { OPAQUE_REASONS, type OpaqueReason } from "./opaque-reasons.js";
 
 // System stores whose canonical spelling is NOT all-uppercase. The lookup key
 // is the uppercased form; the value is what gets stored in IRStore.name.
@@ -220,15 +220,17 @@ function parseUse(tok: string): string | null {
 }
 
 /**
- * Parse the value list of a store declaration.
- * Returns StoreItem[] or null if an opaque item is detected.
+ * Parse the value list of a store declaration. Always returns the parsed
+ * `items`; `opaqueReason` is non-null when the body carries a construct the
+ * typed IR can't represent (named deadkey, SMP literal), in which case the
+ * caller wraps the whole store as a RawKmnFragment with that reason.
  */
-function parseStoreItems(rawValue: string): { items: StoreItem[]; opaque: boolean } {
+function parseStoreItems(rawValue: string): { items: StoreItem[]; opaqueReason: OpaqueReason | null } {
   const toks = splitTokens(rawValue);
   const items: StoreItem[] = [];
   for (const tok of toks) {
     // SMP literal
-    if (isSmpLiteral(tok)) return { items, opaque: true };
+    if (isSmpLiteral(tok)) return { items, opaqueReason: OPAQUE_REASONS.SMP_LITERAL };
     // U+XXXX codepoint
     const cp = parseCodepoint(tok);
     if (cp !== null) {
@@ -243,6 +245,11 @@ function parseStoreItems(rawValue: string): { items: StoreItem[]; opaque: boolea
       }
       continue;
     }
+    // dk(name) — named (non-hex) deadkey identifier: opaque. Mirrors the
+    // context (parseContextElements) and output (parseOutputElements) parsers,
+    // which both classify a named deadkey as OPAQUE_REASONS.NAMED_DEADKEY.
+    // Checked before parseDk so a non-hex dk(...) is not silently dropped to raw.
+    if (isNamedDk(tok)) return { items, opaqueReason: OPAQUE_REASONS.NAMED_DEADKEY };
     // dk(NNNN)
     const dkId = parseDk(tok);
     if (dkId !== null) {
@@ -258,7 +265,7 @@ function parseStoreItems(rawValue: string): { items: StoreItem[]; opaque: boolea
     // bare identifier (treated as raw if unrecognized)
     items.push({ kind: "raw", text: tok });
   }
-  return { items, opaque: false };
+  return { items, opaqueReason: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -676,52 +683,29 @@ export function parse(text: string, keyboardId: string): ParseResult {
         }
         pendingComments = [];
 
-        if (parsed.isSystem) {
-          // Track for IRHeader.
-          sysStores[parsed.name] = parsed.rawValue;
-          // Also add to stores array as a system store.
-          const { items, opaque: sysOpaque } = parseStoreItems(parsed.rawValue);
-          if (sysOpaque) {
-            // System store contains SMP or other opaque content — wrap as raw.
-            bumpOpaque(OPAQUE_REASONS.SMP_LITERAL);
-            rawFragments.push({
-              nodeId: storeNodeId,
-              origin: "imported",
-              sourceText: tok.text,
-              reason: OPAQUE_REASONS.SMP_LITERAL,
-            });
-          } else {
-            const sysStore: IRStore = {
-              nodeId: storeNodeId,
-              name: parsed.name,
-              items,
-              isSystem: true,
-            };
-            if (tok.targetSelector !== undefined) sysStore.targetSelector = tok.targetSelector;
-            stores.push(sysStore);
-          }
+        // System stores are also tracked for the IRHeader.
+        if (parsed.isSystem) sysStores[parsed.name] = parsed.rawValue;
+
+        // Body parsing is identical for system and user stores: wrap as a raw
+        // fragment when it carries an opaque construct, otherwise emit a store.
+        const { items, opaqueReason } = parseStoreItems(parsed.rawValue);
+        if (opaqueReason !== null) {
+          bumpOpaque(opaqueReason);
+          rawFragments.push({
+            nodeId: storeNodeId,
+            origin: "imported",
+            sourceText: tok.text,
+            reason: opaqueReason,
+          });
         } else {
-          // User store — may belong to current group or be global.
-          const { items, opaque } = parseStoreItems(parsed.rawValue);
-          if (opaque) {
-            // Wrap as raw fragment.
-            bumpOpaque(OPAQUE_REASONS.SMP_LITERAL);
-            rawFragments.push({
-              nodeId: storeNodeId,
-              origin: "imported",
-              sourceText: tok.text,
-              reason: OPAQUE_REASONS.SMP_LITERAL,
-            });
-          } else {
-            const irStore: IRStore = {
-              nodeId: storeNodeId,
-              name: parsed.name,
-              items,
-              isSystem: false,
-            };
-            if (tok.targetSelector !== undefined) irStore.targetSelector = tok.targetSelector;
-            stores.push(irStore);
-          }
+          const irStore: IRStore = {
+            nodeId: storeNodeId,
+            name: parsed.name,
+            items,
+            isSystem: parsed.isSystem,
+          };
+          if (tok.targetSelector !== undefined) irStore.targetSelector = tok.targetSelector;
+          stores.push(irStore);
         }
         break;
       }

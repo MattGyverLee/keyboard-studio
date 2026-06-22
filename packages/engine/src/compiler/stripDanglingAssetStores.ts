@@ -7,30 +7,49 @@
 // not need any of these packaging assets, so a missing one must not break the
 // preview.
 //
-// This helper removes ONLY references whose target file is absent from the
-// compile VFS ("dangling"). References whose file IS present are left intact, so
-// a fully-fetched base keeps its visual keyboard / touch layout in the preview.
+// Two categories of stores are stripped:
+//
+// 1. DANGLING_STORES — stripped only when their target file is absent from the
+//    compile VFS. References whose file IS present are left intact (e.g. a
+//    fully-fetched base keeps its .kvks visual keyboard in the preview).
+//
+// 2. ALWAYS_STRIP_STORES — stripped unconditionally regardless of VFS presence.
+//    These are help-panel assets (KMW_HELPFILE, KMW_EMBEDJS) that cause KMW to
+//    render its help documentation instead of the keyboard layout OSK. The live
+//    preview never needs help-panel content, so always strip them even when the
+//    file was fetched into VFS.
+//
 // The full output/zip path does NOT use this — it serializes the unmodified IR.
 
 import type { VirtualFS } from "@keyboard-studio/contracts";
 import { parseKmnHeaderStores } from "./parseKmnHeaderStores.js";
 
-// Packaging-asset system stores that name a sibling file kmcmplib opens at
-// compile time. A dangling reference to any of these zeroes the artifact set.
-const ASSET_STORES = new Set([
+// Packaging-asset stores stripped only when their file is absent from VFS.
+const DANGLING_STORES = new Set([
   "BITMAP",
   "VISUALKEYBOARD",
   "LAYOUTFILE",
-  "KMW_EMBEDJS",
-  "KMW_HELPFILE",
   "DISPLAYMAP",
 ]);
 
+// Help-panel stores stripped unconditionally for preview compiles — their
+// presence causes KMW to render the help documentation panel instead of the
+// keyboard layout OSK, which is never useful in the live preview.
+const ALWAYS_STRIP_STORES = new Set([
+  "KMW_HELPFILE",
+  "KMW_EMBEDJS",
+]);
+
 /**
- * Remove header `store(&ASSET) 'path'` lines whose referenced file is NOT
- * present in `vfs` (under `source/<path>`). Returns `{ kmn, stripped }` where
- * `stripped` lists the store names removed (for diagnostics). When nothing is
- * dangling, returns the input text unchanged.
+ * Remove header `store(&ASSET) 'path'` lines that would interfere with the
+ * live OSK preview. Returns `{ kmn, stripped }` where `stripped` lists the
+ * store names removed (for diagnostics). When nothing is stripped, returns
+ * the input text unchanged.
+ *
+ * - DANGLING_STORES (BITMAP, VISUALKEYBOARD, LAYOUTFILE, DISPLAYMAP) are
+ *   removed only when their target file is absent from `vfs` (`source/<path>`).
+ * - ALWAYS_STRIP_STORES (KMW_HELPFILE, KMW_EMBEDJS) are always removed —
+ *   they cause KMW to render help documentation instead of the keyboard layout.
  *
  * @param kmn   The .kmn source text to filter.
  * @param vfs   The compile VFS — checked for `source/<path>` presence.
@@ -40,12 +59,15 @@ export function stripDanglingAssetStores(
   vfs: VirtualFS,
 ): { kmn: string; stripped: string[] } {
   const stores = parseKmnHeaderStores(kmn);
-  const dangling = stores.filter(
-    (s) => ASSET_STORES.has(s.storeName) && vfs.get(`source/${s.path}`) === undefined,
+  const toStrip = stores.filter(
+    (s) =>
+      ALWAYS_STRIP_STORES.has(s.storeName) ||
+      (DANGLING_STORES.has(s.storeName) && vfs.get(`source/${s.path}`) === undefined),
   );
-  if (dangling.length === 0) return { kmn, stripped: [] };
+  if (toStrip.length === 0) return { kmn, stripped: [] };
 
-  const danglingNames = new Set(dangling.map((s) => s.storeName));
+  const toStripNames = new Set(toStrip.map((s) => s.storeName));
+
   const stripped: string[] = [];
 
   // Remove the matching store lines. Only touch the header (before `begin`);
@@ -59,7 +81,7 @@ export function stripDanglingAssetStores(
   const rest = kmn.slice(headerEnd);
 
   const newHeader = header.replace(storeLineRe, (line, name: string) => {
-    if (danglingNames.has((name ?? "").toUpperCase())) {
+    if (toStripNames.has((name ?? "").toUpperCase())) {
       stripped.push((name ?? "").toUpperCase());
       return "";
     }
