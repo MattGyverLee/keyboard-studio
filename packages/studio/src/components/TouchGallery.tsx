@@ -1434,56 +1434,6 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
           />
         </div>
       </div>
-
-      {/* Footer — Continue button */}
-      <div
-        style={{
-          padding: "14px 24px",
-          borderTop: `1px solid ${BORDER}`,
-          flexShrink: 0,
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-        }}
-      >
-        <button
-          type="button"
-          onClick={handleContinue}
-          aria-label={
-            charTouch.size > 0
-              ? `Continue with ${charTouch.size} character${charTouch.size !== 1 ? "s" : ""} configured`
-              : "Continue without touch configuration"
-          }
-          style={{
-            padding: "10px 28px",
-            background: BLUE_ACTION,
-            border: "none",
-            borderRadius: 6,
-            color: "#e6edf3",
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: "pointer",
-            fontFamily: FONT,
-          }}
-        >
-          Continue
-        </button>
-        {charTouch.size > 0 && (
-          <span style={{ fontSize: 12, color: TEXT_DIM, fontFamily: FONT }}>
-            {charTouch.size} character
-            {charTouch.size !== 1 ? "s" : ""} configured
-          </span>
-        )}
-        {charTouch.size === 0 && !isDone && (
-          <button
-            type="button"
-            onClick={handleContinue}
-            style={{ ...ghostBtn, fontSize: 12, padding: "5px 12px" }}
-          >
-            Skip touch configuration
-          </button>
-        )}
-      </div>
     </div>
   );
 }
