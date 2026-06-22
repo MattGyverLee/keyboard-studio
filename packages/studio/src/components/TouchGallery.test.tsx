@@ -10,10 +10,10 @@
 // Defect B regression is covered in StudioShell.test.tsx.
 
 import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, act, cleanup, waitFor } from "@testing-library/react";
 import { TouchGallery } from "./TouchGallery";
 import { useWorkingCopyStore } from "../stores/workingCopyStore";
-import type { VirtualFS } from "@keyboard-studio/contracts";
+import type { VirtualFS, MechanismAssignment } from "@keyboard-studio/contracts";
 import { createVirtualFS } from "@keyboard-studio/contracts";
 import { makeTestIR, basicKbdus } from "@keyboard-studio/contracts/fixtures";
 import type { Stage } from "../hooks/useKeyboardArtifact";
@@ -195,15 +195,27 @@ describe("TouchGallery — vfsTransform inject-only-when-real-edits", () => {
       render(<TouchGallery onComplete={vi.fn()} onBack={vi.fn()} />);
     });
 
-    // Accept "Already in layout" — this records a touch_inherited assignment,
-    // which is NOT a real edit. The path should still be absent.
-    const allButtons = screen.queryAllByRole("button");
-    const alreadyBtn = allButtons.find(
-      (b) => b.textContent?.toLowerCase().includes("already in layout"),
+    // The new suggestion card shows Accept/Deny for the detected suggestion.
+    // For "ä" (decomposable accented, no desktop assignment) the suggestion is
+    // "longpress" — clicking Deny opens the method chooser. We then pick
+    // "Already in touch layout" (touch_inherited, default) and click Apply method.
+    // touch_inherited is NOT a real edit, so the path must remain absent.
+    const denyBtns = screen.queryAllByRole("button");
+    const denyBtn = denyBtns.find(
+      (b) => b.textContent?.trim() === "Deny",
     ) ?? null;
-    expect(alreadyBtn).not.toBeNull();
+    expect(denyBtn).not.toBeNull();
     await act(async () => {
-      fireEvent.click(alreadyBtn!);
+      fireEvent.click(denyBtn!);
+    });
+
+    // Method chooser now visible. "Already in touch layout" is the first card
+    // and is selected by default. Click "Apply method" to record touch_inherited.
+    const applyBtns = screen.queryAllByRole("button");
+    const applyBtn = applyBtns.find((b) => b.textContent?.trim() === "Apply method") ?? null;
+    expect(applyBtn).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(applyBtn!);
     });
 
     const vfs = runTransform("basic_kbdus");
@@ -229,12 +241,12 @@ describe("TouchGallery — vfsTransform inject-only-when-real-edits", () => {
     // Before any edit: path must be absent.
     expect(runTransform("basic_kbdus").get("source/basic_kbdus.keyman-touch-layout")).toBeUndefined();
 
-    // Click "Choose method" button — text content is "Choose method",
-    // aria-label is "Choose touch method manually". Find by text content.
+    // The suggestion card shows for "ä" (longpress suggestion). Click "Deny" to
+    // dismiss the suggestion and open the method chooser.
     const allBtns = screen.queryAllByRole("button");
-    const chooseBtn = allBtns.find((b) => b.textContent?.trim() === "Choose method") ?? null;
-    expect(chooseBtn).not.toBeNull();
-    await act(async () => { fireEvent.click(chooseBtn!); });
+    const denyBtn = allBtns.find((b) => b.textContent?.trim() === "Deny") ?? null;
+    expect(denyBtn).not.toBeNull();
+    await act(async () => { fireEvent.click(denyBtn!); });
 
     // Select "Long-press on a key".
     const longpressOption = screen.queryByText(/long.press on a key/i);
@@ -287,11 +299,12 @@ describe("TouchGallery — vfsTransform inject-only-when-real-edits", () => {
     expect(vfsBefore.get("source/basic_kbdus.keyman-touch-layout")).toBeUndefined();
     expect(callCount).toBe(0);
 
-    // Click "Choose method" — find by text content (aria-label differs).
+    // The suggestion card shows for "ä" (longpress suggestion). Click "Deny" to
+    // dismiss the suggestion and open the method chooser.
     const allBtns = screen.queryAllByRole("button");
-    const chooseBtn = allBtns.find((b) => b.textContent?.trim() === "Choose method") ?? null;
-    expect(chooseBtn).not.toBeNull();
-    await act(async () => { fireEvent.click(chooseBtn!); });
+    const denyBtn = allBtns.find((b) => b.textContent?.trim() === "Deny") ?? null;
+    expect(denyBtn).not.toBeNull();
+    await act(async () => { fireEvent.click(denyBtn!); });
 
     const longpressOption = screen.queryByText(/long.press on a key/i);
     expect(longpressOption).not.toBeNull();
@@ -350,15 +363,17 @@ describe("TouchGallery — back navigation", () => {
       render(<TouchGallery onComplete={vi.fn()} onBack={onBack} />);
     });
 
-    // Accept "Already in layout" for "ä" — this calls handleSuggestionAccept
-    // which calls advanceToNext, pushing "ä" onto history and advancing to "ö".
+    // Accept the suggestion for "ä" — this calls handleUseSuggestion (longpress)
+    // or handleSuggestionAccept (already), both of which call advanceToNext,
+    // pushing "ä" onto history and advancing to "ö". Click Accept on the
+    // suggestion card (Accept is present for all non-none suggestion kinds).
     const allButtons = screen.queryAllByRole("button");
-    const alreadyBtn = allButtons.find(
-      (b) => b.textContent?.toLowerCase().includes("already in layout"),
+    const acceptBtn = allButtons.find(
+      (b) => b.textContent?.trim() === "Accept",
     ) ?? null;
-    expect(alreadyBtn).not.toBeNull();
+    expect(acceptBtn).not.toBeNull();
     await act(async () => {
-      fireEvent.click(alreadyBtn!);
+      fireEvent.click(acceptBtn!);
     });
 
     // Should now be on "ö" — find and click Back.
@@ -451,13 +466,14 @@ describe("TouchGallery — draft persistence across unmount/remount", () => {
       render(<TouchGallery onComplete={vi.fn()} onBack={vi.fn()} />),
     );
 
+    // Accept the suggestion for "ä" — advances to "ö" and records "ä" in charTouch.
     const allButtons = screen.queryAllByRole("button");
-    const alreadyBtn = allButtons.find(
-      (b) => b.textContent?.toLowerCase().includes("already in layout"),
+    const acceptBtn = allButtons.find(
+      (b) => b.textContent?.trim() === "Accept",
     ) ?? null;
-    expect(alreadyBtn).not.toBeNull();
+    expect(acceptBtn).not.toBeNull();
     await act(async () => {
-      fireEvent.click(alreadyBtn!);
+      fireEvent.click(acceptBtn!);
     });
 
     // Unmount — simulates navigating back to Phase C.
@@ -478,5 +494,124 @@ describe("TouchGallery — draft persistence across unmount/remount", () => {
     expect(configuredGroup).not.toBeNull();
     const chipButton = screen.queryByRole("button", { name: new RegExp("ä") });
     expect(chipButton).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Heading — gallery-QoL rename
+// ---------------------------------------------------------------------------
+
+describe("TouchGallery — heading", () => {
+  it("renders 'Mechanism Gallery' as the main heading with 'Touch' subheading", async () => {
+    seedStore({ withInventory: ["ä"] });
+    await act(async () => {
+      render(<TouchGallery onComplete={vi.fn()} onBack={vi.fn()} />);
+    });
+    // The h1 contains both "Mechanism Gallery" and the "Touch" span as a child.
+    const h1 = screen.getByRole("heading", { level: 1 });
+    expect(h1.textContent).toMatch(/Mechanism Gallery/i);
+    expect(h1.textContent).toMatch(/Touch/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suggestion card — per-character desktop-derived suggestions
+// ---------------------------------------------------------------------------
+
+/** Seed the store with a Phase C assignment for a specific character. */
+function seedWithDesktopAssignment(
+  char: string,
+  assignment: MechanismAssignment,
+  extraInventory: string[] = [],
+) {
+  const vfs = createVirtualFS([
+    { path: "source/basic_kbdus.kmn", content: "c test\n", isBinary: false },
+  ]);
+  const ir = makeTestIR([]);
+  useWorkingCopyStore.getState().instantiateFromBase(basicKbdus, { vfs, ir });
+  useWorkingCopyStore.getState().recordPhase({
+    phase: "B",
+    answers: [],
+    confirmedInventory: [char, ...extraInventory],
+  });
+  useWorkingCopyStore.getState().recordPhase({
+    phase: "C",
+    answers: [],
+    assignments: [assignment],
+  });
+}
+
+describe("TouchGallery — suggestion card variants", () => {
+  it("shows a 'replace' suggestion for a desktop simple_swap character and Accept records touch_key_replace", async () => {
+    // Seed a Phase C simple_swap assignment for "x" so suggestion kind = "replace".
+    const swapAssignment: MechanismAssignment = {
+      scope: "individual",
+      target: "x",
+      modality: "physical",
+      mechanisms: [
+        {
+          patternId: "simple_swap",
+          strategyId: "S-01",
+          slotValues: { kmnRules: "+ [K_X] > U+0078" },
+        },
+      ],
+      source: "user",
+    };
+    seedWithDesktopAssignment("x", swapAssignment);
+
+    await act(async () => {
+      render(<TouchGallery onComplete={vi.fn()} onBack={vi.fn()} />);
+    });
+
+    // Suggestion card should say "replace".
+    expect(screen.queryByText(/Suggested: replace/i)).not.toBeNull();
+
+    // Accept the suggestion — should record a touch_key_replace assignment.
+    const acceptBtn = screen.queryAllByRole("button").find(
+      (b) => b.textContent?.trim() === "Accept",
+    ) ?? null;
+    expect(acceptBtn).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(acceptBtn!);
+    });
+
+    // charTouch should now contain a touch_key_replace assignment for "x".
+    await waitFor(() => {
+      const draft = useWorkingCopyStore.getState().touchDraft;
+      const entry = draft?.charTouchEntries.find(([c]) => c === "x");
+      expect(entry).toBeDefined();
+      expect(entry?.[1]?.mechanisms[0]?.patternId).toBe("touch_key_replace");
+    });
+  });
+
+  it("shows a 'longpress' suggestion for a desktop deadkey character", async () => {
+    // Seed a Phase C deadkey assignment for "á" so suggestion kind = "longpress".
+    const deadkeyAssignment: MechanismAssignment = {
+      scope: "individual",
+      target: "á",
+      modality: "physical",
+      mechanisms: [
+        {
+          patternId: "deadkey_single_tap",
+          strategyId: "S-02",
+          slotValues: {
+            triggerKey: "K_COLON",
+            deadkeyName: "dk_colon",
+            baseLetters: "a",
+            accentedForms: "á",
+            accentChar: ":",
+          },
+        },
+      ],
+      source: "user",
+    };
+    seedWithDesktopAssignment("á", deadkeyAssignment);
+
+    await act(async () => {
+      render(<TouchGallery onComplete={vi.fn()} onBack={vi.fn()} />);
+    });
+
+    // Suggestion card should mention "long-press" for á.
+    expect(screen.queryByText(/Suggested: long-press/i)).not.toBeNull();
   });
 });

@@ -143,12 +143,14 @@ interface GalleryPreviewWithPatternsProps {
   selectedBaseKeyboard: BaseKeyboard;
   stage: Stage;
   retry: () => void;
+  onKeyTap?: (keyId: string) => void;
 }
 
 function GalleryPreviewWithPatterns({
   selectedBaseKeyboard,
   stage,
   retry,
+  onKeyTap,
 }: GalleryPreviewWithPatternsProps) {
   const [oskMode, setOskMode] = useState<OskMode>("desktop");
 
@@ -283,6 +285,7 @@ function GalleryPreviewWithPatterns({
           oskMode={oskMode}
           stage={stage}
           retry={retry}
+          {...(onKeyTap !== undefined ? { onKeyTap } : {})}
         />
       </div>
 
@@ -368,6 +371,14 @@ const KEY_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "K_PERIOD", label: "K_PERIOD (.)" }, { value: "K_SLASH", label: "K_SLASH (/)" },
   { value: "K_BKQUOTE", label: "K_BKQUOTE (`)" },
 ];
+
+// Module-level Sets for O(1) membership checks in handleKeyTap.
+const VALID_SWAP_RALT_KEYS: ReadonlySet<string> = new Set(
+  KEY_OPTIONS.filter((o) => o.value !== "").map((o) => o.value),
+);
+const VALID_DEADKEY_TRIGGER_KEYS: ReadonlySet<string> = new Set(
+  DEADKEY_OPTIONS.map((o) => o.value),
+);
 
 const selectStyle: CSSProperties = {
   background: BG_PAGE,
@@ -1144,6 +1155,28 @@ export function MechanismGallery({
     [sessionAssignments, recordAssignments],
   );
 
+  const handleRemoveMechanism = useCallback(
+    (assignment: MechanismAssignment) => {
+      recordAssignments(sessionAssignments.filter((a) => a !== assignment));
+    },
+    [sessionAssignments, recordAssignments],
+  );
+
+  const handleKeyTap = useCallback(
+    (keyId: string) => {
+      if (locked) return;
+      if (method === "swap" && VALID_SWAP_RALT_KEYS.has(keyId)) {
+        setSelectedSwapKey(keyId);
+      } else if (method === "ralt" && VALID_SWAP_RALT_KEYS.has(keyId)) {
+        setSelectedRaltKey(keyId);
+      } else if (method === "deadkey" && VALID_DEADKEY_TRIGGER_KEYS.has(keyId)) {
+        setTriggerKey(keyId);
+      }
+      // method === "sequence" or unrecognised key: ignore
+    },
+    [method, locked],
+  );
+
   // ---------------------------------------------------------------------------
   // Shared styles
   // ---------------------------------------------------------------------------
@@ -1476,7 +1509,7 @@ export function MechanismGallery({
                     <button
                       type="button"
                       onClick={handleSuggestionChange}
-                      aria-label="Dismiss suggestion and choose method manually"
+                      aria-label="Deny suggestion and choose method manually"
                       style={{
                         padding: "5px 14px",
                         background: "transparent",
@@ -1488,7 +1521,7 @@ export function MechanismGallery({
                         fontFamily: FONT,
                       }}
                     >
-                      Change
+                      Deny
                     </button>
                   </div>
                 </div>
@@ -1521,30 +1554,43 @@ export function MechanismGallery({
               )}
               {appliedForCurrentChar > 0 && (
                 <div
-                  role="list"
-                  aria-label="Applied methods"
+                  aria-label="Applied methods — click to remove"
                   style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}
                 >
                   {sessionAssignments
                     .filter((a) => a.scope === "individual" && a.target === currentChar)
-                    .flatMap((a) => a.mechanisms)
-                    .map((ref, i) => (
-                      <span
-                        key={i}
-                        role="listitem"
-                        style={{
-                          padding: "3px 8px",
-                          background: "#0d2218",
-                          border: "1px solid #238636",
-                          borderRadius: 12,
-                          color: "#56d364",
-                          fontSize: 11,
-                          fontFamily: "ui-monospace, 'Cascadia Code', Consolas, monospace",
-                        }}
-                      >
-                        {methodLabel(ref)}
-                      </span>
-                    ))}
+                    .map((a, i) => {
+                      const ref = a.mechanisms[0];
+                      const label = ref !== undefined ? methodLabel(ref) : a.mechanisms.map(methodLabel).join(", ");
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => handleRemoveMechanism(a)}
+                          disabled={locked}
+                          aria-label={`Remove method ${label} for ${currentChar}`}
+                          title="click to remove"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            padding: "3px 8px",
+                            background: "#0d2218",
+                            border: "1px solid #238636",
+                            borderRadius: 12,
+                            color: "#56d364",
+                            fontSize: 11,
+                            fontFamily: "ui-monospace, 'Cascadia Code', Consolas, monospace",
+                            cursor: locked ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {label}
+                          <span aria-hidden="true" style={{ fontSize: 10, opacity: 0.7 }}>
+                            {" ×"}
+                          </span>
+                        </button>
+                      );
+                    })}
                 </div>
               )}
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -1718,44 +1764,91 @@ export function MechanismGallery({
       style={{
         ...pageStyle,
         display: "flex",
-        flexDirection: "row",
+        flexDirection: "column",
         height: "100%",
         overflow: "hidden",
       }}
     >
-      {/* LEFT pane */}
+      {/* Header bar */}
       <div
         style={{
-          flexBasis: "45%",
+          padding: "16px 24px 14px",
+          borderBottom: `1px solid ${BORDER}`,
           flexShrink: 0,
-          borderRight: `1px solid ${BORDER}`,
-          overflowY: "auto",
-          boxSizing: "border-box",
+          display: "flex",
+          alignItems: "baseline",
+          gap: 16,
+          flexWrap: "wrap",
         }}
       >
-        {leftContent}
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "1.05rem",
+            fontWeight: 600,
+            color: ACCENT,
+            fontFamily: FONT,
+          }}
+        >
+          Mechanism Gallery
+        </h1>
+        <span
+          style={{
+            fontSize: 12,
+            color: TEXT_DIM,
+            fontFamily: FONT,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+          }}
+        >
+          Desktop
+        </span>
       </div>
 
-      {/* RIGHT pane */}
+      {/* Two-pane row */}
       <div
         style={{
-          flexGrow: 1,
-          overflowY: "auto",
-          padding: "24px 20px",
-          boxSizing: "border-box",
+          flex: 1,
+          display: "flex",
+          flexDirection: "row",
+          overflow: "hidden",
         }}
       >
-        {!loading && loadError === null ? (
-          <GalleryPreviewWithPatterns
-            selectedBaseKeyboard={selectedBaseKeyboard}
-            stage={artifactStage}
-            retry={artifactRetry}
-          />
-        ) : loading ? (
-          <p style={{ color: TEXT_DIM, fontSize: 13, fontFamily: FONT }}>
-            Loading patterns...
-          </p>
-        ) : null}
+        {/* LEFT pane */}
+        <div
+          style={{
+            flexBasis: "45%",
+            flexShrink: 0,
+            borderRight: `1px solid ${BORDER}`,
+            overflowY: "auto",
+            boxSizing: "border-box",
+          }}
+        >
+          {leftContent}
+        </div>
+
+        {/* RIGHT pane */}
+        <div
+          style={{
+            flexGrow: 1,
+            overflowY: "auto",
+            padding: "24px 20px",
+            boxSizing: "border-box",
+          }}
+        >
+          {!loading && loadError === null ? (
+            <GalleryPreviewWithPatterns
+              selectedBaseKeyboard={selectedBaseKeyboard}
+              stage={artifactStage}
+              retry={artifactRetry}
+              onKeyTap={handleKeyTap}
+            />
+          ) : loading ? (
+            <p style={{ color: TEXT_DIM, fontSize: 13, fontFamily: FONT }}>
+              Loading patterns...
+            </p>
+          ) : null}
+        </div>
       </div>
     </div>
   );
