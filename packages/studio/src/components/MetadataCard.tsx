@@ -4,7 +4,7 @@ import type { BaseKeyboard } from "@keyboard-studio/contracts";
 
 // [TEMP] Per-fixture typing hints. Hardcoded until the Pattern schema's
 // `tests` field (spec §5) is wired into the UI to drive these automatically.
-export const TRY_HINTS: Record<string, { intro: string; examples: string[] }> = {
+const TRY_HINTS: Record<string, { intro: string; examples: string[] }> = {
   basic_kbdus: {
     intro: "US-English layout — types the same as your physical keyboard.",
     examples: ["a -> a", "Shift+a -> A", "1 -> 1"],

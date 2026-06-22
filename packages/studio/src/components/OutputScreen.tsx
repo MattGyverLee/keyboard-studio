@@ -167,7 +167,7 @@ export function OutputScreen() {
                   }}
                 >
                   {downloadWarnings.map((w, i) => (
-                    <li key={i}>{w}</li>
+                    <li key={w}>{w}</li>
                   ))}
                 </ul>
               </div>
