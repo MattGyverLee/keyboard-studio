@@ -14,8 +14,8 @@ Operationally:
 
 | User-facing | Studio-internal |
 |---|---|
-| "Sign in with GitHub" button | OAuth web-app flow, token exchange via `oauth-backend` |
-| "Submit my keyboard" button | Fork detection / creation, branch naming, commit, push, PR open |
+| "Sign up with GitHub" / "Sign up with Google" buttons (at submit, §1a) | Identity creation, decoupled from submission path; GitHub OAuth via `oauth-backend`, Google OAuth TBD |
+| "Submit my keyboard" button | By default: studio GitHub org owns fork / branch / commit / push / PR (Option B). Optional "fork & submit yourself" → Option A |
 | "Update my keyboard" (later session) | Same working copy → new branch off current `main`, force-push policy decided by studio |
 | "Your submission is being reviewed" | PR URL, CI status, reviewer comments surfaced as plain text |
 | (nothing) | Branches, rebases, conflict resolution, PR-review thread navigation |
@@ -29,15 +29,29 @@ Corollaries that shape the architecture:
 - **Constructive user feedback after submission is not assumed.** "It doesn't work" is the realistic feedback channel. The studio optimises for *successful first submission*, not iterative improvement driven by post-submission user reports.
 - **Licensing is MIT, surfaced in the documentation phase**, not as a checkbox at submit time.
 
+## 1a. Account creation vs. submission — decoupled (2026-06-22 decision)
+
+Two things §1's north star left implicit, resolved 2026-06-22:
+
+**Sign-up is guest-first and deferred.** The user moves through the entire keyboard-creation flow as a **guest** — no account is required to author. Sign-up is requested only at the *end*, at the point of submission. The exception is the ZIP path (Option C), which needs no account at all: a user who only wants a `.zip` never signs up.
+
+**Sign-up offers two identities; neither dictates the submission path.** At submission the studio presents **two buttons — "Sign up with GitHub" and "Sign up with Google" (Gmail)**. This is an *identity / account-creation* choice only, deliberately decoupled from how the keyboard reaches `keymanapp/keyboards`. A user who signs up with Google never needs a GitHub account.
+
+**The default submission path is org-mediated (Option B), for everyone.** Regardless of which identity they signed up with, the studio submits on the user's behalf through a **studio-controlled GitHub organization** — the user is credited via commit metadata and never sees a fork, branch, or PR thread. This is the §1 north star taken to its conclusion: the org absorbs the entire Git workflow.
+
+**"Fork it yourself" is an explicit opt-in for power users.** For users who want to own the contribution end-to-end, the studio offers a button to **fork `keymanapp/keyboards` into their own account and open their own PR** (Option A). This requires a connected GitHub identity with `public_repo` scope, so it is only meaningful for GitHub sign-ups (a Google-only account is prompted to connect GitHub first). It is never the default and never required.
+
+Net effect on Options A/B/C (§2): **B is now the default for all signed-up users; A is an opt-in "more control" button; C is the no-sign-up / offline escape hatch.** This inverts the prior "A if signed in, C if not; B is a future contingency" picker — and it is the gap against shipped code (PR #505 implemented Option A as the submit path; Option B does not yet exist).
+
 ## 2. Three delivery paths (Options A / B / C)
 
 These are tracked operationally in [docs/github_flow.md](github_flow.md) (Status section). This doc owns the *why*; that one owns the *progress bar*.
 
-- **Option A — User-fork, studio-managed PR.** The studio holds an OAuth token for the signed-in user, forks `keymanapp/keyboards` into the user's account if needed, creates a branch, commits the VirtualFS contents, pushes, opens a PR against upstream `main`. Default happy path for the broadest user (community activist with no software background).
-- **Option B — Org-mediated PR.** A studio-controlled GitHub App / bot account owns the fork and PR; the user is credited via commit metadata (`Co-Authored-By` or attribution sidecar). Used when the user cannot or will not hold a GitHub account at all. Not yet implemented.
+- **Option A — User-fork, studio-managed PR.** The studio holds an OAuth token for the signed-in user, forks `keymanapp/keyboards` into the user's account if needed, creates a branch, commits the VirtualFS contents, pushes, opens a PR against upstream `main`. Per §1a this is the **opt-in "fork & submit yourself" path** for users who want to own the contribution; it requires a GitHub identity with `public_repo` scope and is **not** the default. (Implemented in PR #505.)
+- **Option B — Org-mediated PR.** A studio-controlled GitHub App / bot account owns the fork and PR; the user is credited via commit metadata (`Co-Authored-By` or attribution sidecar). Per §1a this is now the **default path for all signed-up users**, including the broadest user (community activist with no software background), and for anyone who signs up with Google rather than GitHub. **Not yet implemented** — this is the critical path.
 - **Option C — ZIP download.** Final fallback. The studio emits a `.zip` of the VirtualFS conforming to the `keymanapp/keyboards/<id>/` layout; the user (or a helper) submits it some other way. This is the only path that works fully offline and is the universal escape hatch when OAuth is unavailable.
 
-The user is **not** asked to pick a path. The studio picks the highest path that's available given current auth state — A if signed in, C if not. B is a future contingency.
+The user is **not** asked to pick between A and B. Per §1a (2026-06-22), the default for every signed-up user is **Option B (org-mediated)**; **Option A** is an explicit opt-in "fork & submit yourself" button for power users; **Option C** is the no-sign-up / offline path for users who only want a `.zip`. (This supersedes the original "A if signed in, C if not; B is a future contingency" picker.)
 
 ## 3. Architecture in code (Day-1)
 
@@ -100,8 +114,11 @@ SPA ──token──▶ createGitHubOutputService({ token }).publishPR(...)
 
 1. **Branch naming.** The convention is `add/<keyboardId>` — matching the shipped contract (`packages/contracts/src/outputService.ts` §12, `PublishPROptions.branchName` JSDoc) and the engine implementation (`packages/engine/src/output/github.ts`). Open question: whether to append a uniqueness suffix (e.g. `add/<keyboardId>-<shortHash>`, as Option B already does) to avoid collisions when the same keyboard is re-submitted while its prior branch is still open on the fork. Decide before second-submission UX lands.
 2. **Re-submission posture.** If the same user re-opens the same working copy after their first PR merged, do we open a *new* PR off latest upstream `main`, or push to the existing branch? Default proposal: **always a new branch.** Avoids reasoning about whether the prior branch was deleted, force-pushed, or had upstream changes since.
-3. **Option B (org-mediated).** Out of scope for the OAuth-backend PR. Will need a separate decision on bot identity, commit-attribution shape, and how the user is informed their submission is going via the org.
+3. **Option B (org-mediated) — now the default (§1a), still unbuilt.** Needs: the studio GitHub-org / bot identity, the commit-attribution shape (`Co-Authored-By` vs attribution sidecar), and how the user is told their submission goes via the org. This is now the critical path, not a contingency — and the gap against shipped code (PR #505 implemented Option A as the submit path; B does not yet exist).
 4. **Token storage in the SPA.** `sessionStorage` is the current assumption (cleared on tab close, not shared across tabs). Confirm with Grace before the OAuth-backend PR merges, since it constrains the SPA-side wrapper.
+5. **Google (Gmail) identity backend (§1a).** The "Sign up with Google" button needs a Google OAuth flow and an account model that maps a Google identity to org-mediated submission. The current `oauth-backend` (PR #459) handles GitHub OAuth only. Decide: does the studio gain its own account/identity store, or does Google sign-in mint a session that always routes through Option B?
+6. **Self-fork for non-GitHub identities (§1a).** The Option A "fork it yourself" button requires a GitHub identity with `public_repo` scope. Decide the UX when a Google-only user clicks it — prompt to connect a GitHub account, or hide the button for Google sign-ups.
+7. **Guest → sign-up hand-off (§1a).** Authoring happens as a guest with the working copy in memory; sign-up is deferred to submit time. Confirm the working copy survives the OAuth redirect round-trip (the redirect leaves and re-enters the SPA) so the guest's in-progress keyboard is not lost at the moment they sign up.
 
 ## 6. References
 
