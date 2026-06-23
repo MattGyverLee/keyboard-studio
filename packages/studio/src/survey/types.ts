@@ -74,6 +74,7 @@ export interface SurveyContext {
   detected_group?: string;
   script_family?: string;
   routing_group?: string;
+  bcp47?: string;
   [key: string]: string | undefined;
 }
 

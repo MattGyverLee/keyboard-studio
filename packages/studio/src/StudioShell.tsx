@@ -171,11 +171,18 @@ type SurveyStage =
 
 /** Build the downstream SurveyContext from the identity-lite result. */
 function contextFromIdentity(identity: IdentityLiteResult): SurveyContext {
-  return {
+  const ctx: SurveyContext = {
     language_name: identity.english || identity.autonym,
     routing_group: identity.prefill.routingGroup,
     script_family: identity.prefill.script,
   };
+  // Thread the BCP47 tag so Phase B's linguist path can call synthesizeInventory
+  // with the right language tag. Empty string from buildTargetBcp47 is treated
+  // as "no tag" downstream; leave it out of context so bcp47 stays undefined.
+  if (identity.bcp47.length > 0) {
+    ctx.bcp47 = identity.bcp47;
+  }
+  return ctx;
 }
 
 interface SurveyViewProps {

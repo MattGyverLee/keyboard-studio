@@ -3,7 +3,7 @@
 // Four discovery methods are offered:
 //   manual      — step-by-step questions via SurveyRunner (fully functional)
 //   text-sample — user types each character separated by spaces (TextSampleView)
-//   linguist    — LLM-synthesized inventory (coming soon)
+//   linguist    — LLM-synthesized inventory (mock-backed; real LLM deferred)
 //   picker      — CLDR-seeded visual grid (coming soon)
 //
 // On completion, extractInventory() scans the Phase B answers for the question
@@ -12,11 +12,13 @@
 // reads this via session.confirmedInventory (mergePhaseResults union).
 
 import { useCallback, useMemo, useState, useRef, useEffect } from "react";
-import type { SurveyAnswer, SurveyPhaseResult, LintFinding, PlacementMap } from "@keyboard-studio/contracts";
+import type { SurveyAnswer, SurveyPhaseResult, LintFinding, PlacementMap, LinguistInventory, InventoryFlag } from "@keyboard-studio/contracts";
+import { linguistInventoryChars } from "@keyboard-studio/contracts";
 import { SurveyRunner } from "./SurveyRunner.tsx";
 import { loadModularFlow } from "./loadModularFlow.ts";
 import type { SurveyContext, FlowDef } from "./types.ts";
 import { buildPlacementSeeds } from "./placementSeeds.ts";
+import { getCharacterDiscoveryService } from "../lib/services.ts";
 
 // Vite ?raw import — typed via the `*.yaml?raw` declaration in src/vite-env.d.ts.
 import phaseBModularRaw from "../../../../content/flows/phase_b_characters.modular.yaml?raw";
@@ -99,7 +101,7 @@ export function parseSpacedChars(input: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// DiscoveryMethodStub — shown for unimplemented discovery methods
+// DiscoveryMethodStub — shown for unimplemented discovery methods (picker only)
 // ---------------------------------------------------------------------------
 
 function DiscoveryMethodStub({ feature, issueRef }: { feature: string; issueRef: string }) {
@@ -107,6 +109,570 @@ function DiscoveryMethodStub({ feature, issueRef }: { feature: string; issueRef:
     <div style={{ padding: 16, border: "1px solid #30363d", borderRadius: 6, color: "#8b949e" }}>
       <strong style={{ color: "#e6edf3" }}>{feature}</strong>
       <p>This discovery method is coming soon ({issueRef}).</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LinguistProposalView — LLM-synthesized inventory proposal with edit/confirm
+// ---------------------------------------------------------------------------
+
+interface LinguistProposalViewProps {
+  context: SurveyContext;
+  onComplete: (result: SurveyPhaseResult) => void;
+  onBack: () => void;
+  onSwitchToManual: () => void;
+}
+
+/** Format a codepoint as "U+XXXX" for screen-reader-friendly display. */
+function toUPlus(ch: string): string {
+  const cp = ch.codePointAt(0);
+  if (cp === undefined) return "";
+  return "U+" + cp.toString(16).toUpperCase().padStart(4, "0");
+}
+
+/**
+ * Chip button: displays a single character with its U+ notation.
+ * When selected=true the chip is highlighted blue; click toggles selection.
+ */
+function CharChip({
+  ch,
+  selected,
+  flag,
+  onToggle,
+}: {
+  ch: string;
+  selected: boolean;
+  flag?: InventoryFlag;
+  onToggle: () => void;
+}) {
+  const flagColor =
+    flag?.issue === "not-attested"
+      ? "#f0883e" // orange — agent included, CLDR doesn't attest
+      : flag?.issue === "cldr-omitted"
+        ? "#3fb950" // green — CLDR has it but agent omitted
+        : undefined;
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={`${selected ? "Deselect" : "Select"} ${toUPlus(ch)}${flag !== undefined ? ` (${flag.issue})` : ""}`}
+      aria-pressed={selected}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "6px 10px",
+        border: `1px solid ${selected ? "#6ea8fe" : "#30363d"}`,
+        borderRadius: 8,
+        background: selected ? "#0d2140" : "#161b22",
+        cursor: "pointer",
+        gap: 2,
+        minWidth: 44,
+        opacity: selected ? 1 : 0.45,
+        position: "relative",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 22,
+          fontFamily: "system-ui, sans-serif",
+          lineHeight: 1,
+          color: selected ? "#6ea8fe" : "#8b949e",
+        }}
+      >
+        {ch}
+      </span>
+      <span
+        style={{
+          fontSize: 9,
+          color: "#8b949e",
+          fontFamily: "monospace",
+        }}
+      >
+        {toUPlus(ch)}
+      </span>
+      {flag !== undefined && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 2,
+            right: 2,
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: flagColor,
+          }}
+        />
+      )}
+    </button>
+  );
+}
+
+/** A labelled section in the proposal grid. */
+function ProposalSection({
+  title,
+  chars,
+  selectedSet,
+  flagMap,
+  onToggle,
+}: {
+  title: string;
+  chars: string[];
+  selectedSet: Set<string>;
+  flagMap: Map<string, InventoryFlag>;
+  onToggle: (ch: string) => void;
+}) {
+  if (chars.length === 0) return null;
+  return (
+    <div>
+      <p
+        style={{
+          margin: "0 0 8px 0",
+          fontSize: 12,
+          fontWeight: 600,
+          color: "#8b949e",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+        }}
+      >
+        {title}
+      </p>
+      <div
+        role="group"
+        aria-label={title}
+        style={{ display: "flex", flexWrap: "wrap", gap: 8 }}
+      >
+        {chars.map((ch) => {
+          const flagEntry = flagMap.get(ch);
+          return (
+            <CharChip
+              key={ch}
+              ch={ch}
+              selected={selectedSet.has(ch)}
+              {...(flagEntry !== undefined ? { flag: flagEntry } : {})}
+              onToggle={() => onToggle(ch)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LinguistProposalView({ context, onComplete, onBack, onSwitchToManual }: LinguistProposalViewProps) {
+  const languageName = context.language_name ?? context.detected_group ?? "your language";
+  const bcp47 = context.bcp47 ?? "";
+
+  type LoadState =
+    | { kind: "loading" }
+    | { kind: "error"; message: string }
+    | { kind: "loaded"; inv: LinguistInventory };
+
+  const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
+  // selectedSet tracks which characters are currently checked
+  const [selectedSet, setSelectedSet] = useState<Set<string>>(new Set());
+  // addInput for the "+ Add" field (reuse chip-add pattern from TextSampleView)
+  const [addInput, setAddInput] = useState("");
+  const addInputRef = useRef<HTMLInputElement>(null);
+
+  // flagMap: char -> InventoryFlag for provenance labels
+  const flagMap = useMemo<Map<string, InventoryFlag>>(() => {
+    if (loadState.kind !== "loaded") return new Map();
+    const m = new Map<string, InventoryFlag>();
+    for (const f of loadState.inv.flags ?? []) {
+      m.set(f.char, f);
+    }
+    return m;
+  }, [loadState]);
+
+  useEffect(() => {
+    if (bcp47.length === 0) {
+      setLoadState({ kind: "error", message: "No language tag — cannot synthesize an inventory." });
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const svc = await getCharacterDiscoveryService();
+        const inv = await svc.synthesizeInventory(languageName, bcp47, undefined);
+        if (cancelled) return;
+        const flat = linguistInventoryChars(inv);
+        setLoadState({ kind: "loaded", inv });
+        setSelectedSet(new Set(flat));
+      } catch (err: unknown) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        setLoadState({ kind: "error", message: msg });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [bcp47, languageName]);
+
+  function toggleChar(ch: string) {
+    setSelectedSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(ch)) {
+        next.delete(ch);
+      } else {
+        next.add(ch);
+      }
+      return next;
+    });
+  }
+
+  function addChar() {
+    const trimmed = addInput.trim().normalize("NFC");
+    if (!trimmed) return;
+    const tokens = trimmed.split(/\s+/).filter(Boolean);
+    setSelectedSet((prev) => {
+      const next = new Set(prev);
+      for (const t of tokens) {
+        const g = t.normalize("NFC");
+        if (g.length > 0) next.add(g);
+      }
+      return next;
+    });
+    setAddInput("");
+    addInputRef.current?.focus();
+  }
+
+  function handleConfirm() {
+    // Flatten selected + NFC-normalize + dedup (Set already deduped, ensure NFC order)
+    const confirmedInventory = [...selectedSet]
+      .map((c) => c.normalize("NFC"))
+      .filter((c, i, arr) => arr.indexOf(c) === i); // stable dedup after NFC
+    onComplete({
+      phase: "B",
+      answers: [],
+      confirmedInventory,
+    });
+  }
+
+  const sharedContainerStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+    maxWidth: 640,
+    fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+    color: "#e6edf3",
+  };
+
+  if (loadState.kind === "loading") {
+    return (
+      <div style={sharedContainerStyle}>
+        <h2 style={{ margin: 0, fontSize: "1.1rem", color: "#6ea8fe", fontWeight: 600 }}>
+          Phase B — Suggested character list
+        </h2>
+        <p style={{ margin: 0, color: "#8b949e", fontSize: 13 }}>
+          Synthesizing inventory for {languageName} ({bcp47})…
+        </p>
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Loading character inventory"
+          style={{ color: "#8b949e", fontSize: 13 }}
+        >
+          Loading…
+        </div>
+      </div>
+    );
+  }
+
+  if (loadState.kind === "error") {
+    return (
+      <div style={sharedContainerStyle}>
+        <h2 style={{ margin: 0, fontSize: "1.1rem", color: "#6ea8fe", fontWeight: 600 }}>
+          Phase B — Suggested character list
+        </h2>
+        <p style={{ margin: 0, color: "#f85149", fontSize: 13 }}>
+          Could not generate a suggestion: {loadState.message}
+        </p>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            onClick={onBack}
+            style={{
+              padding: "8px 18px",
+              background: "transparent",
+              border: "1px solid #30363d",
+              borderRadius: 6,
+              color: "#8b949e",
+              fontSize: 13,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={onSwitchToManual}
+            style={{
+              padding: "8px 18px",
+              background: "#1f6feb",
+              border: "1px solid #30363d",
+              borderRadius: 6,
+              color: "#e6edf3",
+              fontSize: 13,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            Use step-by-step instead
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Loaded — render grouped proposal
+  const inv = loadState.inv;
+  const selectedCount = selectedSet.size;
+  const confirmDisabled = selectedCount === 0;
+
+  return (
+    <div style={sharedContainerStyle}>
+      <button
+        type="button"
+        onClick={onBack}
+        style={{
+          alignSelf: "flex-start",
+          padding: "8px 18px",
+          background: "transparent",
+          border: "1px solid #30363d",
+          borderRadius: 6,
+          color: "#8b949e",
+          fontSize: 13,
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        Back
+      </button>
+
+      <h2 style={{ margin: 0, fontSize: "1.1rem", color: "#6ea8fe", fontWeight: 600 }}>
+        Suggested inventory for {languageName}
+      </h2>
+      <p style={{ margin: 0, fontSize: 13, color: "#8b949e", lineHeight: 1.5 }}>
+        This list was synthesized from linguistic data for{" "}
+        <strong style={{ color: "#e6edf3" }}>{bcp47}</strong>. Review each
+        character and deselect any that do not apply. Add missing characters
+        using the field below.
+      </p>
+
+      {/* Provenance legend */}
+      {(inv.flags ?? []).length > 0 && (
+        <div
+          role="note"
+          aria-label="Provenance legend"
+          style={{ fontSize: 12, color: "#8b949e", display: "flex", gap: 16, flexWrap: "wrap" }}
+        >
+          <span>
+            <span
+              aria-hidden="true"
+              style={{
+                display: "inline-block",
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#f0883e",
+                marginRight: 4,
+              }}
+            />
+            not-attested (agent included; CLDR does not attest)
+          </span>
+          <span>
+            <span
+              aria-hidden="true"
+              style={{
+                display: "inline-block",
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#3fb950",
+                marginRight: 4,
+              }}
+            />
+            cldr-omitted (CLDR attests; agent did not include)
+          </span>
+        </div>
+      )}
+
+      {/* Live region for screen readers */}
+      <div aria-live="polite" aria-atomic="false" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)" }}>
+        {selectedCount} character{selectedCount === 1 ? "" : "s"} selected
+      </div>
+
+      {/* Grouped character sections */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <ProposalSection
+          title="Core alphabet — lowercase"
+          chars={inv.alphabetCore.lowercase}
+          selectedSet={selectedSet}
+          flagMap={flagMap}
+          onToggle={toggleChar}
+        />
+        <ProposalSection
+          title="Core alphabet — uppercase"
+          chars={inv.alphabetCore.uppercase}
+          selectedSet={selectedSet}
+          flagMap={flagMap}
+          onToggle={toggleChar}
+        />
+        {inv.alphabetAuxiliary !== undefined && (
+          <>
+            <ProposalSection
+              title={`Auxiliary alphabet — lowercase${inv.alphabetAuxiliary.note !== undefined ? ` (${inv.alphabetAuxiliary.note})` : ""}`}
+              chars={inv.alphabetAuxiliary.lowercase}
+              selectedSet={selectedSet}
+              flagMap={flagMap}
+              onToggle={toggleChar}
+            />
+            <ProposalSection
+              title="Auxiliary alphabet — uppercase"
+              chars={inv.alphabetAuxiliary.uppercase}
+              selectedSet={selectedSet}
+              flagMap={flagMap}
+              onToggle={toggleChar}
+            />
+          </>
+        )}
+        <ProposalSection
+          title="Mandatory diacritics and ligatures"
+          chars={inv.mandatoryDiacriticsAndLigatures}
+          selectedSet={selectedSet}
+          flagMap={flagMap}
+          onToggle={toggleChar}
+        />
+        <ProposalSection
+          title="Language-specific punctuation"
+          chars={inv.languageSpecificPunctuation}
+          selectedSet={selectedSet}
+          flagMap={flagMap}
+          onToggle={toggleChar}
+        />
+        <ProposalSection
+          title="Numerals"
+          chars={inv.numerals}
+          selectedSet={selectedSet}
+          flagMap={flagMap}
+          onToggle={toggleChar}
+        />
+        {inv.nuktaAndBorrowedSoundMarkers !== undefined && (
+          <ProposalSection
+            title="Nukta and borrowed-sound markers"
+            chars={inv.nuktaAndBorrowedSoundMarkers}
+            selectedSet={selectedSet}
+            flagMap={flagMap}
+            onToggle={toggleChar}
+          />
+        )}
+        {inv.independentVowels !== undefined && (
+          <ProposalSection
+            title="Independent vowels"
+            chars={inv.independentVowels}
+            selectedSet={selectedSet}
+            flagMap={flagMap}
+            onToggle={toggleChar}
+          />
+        )}
+        {inv.syllabicFinalMarkers !== undefined && (
+          <ProposalSection
+            title="Syllabic final markers"
+            chars={inv.syllabicFinalMarkers}
+            selectedSet={selectedSet}
+            flagMap={flagMap}
+            onToggle={toggleChar}
+          />
+        )}
+      </div>
+
+      {/* Add-character row */}
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <input
+          ref={addInputRef}
+          type="text"
+          value={addInput}
+          onChange={(e) => setAddInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addChar();
+            }
+          }}
+          placeholder="Add missing characters (space-separated)…"
+          aria-label="Add missing characters"
+          style={{
+            flex: 1,
+            background: "#0d1117",
+            border: "1px solid #30363d",
+            borderRadius: 6,
+            color: "#e6edf3",
+            fontSize: 15,
+            fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+            padding: "8px 12px",
+            boxSizing: "border-box",
+          }}
+        />
+        <button
+          type="button"
+          disabled={addInput.trim() === ""}
+          onClick={addChar}
+          style={{
+            padding: "8px 18px",
+            background: addInput.trim() === "" ? "#21262d" : "#1f6feb",
+            border: "1px solid #30363d",
+            borderRadius: 6,
+            color: addInput.trim() === "" ? "#8b949e" : "#e6edf3",
+            fontSize: 13,
+            cursor: addInput.trim() === "" ? "not-allowed" : "pointer",
+            fontFamily: "inherit",
+            whiteSpace: "nowrap",
+          }}
+        >
+          + Add
+        </button>
+      </div>
+
+      {/* Footer */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
+        <button
+          type="button"
+          onClick={onSwitchToManual}
+          style={{
+            padding: "8px 18px",
+            background: "transparent",
+            border: "1px solid #30363d",
+            borderRadius: 6,
+            color: "#8b949e",
+            fontSize: 13,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          Use step-by-step instead
+        </button>
+        <button
+          type="button"
+          disabled={confirmDisabled}
+          onClick={handleConfirm}
+          style={{
+            padding: "8px 18px",
+            background: confirmDisabled ? "#21262d" : "#1f6feb",
+            border: "1px solid #30363d",
+            borderRadius: 6,
+            color: confirmDisabled ? "#8b949e" : "#e6edf3",
+            fontSize: 13,
+            cursor: confirmDisabled ? "not-allowed" : "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          Confirm ({selectedCount} character{selectedCount === 1 ? "" : "s"})
+        </button>
+      </div>
     </div>
   );
 }
@@ -439,15 +1005,18 @@ export function PhaseB({ context = {}, onComplete, onBack, findingsByQuestionId,
     );
   }
 
-  if (discoveryMethod !== "manual") {
-    const stubInfo: Record<
-      Exclude<DiscoveryMethod, "manual" | "text-sample" | null>,
-      { feature: string; issueRef: string }
-    > = {
-      linguist: { feature: "Linguist-synthesized inventory", issueRef: "LLM synthesizer" },
-      picker: { feature: "Visual character grid picker", issueRef: "visual picker" },
-    };
-    const stub = stubInfo[discoveryMethod];
+  if (discoveryMethod === "linguist") {
+    return (
+      <LinguistProposalView
+        context={context}
+        onComplete={onComplete}
+        onBack={() => setDiscoveryMethod(null)}
+        onSwitchToManual={() => setDiscoveryMethod("manual")}
+      />
+    );
+  }
+
+  if (discoveryMethod === "picker") {
     return (
       <div
         style={{
@@ -468,7 +1037,7 @@ export function PhaseB({ context = {}, onComplete, onBack, findingsByQuestionId,
         >
           Phase B — Character discovery
         </h2>
-        <DiscoveryMethodStub feature={stub.feature} issueRef={stub.issueRef} />
+        <DiscoveryMethodStub feature="Visual character grid picker" issueRef="visual picker" />
         <div style={{ display: "flex", gap: 8 }}>
           <button
             type="button"
@@ -568,7 +1137,11 @@ const METHODS: Array<{ value: Exclude<DiscoveryMethod, null>; label: string }> =
 ];
 
 function IntroChooser({ context, onChoose, onBack }: IntroChooserProps) {
-  const [selected, setSelected] = useState<Exclude<DiscoveryMethod, null>>("manual");
+  // Default to "linguist" when a BCP47 tag is available (we can synthesize an
+  // inventory), otherwise fall back to "manual" (step-by-step).
+  const [selected, setSelected] = useState<Exclude<DiscoveryMethod, null>>(
+    context.bcp47 !== undefined && context.bcp47.length > 0 ? "linguist" : "manual",
+  );
 
   const languageName = context["language_name"] ?? context["detected_group"] ?? "your language";
 
@@ -621,7 +1194,7 @@ function IntroChooser({ context, onChoose, onBack }: IntroChooserProps) {
               />
               <span style={{ lineHeight: 1.5 }}>
                 {label}
-                {value !== "manual" && value !== "text-sample" && (
+                {value === "picker" && (
                   <span
                     style={{
                       marginLeft: 8,

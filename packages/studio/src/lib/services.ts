@@ -55,10 +55,124 @@ export function getPatternLibraryService(): PatternLibraryService {
   return USE_REAL ? getBrowserPatternLibraryService() : mockPatternLibrary;
 }
 
+// ---------------------------------------------------------------------------
+// Mock JSON responses for the linguist synthesizeInventory path.
+// Each entry is a valid JSON string that parseLinguistJson can parse.
+// Keyed by BCP47 prefix (language subtag or language+script).
+// Derived from packages/contracts/src/fixtures/linguistInventories.ts so shapes
+// stay realistic and the cross-check pipeline runs deterministically.
+// ---------------------------------------------------------------------------
+
+const MOCK_LINGUIST_JSON: Record<string, string> = {
+  // Hausa Latin — ha / ha-Latn / ha-*
+  "ha": JSON.stringify({
+    language: "ha",
+    script: "Latin",
+    alphabet_core: {
+      lowercase: ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "r", "s", "t", "u", "w", "y", "z", "ƴ", "ɓ", "ɗ"],
+      uppercase: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "R", "S", "T", "U", "W", "Y", "Z", "Ƴ", "Ɓ", "Ɗ"],
+    },
+    mandatory_diacritics_and_ligatures: [],
+    language_specific_punctuation: [],
+    numerals: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+    digraphs_as_phoneme_units: ["sh", "ts", "ny", "ng"],
+  }),
+  // Hindi Devanagari — hi / hi-Deva
+  "hi": JSON.stringify({
+    language: "hi",
+    script: "Devanagari",
+    alphabet_core: {
+      lowercase: ["क", "ख", "ग", "घ", "च", "छ", "ज", "झ", "ट", "ठ", "ड", "ढ", "त", "थ", "द", "ध", "न", "प", "फ", "ब", "भ", "म", "य", "र", "ल", "व", "श", "ष", "स", "ह"],
+      uppercase: [],
+    },
+    mandatory_diacritics_and_ligatures: [],
+    language_specific_punctuation: [],
+    numerals: ["०", "१", "२", "३", "४", "५", "६", "७", "८", "९"],
+    nukta_and_borrowed_sound_markers: ["क़", "ख़", "ग़"],
+    independent_vowels: ["अ", "आ", "इ", "ई", "उ", "ऊ", "ए", "ऐ", "ओ", "औ"],
+  }),
+  // Hebrew RTL — he / he-Hebr
+  "he": JSON.stringify({
+    language: "he",
+    script: "Hebrew",
+    alphabet_core: {
+      lowercase: ["א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט", "י", "כ", "ל", "מ", "נ", "ס", "ע", "פ", "צ", "ק", "ר", "ש", "ת"],
+      uppercase: [],
+    },
+    mandatory_diacritics_and_ligatures: [],
+    language_specific_punctuation: [],
+    numerals: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+    direction_control_chars: ["U+200F", "U+200E"],
+  }),
+  // Cree Canadian Syllabics — cr / cr-Cans
+  "cr": JSON.stringify({
+    language: "cr-Cans",
+    script: "Canadian Syllabics",
+    alphabet_core: {
+      lowercase: ["ᐁ", "ᐃ", "ᐅ", "ᐊ", "ᐄ", "ᐆ", "ᐋ", "ᐯ", "ᐱ", "ᐳ", "ᐸ", "ᑌ", "ᑎ", "ᑐ", "ᑕ", "ᑫ", "ᑭ", "ᑯ", "ᑲ"],
+      uppercase: [],
+    },
+    mandatory_diacritics_and_ligatures: [],
+    language_specific_punctuation: [],
+    numerals: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+    syllabic_final_markers: ["ᐧ"],
+  }),
+};
+
+// Generic Latin fallback — used for unknown BCP47 tags that use a Latin script.
+const MOCK_LINGUIST_JSON_LATIN_FALLBACK = JSON.stringify({
+  language: "und-Latn",
+  script: "Latin",
+  alphabet_core: {
+    lowercase: ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z"],
+    uppercase: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"],
+  },
+  mandatory_diacritics_and_ligatures: [],
+  language_specific_punctuation: [],
+  numerals: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+});
+
+/**
+ * Select a mock JSON payload for a given BCP47 tag.
+ * Matching priority: full tag prefix → language subtag → Latin fallback.
+ */
+function selectMockJson(bcp47: string): string {
+  // Exact match first (e.g. "ha-Latn")
+  const exact = MOCK_LINGUIST_JSON[bcp47];
+  if (exact !== undefined) return exact;
+  // Language subtag prefix match (e.g. "ha" from "ha-Latn-NG")
+  const lang = bcp47.split("-")[0] ?? "";
+  const byLang = MOCK_LINGUIST_JSON[lang];
+  if (byLang !== undefined) return byLang;
+  // Fall back to generic Latin inventory
+  return MOCK_LINGUIST_JSON_LATIN_FALLBACK;
+}
+
+// Deterministic stub CldrLoader — returns a small known exemplar set per locale
+// so cldrCrossCheck runs offline without any network calls.
+// The hausa loader returns an exemplar string for "ha" so flags are exercised;
+// all others return null (graceful fallback in cldrCrossCheck).
+function createStubCldrLoader(): (locale: string) => Promise<string | null> {
+  const STUB_EXEMPLARS: Record<string, string> = {
+    // Hausa Latin exemplar — a minimal Unicode set expression
+    ha: "[a b c d e f g h i j k l m n o r s t u w y z {sh} {ts} {ny} {ng}]",
+  };
+  return async (locale: string): Promise<string | null> => {
+    return STUB_EXEMPLARS[locale] ?? null;
+  };
+}
+
 // CharacterDiscoveryService: when USE_REAL is false returns a minimal stub so
 // CI / test runs never touch the CLDR CDN or the LLM completer. When real,
-// lazily imports from the engine with the browser fetch-backed CLDR loader.
-// The LLM completer is not wired for text-sample (harvestFromText ignores it).
+// lazily imports from the engine and injects:
+//   1. A MOCK LLM completer that returns canned JSON keyed by script/BCP47.
+//   2. A deterministic stub CldrLoader so cldrCrossCheck runs offline.
+// The real synthesizeInventory → parseLinguistJson → cldrCrossCheck pipeline
+// runs end-to-end on the mock data.
+//
+// TODO(linguist-llm): swap mock completer for a live @keyboard-studio/llm client
+// (deferred — see plan). The stub CldrLoader should also be replaced with
+// createFetchCldrLoader() once LLM is live, since CLDR cross-check is cheap.
 let charDiscoveryCache: CharacterDiscoveryService | null = null;
 export async function getCharacterDiscoveryService(): Promise<CharacterDiscoveryService> {
   if (!USE_REAL) {
@@ -70,12 +184,26 @@ export async function getCharacterDiscoveryService(): Promise<CharacterDiscovery
     return stub;
   }
   if (charDiscoveryCache !== null) return charDiscoveryCache;
-  const { createCharacterDiscoveryService, createFetchCldrLoader } = await import(
+  const { createCharacterDiscoveryService } = await import(
     /* @vite-ignore */ "@keyboard-studio/engine"
   );
-  const loader = createFetchCldrLoader();
-  const noopCompleter = async (): Promise<string> => { throw new Error("LLM completer not configured"); };
-  charDiscoveryCache = createCharacterDiscoveryService(loader, noopCompleter);
+
+  // Deterministic stub CldrLoader — no network calls during authoring.
+  const stubLoader = createStubCldrLoader();
+
+  // Mock LLM completer: parse the BCP47 out of the prompt and return a
+  // canned JSON string that parseLinguistJson can parse. The real completer
+  // would call the LLM API here.
+  // TODO(linguist-llm): swap mock completer for a live @keyboard-studio/llm client
+  // (deferred — see plan).
+  const mockCompleter = async (prompt: string): Promise<string> => {
+    // Extract the BCP47 tag from the prompt template placeholder "Target Language: ... (tag)"
+    const match = /\(([^)]+)\)\s*\n/.exec(prompt);
+    const bcp47 = match?.[1] ?? "";
+    return selectMockJson(bcp47);
+  };
+
+  charDiscoveryCache = createCharacterDiscoveryService(stubLoader, mockCompleter);
   return charDiscoveryCache;
 }
 
