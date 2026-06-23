@@ -3,13 +3,20 @@
 // Mirrors MechanismGallery's character-by-character loop — adapted for touch
 // modality assignments instead of physical key assignments.
 //
+// On first entry a brief intro splash explains the move from the desktop
+// (physical) gallery to touch; "Get started" dismisses it for the rest of the
+// working-copy session.
+//
 // LEFT pane: one-character-at-a-time iteration over session.confirmedInventory.
-//   - For each character, shows a prompt card with two options:
-//       "Already in layout" (records touch_inherited and advances) or
-//       "Choose method" (dismisses the card and shows the method chooser).
-//   - Method chooser offers 4 expandable cards (touch_inherited, longpress,
-//     flick, multitap). "Apply method" + "Next character →" + "Skip" follow
-//     MechanismGallery's pattern.
+//   - When a suggestion applies (long-press / replace / "already in layout"),
+//     shows a suggestion card: Accept applies it and advances; Deny shows the
+//     method chooser. When there is no suggestion, the method chooser is shown
+//     directly (no intermediate card).
+//   - Method chooser offers 4 expandable cards (longpress, flick, multitap,
+//     replace). "Apply method" + "Next character →" + "Skip" follow
+//     MechanismGallery's pattern. There is no manual "already in layout" card:
+//     the auto-detected "already" suggestion records inherited characters, and
+//     Skip moves on without an assignment.
 //   - Done when every character has been either configured or skipped.
 //   - Desktop edits are NOT transferred to mobile — the touch layout is
 //     seeded from a fixed minimal QWERTY layout, not derived from IR rules.
@@ -92,7 +99,12 @@ const selectStyle: CSSProperties = {
 // Touch method type
 // ---------------------------------------------------------------------------
 
-type TouchMethod = "touch_inherited" | "touch_key_replace" | "longpress_alternates" | "flick_gestures" | "multitap";
+// Selectable methods in the chooser. `touch_inherited` is intentionally NOT a
+// chooser option — inherited characters are recorded via the auto-detected
+// "already" suggestion (handleSuggestionAccept), and Skip moves on without an
+// assignment. The pattern-apply engine still understands the touch_inherited
+// patternId those suggestions produce.
+type TouchMethod = "touch_key_replace" | "longpress_alternates" | "flick_gestures" | "multitap";
 
 // ---------------------------------------------------------------------------
 // TouchMethodChooser — 4 expandable cards
@@ -161,33 +173,7 @@ function TouchMethodChooser({
         How to reach it on touch:
       </p>
 
-      {/* 1. Already in touch layout */}
-      <div style={cardStyle(method === "touch_inherited")}>
-        <button
-          type="button"
-          aria-pressed={method === "touch_inherited"}
-          onClick={() => onMethodChange("touch_inherited")}
-          style={headerBtnStyle}
-        >
-          <span style={{ fontWeight: 600, color: method === "touch_inherited" ? ACCENT : TEXT_MAIN }}>
-            Already in touch layout
-          </span>
-          {method !== "touch_inherited" && (
-            <span style={{ fontSize: 11, color: TEXT_DIM }}>
-              This character is in the seeded phone layout; no extra step needed.
-            </span>
-          )}
-        </button>
-        {method === "touch_inherited" && (
-          <div style={configStyle}>
-            <p style={{ margin: 0, fontSize: 12, color: TEXT_DIM, fontFamily: FONT }}>
-              This character is in the seeded phone layout; no extra step needed.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* 2. Long-press on a key */}
+      {/* 1. Long-press on a key */}
       <div style={cardStyle(method === "longpress_alternates")}>
         <button
           type="button"
@@ -232,7 +218,7 @@ function TouchMethodChooser({
         )}
       </div>
 
-      {/* 3. Swipe a key (flick) */}
+      {/* 2. Swipe a key (flick) */}
       <div style={cardStyle(method === "flick_gestures")}>
         <button
           type="button"
@@ -299,7 +285,7 @@ function TouchMethodChooser({
         )}
       </div>
 
-      {/* 4. Tap multiple times (multitap) */}
+      {/* 3. Tap multiple times (multitap) */}
       <div style={cardStyle(method === "multitap")}>
         <button
           type="button"
@@ -344,7 +330,7 @@ function TouchMethodChooser({
         )}
       </div>
 
-      {/* 5. Replace a key */}
+      {/* 4. Replace a key */}
       <div style={cardStyle(method === "touch_key_replace")}>
         <button
           type="button"
@@ -423,6 +409,10 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
   // Draft persistence — read on mount; write on every charTouch/skippedChars change.
   const touchDraft = useWorkingCopyStore((s) => s.touchDraft);
   const setTouchDraft = useWorkingCopyStore((s) => s.setTouchDraft);
+
+  // One-time intro splash — read the seen flag on mount; mark it on "Get started".
+  const touchIntroSeen = useWorkingCopyStore((s) => s.galleryIntrosSeen.touch);
+  const markGalleryIntroSeen = useWorkingCopyStore((s) => s.markGalleryIntroSeen);
 
   // Derive keyboardId from identity (Track 1) or baseKeyboard (Track 2).
   const keyboardId = identity?.keyboardId ?? baseKeyboard?.id ?? null;
@@ -520,6 +510,12 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
   // loop uses wrap-around logic (advanceToNext can skip already-configured chars),
   // so the actual sequence visited is not simply inventory[i-1].
   const [charHistory, setCharHistory] = useState<string[]>([]);
+
+  // Intro splash — shown once when the author first enters the touch gallery so
+  // the move from the desktop (physical) gallery to touch is explicit. The
+  // store flag persists "seen" across unmount/remount, so the intro shows once
+  // and not again on back-and-forth navigation to Phase C.
+  const [showIntro, setShowIntro] = useState(() => !touchIntroSeen);
 
   // Write charTouch + skippedChars back to the store draft whenever they change
   // so that back-navigation (unmount) preserves in-progress work.
@@ -689,7 +685,7 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
   // Per-character method state — reset when currentChar changes
   // ---------------------------------------------------------------------------
 
-  const [method, setMethod] = useState<TouchMethod>("touch_inherited");
+  const [method, setMethod] = useState<TouchMethod>("longpress_alternates");
   const [hostKey, setHostKey] = useState("");
   const [flickDirection, setFlickDirection] = useState("");
 
@@ -702,7 +698,7 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
   // Reset method state and suggestion dismissal when currentChar changes.
   useEffect(() => {
     setSuggestionDismissed(false);
-    setMethod("touch_inherited");
+    setMethod("longpress_alternates");
     setHostKey("");
     setFlickDirection("");
     setAppliedForCurrentChar(false);
@@ -722,7 +718,6 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
 
   const canApply = useMemo(() => {
     if (currentChar === null) return false;
-    if (method === "touch_inherited") return true;
     if (method === "flick_gestures") return hostKey !== "" && flickDirection !== "";
     // longpress_alternates, multitap, and touch_key_replace require a host key.
     return hostKey !== "";
@@ -733,15 +728,6 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
   // ---------------------------------------------------------------------------
 
   function buildTouchAssignment(char: string): TouchAssignment {
-    if (method === "touch_inherited") {
-      return {
-        scope: "individual",
-        target: char,
-        modality: "touch",
-        mechanisms: [{ patternId: "touch_inherited" }],
-        source: "user",
-      };
-    }
     if (method === "longpress_alternates") {
       return {
         scope: "individual",
@@ -885,7 +871,7 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
     setCharTouch(next);
     setAppliedForCurrentChar(true);
     // Reset method inputs but stay on currentChar — user must click Next to advance.
-    setMethod("touch_inherited");
+    setMethod("longpress_alternates");
     setHostKey("");
     setFlickDirection("");
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1017,6 +1003,11 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
   const totalChars = inventory.length;
   const currentCharIndex = currentChar !== null ? inventory.indexOf(currentChar) : -1;
 
+  // When there is no suggestion to offer for the current character, skip the
+  // suggestion card entirely and show the method chooser directly. Otherwise the
+  // chooser appears once the suggestion is accepted or dismissed.
+  const showChooser = suggestionDismissed || suggestion.kind === "none";
+
   // ---------------------------------------------------------------------------
   // Guard: no inventory
   // ---------------------------------------------------------------------------
@@ -1044,6 +1035,120 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
               No characters in inventory yet. Complete the Survey (Phase B) to
               confirm which characters your keyboard must produce.
             </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Intro splash — first entry to the touch gallery only
+  // ---------------------------------------------------------------------------
+
+  if (showIntro) {
+    return (
+      <div style={{ ...pageStyle, padding: "24px 32px", overflowY: "auto" }}>
+        <div style={{ maxWidth: 600, margin: "0 auto" }}>
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Back to mechanisms (Phase C)"
+            style={ghostBtn}
+          >
+            &larr; Back
+          </button>
+
+          <div
+            style={{
+              marginTop: 40,
+              background: BG_CARD,
+              border: `1px solid ${BORDER}`,
+              borderRadius: 12,
+              padding: "28px 32px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                fontSize: 12,
+                color: TEXT_DIM,
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                fontFamily: FONT,
+              }}
+            >
+              Next step &middot; Touch
+            </p>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: "1.4rem",
+                fontWeight: 600,
+                color: ACCENT,
+                fontFamily: FONT,
+              }}
+            >
+              Welcome to the Touch Gallery
+            </h1>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 14,
+                lineHeight: 1.6,
+                color: TEXT_MAIN,
+                fontFamily: FONT,
+              }}
+            >
+              Your desktop layout is locked in. Now you&rsquo;ll set how each
+              character is reached on phones and tablets, where there is no
+              physical keyboard.
+            </p>
+            <ul
+              style={{
+                margin: 0,
+                paddingLeft: 20,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: TEXT_DIM,
+                fontFamily: FONT,
+              }}
+            >
+              <li>You&rsquo;ll go character by character, just like the desktop gallery.</li>
+              <li>
+                Pick a touch method &mdash; long-press, flick, multitap, or
+                replace &mdash; or Skip characters that already work.
+              </li>
+              <li>These choices apply to touch only and never change your desktop layout.</li>
+            </ul>
+            <button
+              type="button"
+              onClick={() => {
+                markGalleryIntroSeen("touch");
+                setShowIntro(false);
+              }}
+              aria-label="Start the touch gallery"
+              style={{
+                alignSelf: "flex-start",
+                marginTop: 4,
+                padding: "10px 24px",
+                background: BLUE_ACTION,
+                border: "none",
+                borderRadius: 6,
+                color: "#e6edf3",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: FONT,
+              }}
+            >
+              Get started &rarr;
+            </button>
           </div>
         </div>
       </div>
@@ -1169,8 +1274,9 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
             </button>
           </div>
 
-          {/* Suggestion card (shown until dismissed) */}
-          {!suggestionDismissed && (
+          {/* Suggestion card (shown until accepted/dismissed; skipped entirely
+              when there is no suggestion to offer) */}
+          {!showChooser && (
             <div
               role="note"
               aria-label="Touch access method suggestion"
@@ -1344,46 +1450,12 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
                   </div>
                 </>
               )}
-              {suggestion.kind === "none" && (
-                <>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: 12,
-                      color: "#56d364",
-                      fontFamily: FONT,
-                      fontWeight: 600,
-                    }}
-                  >
-                    Set how {currentChar} is reached on touch.
-                  </p>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      type="button"
-                      onClick={handleSuggestionChange}
-                      aria-label="Choose touch method"
-                      style={{
-                        padding: "5px 14px",
-                        background: "#238636",
-                        border: "none",
-                        borderRadius: 5,
-                        color: "#e6edf3",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        fontFamily: FONT,
-                      }}
-                    >
-                      Choose method
-                    </button>
-                  </div>
-                </>
-              )}
             </div>
           )}
 
-          {/* Method chooser (shown after Change or when no suggestion) */}
-          {suggestionDismissed && (
+          {/* Method chooser (shown after the suggestion is accepted/dismissed,
+              or immediately when there is no suggestion) */}
+          {showChooser && (
             <TouchMethodChooser
               currentChar={currentChar}
               method={method}
@@ -1397,7 +1469,7 @@ export function TouchGallery({ onComplete, onBack }: TouchGalleryProps) {
 
           {/* Apply + Next + Skip button row */}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            {suggestionDismissed && (
+            {showChooser && (
               <button
                 type="button"
                 onClick={handleApply}

@@ -109,7 +109,7 @@ vi.mock("../lint/LintSummary.tsx", () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function seedStore(opts: { withInventory?: string[] } = {}) {
+function seedStore(opts: { withInventory?: string[]; intro?: boolean } = {}) {
   const vfs = createVirtualFS([
     { path: "source/basic_kbdus.kmn", content: "c test\n", isBinary: false },
   ]);
@@ -121,6 +121,12 @@ function seedStore(opts: { withInventory?: string[] } = {}) {
       answers: [],
       confirmedInventory: opts.withInventory,
     });
+  }
+  // The first-entry intro splash shows until the touch gallery intro is marked
+  // seen. Mark it by default so tests land directly on the gallery; pass
+  // { intro: true } to leave it unseen and exercise the intro itself.
+  if (!opts.intro) {
+    useWorkingCopyStore.getState().markGalleryIntroSeen("touch");
   }
 }
 
@@ -188,34 +194,27 @@ describe("TouchGallery — vfsTransform inject-only-when-real-edits", () => {
     expect(buildTouchLayoutJsonSpy).not.toHaveBeenCalled();
   });
 
-  it("does NOT set source/<id>.keyman-touch-layout when ALL assignments are touch_inherited", async () => {
-    seedStore({ withInventory: ["ä"] });
+  it("does NOT set source/<id>.keyman-touch-layout when the only assignment is touch_inherited (accepted 'already' suggestion)", async () => {
+    // "a" is present in the scaffolded default QWERTY touch layout (K_A), so with
+    // no Phase C desktop assignment the suggestion is "already". The manual
+    // "Already in touch layout" chooser card was removed; the auto-detected
+    // "already" suggestion is now the only path that records a touch_inherited
+    // assignment. Accepting it must NOT be treated as a real edit, so the
+    // touch-layout path must remain absent.
+    seedStore({ withInventory: ["a"] });
 
     await act(async () => {
       render(<TouchGallery onComplete={vi.fn()} onBack={vi.fn()} />);
     });
 
-    // The new suggestion card shows Accept/Deny for the detected suggestion.
-    // For "ä" (decomposable accented, no desktop assignment) the suggestion is
-    // "longpress" — clicking Deny opens the method chooser. We then pick
-    // "Already in touch layout" (touch_inherited, default) and click Apply method.
-    // touch_inherited is NOT a real edit, so the path must remain absent.
-    const denyBtns = screen.queryAllByRole("button");
-    const denyBtn = denyBtns.find(
-      (b) => b.textContent?.trim() === "Deny",
-    ) ?? null;
-    expect(denyBtn).not.toBeNull();
+    // The "already" suggestion shows an Accept button — click it to record the
+    // touch_inherited assignment for "a" and advance.
+    const acceptBtn = screen
+      .queryAllByRole("button")
+      .find((b) => b.textContent?.trim() === "Accept") ?? null;
+    expect(acceptBtn).not.toBeNull();
     await act(async () => {
-      fireEvent.click(denyBtn!);
-    });
-
-    // Method chooser now visible. "Already in touch layout" is the first card
-    // and is selected by default. Click "Apply method" to record touch_inherited.
-    const applyBtns = screen.queryAllByRole("button");
-    const applyBtn = applyBtns.find((b) => b.textContent?.trim() === "Apply method") ?? null;
-    expect(applyBtn).not.toBeNull();
-    await act(async () => {
-      fireEvent.click(applyBtn!);
+      fireEvent.click(acceptBtn!);
     });
 
     const vfs = runTransform("basic_kbdus");
@@ -461,12 +460,13 @@ describe("TouchGallery — draft persistence across unmount/remount", () => {
   it("charTouch is restored from store draft on remount", async () => {
     seedStore({ withInventory: ["ä", "ö"] });
 
-    // First mount — accept "Already in layout" for "ä".
+    // First mount — accept the suggested method for "ä".
     const { unmount } = await act(async () =>
       render(<TouchGallery onComplete={vi.fn()} onBack={vi.fn()} />),
     );
 
-    // Accept the suggestion for "ä" — advances to "ö" and records "ä" in charTouch.
+    // "ä" is decomposable and not in the default layout, so the suggestion is
+    // "longpress". Accept it — advances to "ö" and records "ä" in charTouch.
     const allButtons = screen.queryAllByRole("button");
     const acceptBtn = allButtons.find(
       (b) => b.textContent?.trim() === "Accept",
@@ -539,6 +539,9 @@ function seedWithDesktopAssignment(
     answers: [],
     assignments: [assignment],
   });
+  // Skip the first-entry intro splash (see seedStore) so these tests land
+  // directly on the per-character gallery.
+  useWorkingCopyStore.getState().markGalleryIntroSeen("touch");
 }
 
 describe("TouchGallery — suggestion card variants", () => {
@@ -613,5 +616,71 @@ describe("TouchGallery — suggestion card variants", () => {
 
     // Suggestion card should mention "long-press" for á.
     expect(screen.queryByText(/Suggested: long-press/i)).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Intro splash — first-entry orientation
+// ---------------------------------------------------------------------------
+
+describe("TouchGallery — intro splash", () => {
+  it("shows the intro on first entry and reveals the gallery after 'Get started'", async () => {
+    seedStore({ withInventory: ["ä"], intro: true });
+
+    await act(async () => {
+      render(<TouchGallery onComplete={vi.fn()} onBack={vi.fn()} />);
+    });
+
+    // Intro is visible; the per-character gallery is not yet shown.
+    expect(screen.queryByText(/Welcome to the Touch Gallery/i)).not.toBeNull();
+    expect(screen.queryByText(/Touch mapping/i)).toBeNull();
+
+    const startBtn = screen.getByRole("button", { name: /start the touch gallery/i });
+    await act(async () => {
+      fireEvent.click(startBtn);
+    });
+
+    // Gallery now visible; intro gone.
+    expect(screen.queryByText(/Welcome to the Touch Gallery/i)).toBeNull();
+    expect(screen.queryAllByText(/Touch mapping/i).length).toBeGreaterThan(0);
+  });
+
+  it("does NOT show the intro on a return visit (intro already marked seen)", async () => {
+    // seedStore (without intro:true) marks the intro seen, simulating a prior visit.
+    seedStore({ withInventory: ["ä"] });
+
+    await act(async () => {
+      render(<TouchGallery onComplete={vi.fn()} onBack={vi.fn()} />);
+    });
+
+    expect(screen.queryByText(/Welcome to the Touch Gallery/i)).toBeNull();
+    expect(screen.queryAllByText(/Touch mapping/i).length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// No-suggestion characters go straight to the method chooser
+// ---------------------------------------------------------------------------
+
+describe("TouchGallery — no suggestion goes straight to chooser", () => {
+  it("shows the method chooser directly (no 'Set how … is reached' prompt) when there is no suggestion", async () => {
+    // "中" has no Phase C desktop assignment, is not in the default touch layout,
+    // and is not a decomposable accented letter, so suggestion kind = "none".
+    seedStore({ withInventory: ["中"] });
+
+    await act(async () => {
+      render(<TouchGallery onComplete={vi.fn()} onBack={vi.fn()} />);
+    });
+
+    // The old green "Set how … is reached on touch" prompt + "Choose method"
+    // button must be gone.
+    expect(screen.queryByText(/is reached on touch/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /choose touch method/i })).toBeNull();
+
+    // The method chooser is shown directly (its header + Apply action present).
+    expect(screen.queryByText(/How to reach it on touch/i)).not.toBeNull();
+    expect(
+      screen.queryAllByRole("button").some((b) => b.textContent?.trim() === "Apply method"),
+    ).toBe(true);
   });
 });
