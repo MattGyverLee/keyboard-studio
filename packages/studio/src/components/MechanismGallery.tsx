@@ -1,5 +1,9 @@
 // MechanismGallery — Phase C "add a key" flow (two-pane redesign).
 //
+// On first entry a brief intro splash orients the author to the desktop
+// authoring flow; "Get started" dismisses it for the rest of the working-copy
+// session (persisted via the galleryIntrosSeen store flag).
+//
 // LEFT pane: one-character-at-a-time assignment loop.
 //   - Walks lettersToAdd in order; the first uncovered+unskipped char is current.
 //   - Offers up to four methods:
@@ -45,6 +49,7 @@ import type { PlacementSeedEntry } from "../survey/placementSeeds.ts";
 import { getSuggestionForChar } from "../survey/placementSeeds.ts";
 import { KEY_OPTIONS, ALL_PICKABLE_KEYS } from "../lib/keyOptions.ts";
 import { GalleryPreviewPane } from "./GalleryPreviewPane.tsx";
+import { GalleryIntroSplash } from "./GalleryIntroSplash.tsx";
 import {
   BG_PAGE, BG_CARD, BORDER, ACCENT, TEXT_DIM, TEXT_MAIN, FONT, BLUE_ACTION,
 } from "../lib/galleryTheme.ts";
@@ -506,6 +511,10 @@ export function MechanismGallery({
     useShallow((s) => s.session.axes as Partial<DiscoveryAxisVector>),
   );
 
+  // One-time intro splash — read the seen flag on mount; mark it on "Get started".
+  const mechIntroSeen = useWorkingCopyStore((s) => s.galleryIntrosSeen.mechanism);
+  const markGalleryIntroSeen = useWorkingCopyStore((s) => s.markGalleryIntroSeen);
+
   const { lettersToAdd } = useInventoryDiff();
 
   // Read Phase C assignments directly (not the merged session.assignments view)
@@ -532,6 +541,12 @@ export function MechanismGallery({
 
   // Skipped chars — tracked in local state; count toward Done gate.
   const [skippedChars, setSkippedChars] = useState<Set<string>>(new Set());
+
+  // One-time intro splash — shown on first entry to the desktop gallery so the
+  // move into the authoring flow is explicit. The store flag persists "seen"
+  // across unmount/remount (e.g. navigating to the touch gallery and back), so
+  // it shows once and not again.
+  const [showIntro, setShowIntro] = useState(() => !mechIntroSeen);
 
   // currentChar: explicit state — does NOT auto-advance when a method is applied.
   // Only advances when the user clicks "Next character →" or "Skip".
@@ -1050,6 +1065,40 @@ export function MechanismGallery({
           </div>
         </div>
       </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Intro splash — first entry to the desktop mechanism gallery only
+  // ---------------------------------------------------------------------------
+
+  if (showIntro) {
+    return (
+      <GalleryIntroSplash
+        eyebrow="Getting started · Desktop"
+        title="Welcome to the Mechanism Gallery"
+        body={
+          <>
+            This is where you build your keyboard. For each character your
+            language needs that the base layout doesn&rsquo;t already have,
+            you&rsquo;ll choose how to type it on a physical (desktop) keyboard.
+          </>
+        }
+        bullets={[
+          <>You&rsquo;ll go character by character through the list from your survey.</>,
+          <>
+            Pick a method &mdash; type a sequence, use a dead key, swap a key, or
+            use AltGr &mdash; or Skip characters you don&rsquo;t need.
+          </>,
+          <>Phones and tablets come later, in the Touch gallery.</>,
+        ]}
+        startAriaLabel="Start the mechanism gallery"
+        onStart={() => {
+          markGalleryIntroSeen("mechanism");
+          setShowIntro(false);
+        }}
+        {...(onBack !== undefined ? { onBack } : {})}
+      />
     );
   }
 
