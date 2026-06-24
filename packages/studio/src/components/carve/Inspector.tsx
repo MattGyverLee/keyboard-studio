@@ -29,6 +29,23 @@ function LoadBearing() {
   );
 }
 
+const blurbStyle: React.CSSProperties = {
+  margin: '10px 0 0', fontSize: 12, color: 'var(--app-text-subtle)', lineHeight: 1.55,
+};
+
+function storeBlurb(node: CarveNode): string {
+  if (node.referencedByNodeId !== undefined)
+    return "Stores are named character lists. This one belongs to the pattern above — its removal is managed through the pattern.";
+  const u = node.storeUsage;
+  if (!u)
+    return "Stores are named character lists. This one isn't referenced by any active rules, so it's likely safe to remove on its own.";
+  if (u.asSource && u.asOutput)
+    return "Stores are named character lists. This one appears on both sides of rules: the keyboard watches for these characters AND inserts from them.";
+  if (u.asSource)
+    return "Stores are named character lists. The keyboard scans what you type against this list — when a character matches, a rule fires.";
+  return "Stores are named character lists. When a rule fires, it picks the corresponding character from this list to insert into your text.";
+}
+
 // ---------------------------------------------------------------------------
 // RawDetail
 // ---------------------------------------------------------------------------
@@ -66,6 +83,9 @@ function RawDetail({ node, isDeleted, onToggleNode }: RawDetailProps) {
           </button>
         </div>
       </div>
+      <p style={{ ...blurbStyle, marginTop: 14 }}>
+        Advanced rules use syntax the tool can't model automatically — deadkey chains, context-sensitive substitutions, or platform-specific behaviour. They're kept exactly as written from the original keyboard.
+      </p>
     </div>
   );
 }
@@ -95,22 +115,6 @@ function storeRoleChip(node: CarveNode): React.ReactNode {
   return null;
 }
 
-function storeDesc(node: CarveNode): string {
-  const u = node.storeUsage;
-  if (!u) {
-    return node.referencedByLabel !== undefined
-      ? 'Owned by a recognized pattern — removal is managed through the pattern.'
-      : 'Defined but not directly referenced in any rules.';
-  }
-  const { ruleCount, asSource, asOutput, groupNames } = u;
-  const n = ruleCount;
-  const rs = n === 1 ? 'rule' : 'rules';
-  const inG = groupNames.length > 0 ? ` in ${groupNames.join(', ')}` : '';
-  if (asSource && asOutput) return `Used as both any() input and index() output in ${n} ${rs}${inG}.`;
-  if (asSource) return `Matched by any() as input in ${n} ${rs}${inG} — these characters are context to match.`;
-  if (asOutput) return `Output target for index() in ${n} ${rs}${inG} — these are the characters that get inserted.`;
-  return `Referenced in ${n} ${rs}${inG}.`;
-}
 
 function StoreDetail({ node, nodes, isDeleted, isItemDeleted, onToggleNode }: StoreDetailProps) {
   const off = isDeleted(node.nodeId);
@@ -131,8 +135,8 @@ function StoreDetail({ node, nodes, isDeleted, isItemDeleted, onToggleNode }: St
             {storeRoleChip(node)}
             {node.loadBearing === true && <LoadBearing />}
           </div>
-          <p style={{ margin: '6px 0 0', fontSize: 13.5, color: 'var(--app-text-muted)', lineHeight: 1.55 }}>
-            {storeDesc(node)}
+          <p style={blurbStyle}>
+            {storeBlurb(node)}
           </p>
         </div>
       </div>
@@ -219,12 +223,17 @@ export function Inspector({ node, nodes, isItemDeleted, onToggleGlyph, onSetMany
     <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '20px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
         <ToggleBox glyph={node.trigger} state={st} size={40} onClick={() => onSetManyGlyphs(glyphs.map((x) => x.gid), st !== 'off')} />
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 40 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--app-text)' }}>{node.name}</h2>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--app-text)', lineHeight: 1 }}>{node.name}</h2>
             <KindBadge kind={node.kind} />
             {node.strategy !== undefined && <StrategyChip id={node.strategy} />}
           </div>
+          <p style={{ ...blurbStyle, margin: 0, paddingTop: 4 }}>
+            {node.kind === 'pattern'
+              ? 'A recognized pattern groups related key rules by purpose — for example, "vowels with diacritics" or "base alphabet". Removing it removes all rules that produce those characters.'
+              : 'A group is a block of key rules from the original keyboard that hasn\'t been recognized as a named pattern. Removing it removes every rule inside it.'}
+          </p>
         </div>
         <button onClick={() => onSetManyGlyphs(glyphs.map((x) => x.gid), st !== 'off')} style={btnGhost}>
           {st === 'off' ? 'Keep all' : 'Remove all'}
