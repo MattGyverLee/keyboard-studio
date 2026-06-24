@@ -32,6 +32,7 @@ import type { KeyboardIR, Pattern, VirtualFS } from "@keyboard-studio/contracts"
 import type { MechanismAssignment } from "@keyboard-studio/contracts";
 import {
   applyCarveToVfs,
+  applyStoreSlotRemovals,
   applyAssignmentsToVfs,
   applyIdentityStubMutation,
   applyKeycapLabelsToVfs,
@@ -39,6 +40,7 @@ import {
   emitKmn,
   resetIdentity,
   renameFilesInVfs,
+  parseSlotId,
 } from "@keyboard-studio/engine";
 
 // ---------------------------------------------------------------------------
@@ -169,12 +171,50 @@ export function projectWorkingCopyVfs(
   }
 
   // Step 1: Carve projection — re-emit IR with deleted nodes filtered out.
-  // Writes `source/<keyboardId>.kmn` back into vfs. When deletedNodeIds is
-  // empty, applyCarveToVfs is a no-op (fast path).
-  const allDeletedIds = deletedItemIds.size > 0
-    ? new Set([...deletedNodeIds, ...deletedItemIds])
-    : deletedNodeIds;
-  const carveResult = applyCarveToVfs(vfs, keyboardId, baseIr, allDeletedIds);
+  //
+  // deletedItemIds can carry two kinds of entries:
+  //   a) Slot ids: "<storeNodeId>#<itemsIndex>" — parallel-store deadkey slots to
+  //      replace with `nul` fillers (alignment-preserving; see applyStoreSlotRemovals).
+  //   b) Whole-node item ids: bare rule/store nodeIds from glyph-level carving.
+  //
+  // Partition them so the two mechanisms receive the correct inputs.
+  // An id that parses as a slot id (has the "<storeNodeId>#<index>" form) but whose
+  // left-of-# portion is NOT a known store nodeId deliberately falls through to
+  // wholeNodeItemIds, where it becomes a no-op whole-node deletion if it matches
+  // nothing — the transform guards in applyStoreSlotRemovals handle the real
+  // validation once we know the id is intended as a slot id.
+  const storeNodeIdSet = new Set(baseIr.stores.map((s) => s.nodeId));
+
+  const slotIds = new Set<string>();
+  const wholeNodeItemIds = new Set<string>();
+
+  for (const id of deletedItemIds) {
+    const parsed = parseSlotId(id);
+    if (parsed !== null && storeNodeIdSet.has(parsed.storeNodeId)) {
+      slotIds.add(id);
+    } else {
+      wholeNodeItemIds.add(id);
+    }
+  }
+
+  // 1a: Replace output-store slots with nul fillers (store-slot deletion path).
+  const removalResult = applyStoreSlotRemovals(baseIr, slotIds);
+  warnings.push(...removalResult.warnings);
+
+  // 1b: Whole-node deletions + VFS re-emit.
+  //     forceEmit: true when any slots were targeted — the nul-modified IR must
+  //     be written into the VFS even if no whole-node deletions are present.
+  //     When all slot ids are rejected by the transform's guards, forceEmit still
+  //     triggers a (harmless, idempotent) re-emit of the unmodified IR.
+  const carveIr = removalResult.ir; // equals baseIr when slotIds was empty
+  const allWholeNodeIds = new Set([...deletedNodeIds, ...wholeNodeItemIds]);
+  const carveResult = applyCarveToVfs(
+    vfs,
+    keyboardId,
+    carveIr,
+    allWholeNodeIds,
+    { forceEmit: slotIds.size > 0 },
+  );
   warnings.push(...carveResult.warnings);
 
   // Step 2: Assignments projection — inject mechanism pattern fragments.

@@ -25,7 +25,7 @@ import type { Pattern } from "@keyboard-studio/contracts";
 // Spies on the three projection functions
 // ---------------------------------------------------------------------------
 
-const applyCarveToVfsSpy = vi.fn((_vfs: unknown, _id: string, _ir: unknown, _ids: unknown) => ({
+const applyCarveToVfsSpy = vi.fn((_vfs: unknown, _id: string, _ir: unknown, _ids: unknown, _opts?: unknown) => ({
   warnings: [] as string[],
 }));
 const applyAssignmentsToVfsSpy = vi.fn((_vfs: unknown, _id: string, _a: unknown, _fn: unknown) => ({
@@ -106,6 +106,7 @@ describe("useWorkingCopyTransform — projection steps", () => {
       "basic_kbdus",
       expect.anything(), // baseIr
       expect.anything(), // deletedNodeIds (empty Set)
+      expect.objectContaining({ forceEmit: expect.any(Boolean) }), // opts
     );
   });
 
