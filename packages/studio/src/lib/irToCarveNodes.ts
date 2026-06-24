@@ -12,6 +12,98 @@ import type {
 export type CardKind = 'pattern' | 'group' | 'store' | 'raw';
 
 // ---------------------------------------------------------------------------
+// ModifierLayer — which modifier bucket a rule belongs to
+// ---------------------------------------------------------------------------
+
+export type ModifierLayer = 'base' | 'shift' | 'ralt' | 'ctrl' | 'other';
+
+/** Single source of truth for the four visible modifier-layer buckets used by Inspector and Rail. */
+export interface ModGroupDef {
+  id: string;
+  /** Display label used by Inspector (e.g. 'Base', 'Shift'). Rail may derive a short label via .toLowerCase(). */
+  label: string;
+  layers: ModifierLayer[];
+}
+
+export const MOD_GROUP_DEFS: ModGroupDef[] = [
+  { id: 'base',  label: 'Base',  layers: ['base'] },
+  { id: 'shift', label: 'Shift', layers: ['shift'] },
+  { id: 'altgr', label: 'AltGr', layers: ['ralt'] },
+  { id: 'other', label: 'Other', layers: ['ctrl', 'other'] },
+];
+
+/**
+ * Classify the modifier set of an IRRule into a ModifierLayer bucket.
+ * // parallels classifyModifiers() in scaffoldTouchLayout.ts — keep buckets in sync
+ */
+export function ruleModifier(rule: IRRule): ModifierLayer {
+  const vkeyEl = rule.context.find((el) => el.kind === 'vkey');
+  if (!vkeyEl || vkeyEl.kind !== 'vkey') return 'base';
+
+  const mods = new Set(vkeyEl.modifiers.map((m) => m.toUpperCase()));
+  if (mods.size === 0) return 'base';
+
+  const hasShift = mods.has('SHIFT') || mods.has('RSHIFT');
+  const hasRalt = mods.has('RALT') || mods.has('RIGHTALT');
+  const hasCtrl = mods.has('CTRL') || mods.has('LCTRL') || mods.has('RCTRL');
+  const hasAlt = mods.has('ALT') || mods.has('LALT');
+  const hasCaps = mods.has('CAPS') || mods.has('NCAPS');
+
+  if (hasCaps) return 'other';
+  if (hasRalt && !hasShift && !hasCtrl && !hasAlt) return 'ralt';
+  if (hasShift && !hasRalt && !hasCtrl && !hasAlt) return 'shift';
+  if (hasCtrl && !hasShift && !hasRalt && !hasAlt) return 'ctrl';
+  if (!hasShift && !hasRalt && !hasCtrl && !hasAlt && !hasCaps) return 'base';
+  return 'other';
+}
+
+/** Map a raw modifier token to a friendly display name. */
+function prettyMod(token: string): string {
+  switch (token.toUpperCase()) {
+    case 'SHIFT':
+    case 'RSHIFT': return 'Shift';
+    case 'RALT':
+    case 'RIGHTALT': return 'AltGr';
+    case 'CTRL':
+    case 'LCTRL':
+    case 'RCTRL': return 'Ctrl';
+    case 'ALT':
+    case 'LALT': return 'Alt';
+    case 'CAPS': return 'Caps';
+    case 'NCAPS': return 'NCaps';
+    default: return token;
+  }
+}
+
+/**
+ * Return the display prefix for a rule's modifier layer.
+ * Base rules return '' (no prefix); others return a friendly label like 'Shift', 'AltGr',
+ * or a '+'-joined combo for 'other'.
+ */
+export function modifierLabel(rule: IRRule): string {
+  const vkeyEl = rule.context.find((el) => el.kind === 'vkey');
+  if (!vkeyEl || vkeyEl.kind !== 'vkey' || vkeyEl.modifiers.length === 0) return '';
+
+  const layer = ruleModifier(rule);
+  switch (layer) {
+    case 'base': return '';
+    case 'shift': return 'Shift';
+    case 'ralt': return 'AltGr';
+    case 'ctrl': return 'Ctrl';
+    case 'other': {
+      // Deduplicate friendly names, preserve canonical order from token list
+      const seen = new Set<string>();
+      const parts: string[] = [];
+      for (const tok of vkeyEl.modifiers) {
+        const pretty = prettyMod(tok);
+        if (!seen.has(pretty)) { seen.add(pretty); parts.push(pretty); }
+      }
+      return parts.join('+');
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // isCombining — true for Unicode non-spacing marks (Mn category, all scripts)
 // ---------------------------------------------------------------------------
 
@@ -33,6 +125,8 @@ export interface CarveGlyph {
   gid: string;
   keys: string[];
   ch: string;
+  modifierLayer: ModifierLayer;
+  modifierLabel: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,7 +198,13 @@ function ruleToGlyph(rule: IRRule): CarveGlyph | null {
   if (keys.length === 0) return null;
   const ch = outputToChar(rule.output);
   if (ch === '?' || ch === '‹dk›') return null;
-  return { gid: rule.nodeId, keys, ch };
+  return {
+    gid: rule.nodeId,
+    keys,
+    ch,
+    modifierLayer: ruleModifier(rule),
+    modifierLabel: modifierLabel(rule),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +314,20 @@ export interface CarveNode {
 }
 
 // ---------------------------------------------------------------------------
+// glyphsTriState — tri-state derived purely from a flat CarveGlyph array
+// ---------------------------------------------------------------------------
+
+export function glyphsTriState(
+  glyphs: CarveGlyph[],
+  isItemDeleted: (id: string) => boolean,
+): 'on' | 'partial' | 'off' {
+  const off = glyphs.filter((g) => isItemDeleted(g.gid)).length;
+  if (off === 0) return 'on';
+  if (off === glyphs.length) return 'off';
+  return 'partial';
+}
+
+// ---------------------------------------------------------------------------
 // nodeState — tri-state based on individual glyph or node deletion
 // ---------------------------------------------------------------------------
 
@@ -223,10 +337,7 @@ export function nodeState(
   isDeleted: (id: string) => boolean,
 ): 'on' | 'partial' | 'off' {
   if (node.glyphs && node.glyphs.length > 0) {
-    const off = node.glyphs.filter((g) => isItemDeleted(g.gid)).length;
-    if (off === 0) return 'on';
-    if (off === node.glyphs.length) return 'off';
-    return 'partial';
+    return glyphsTriState(node.glyphs, isItemDeleted);
   }
   return isDeleted(node.nodeId) ? 'off' : 'on';
 }

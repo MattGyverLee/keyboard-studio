@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import type { CarveNode } from '../../lib/irToCarveNodes.ts';
-import { nodeState, displayChar } from '../../lib/irToCarveNodes.ts';
+import type { CarveNode, CarveGlyph } from '../../lib/irToCarveNodes.ts';
+import { nodeState, displayChar, MOD_GROUP_DEFS, glyphsTriState } from '../../lib/irToCarveNodes.ts';
 import { ToggleBox } from './ToggleBox.tsx';
 import { GlyphCell } from './GlyphCell.tsx';
 import { KindBadge, KIND_COLOR } from './KindBadge.tsx';
@@ -190,7 +190,8 @@ interface InspectorProps {
 
 export function Inspector({ node, nodes, isItemDeleted, onToggleGlyph, onSetManyGlyphs, isDeleted, onToggleNode }: InspectorProps) {
   const [q, setQ] = useState('');
-  useEffect(() => { setQ(''); }, [node?.nodeId]);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  useEffect(() => { setQ(''); setCollapsed(new Set()); }, [node?.nodeId]);
   const setInfo = useHoverInfoStore((s) => s.setInfo);
   const clearInfo = useHoverInfoStore((s) => s.clearInfo);
 
@@ -212,11 +213,23 @@ export function Inspector({ node, nodes, isItemDeleted, onToggleGlyph, onSetMany
     ? glyphs.filter((x) => x.ch.toLowerCase().includes(q.toLowerCase()) || x.keys.join('').toLowerCase().includes(q.toLowerCase()))
     : glyphs;
 
-  // Uniform cell height: size every row to fit the cell with the most keys.
-  // Use ceil(N/2) estimated key rows at ~72px column width, with a generous
-  // 26px per row to accommodate non-Latin key names that wrap more readily.
+  // Uniform cell height computed over all shown glyphs (uniform height across groups).
   const maxKeys = shown.length > 0 ? Math.max(...shown.map((x) => x.keys.length)) : 1;
   const rowHeight = Math.max(88, 60 + Math.ceil(maxKeys / 2) * 26);
+
+  // Build modifier groups from shown glyphs using the shared MOD_GROUP_DEFS
+  const groupedGlyphs = MOD_GROUP_DEFS.map((grp) => ({
+    ...grp,
+    glyphs: shown.filter((g) => grp.layers.includes(g.modifierLayer)),
+  })).filter((grp) => grp.glyphs.length > 0);
+
+  const toggleCollapsed = (id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '20px 24px' }}>
@@ -254,19 +267,64 @@ export function Inspector({ node, nodes, isItemDeleted, onToggleGlyph, onSetMany
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gridAutoRows: rowHeight + 'px', gap: 8, marginTop: big ? 12 : 18 }}>
-        {shown.map((x) => (
-          <GlyphCell
-            key={x.gid}
-            gid={x.gid}
-            ch={x.ch}
-            keys={x.keys}
-            off={isItemDeleted(x.gid)}
-            color={KIND_COLOR[node.kind]}
-            onToggle={onToggleGlyph}
-          />
-        ))}
-      </div>
+      {groupedGlyphs.map((grp) => {
+        const isCollapsed = collapsed.has(grp.id);
+        const grpState = glyphsTriState(grp.glyphs, isItemDeleted);
+        return (
+          <div key={grp.id} style={{ marginTop: 18 }}>
+            {/* Group header row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <button
+                onClick={() => toggleCollapsed(grp.id)}
+                aria-expanded={!isCollapsed}
+                style={{
+                  flex: 1, display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer',
+                  background: 'var(--app-surface)', border: '1px solid var(--app-border)',
+                  borderRadius: 7, padding: '5px 10px', textAlign: 'left',
+                }}
+              >
+                <span style={{ font: '600 11.5px var(--app-font)', color: grpState === 'off' ? 'var(--app-text-subtle)' : 'var(--app-text)', textDecoration: grpState === 'off' ? 'line-through' : 'none', letterSpacing: '.04em' }}>
+                  {grp.label}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--app-text-subtle)' }}>
+                  · {grp.glyphs.length} rules
+                </span>
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--app-text-subtle)' }}>
+                  {isCollapsed ? '▶' : '▼'}
+                </span>
+              </button>
+              {/* Per-group bulk button */}
+              <button
+                onClick={() => onSetManyGlyphs(grp.glyphs.map((g) => g.gid), grpState !== 'off')}
+                onMouseEnter={() => setInfo({ kind: 'text', title: grpState === 'off' ? 'Keep all' : 'Remove all', body: grpState === 'off' ? `Restore every ${grp.label} key in this group.` : `Remove every ${grp.label} key in this group — you can restore them later.` })}
+                onFocus={() => setInfo({ kind: 'text', title: grpState === 'off' ? 'Keep all' : 'Remove all', body: grpState === 'off' ? `Restore every ${grp.label} key in this group.` : `Remove every ${grp.label} key in this group — you can restore them later.` })}
+                onMouseLeave={clearInfo}
+                onBlur={clearInfo}
+                style={{ ...btnGhost, fontSize: 11, padding: '5px 10px' }}
+              >
+                {grpState === 'off' ? 'Keep all' : 'Remove all'}
+              </button>
+            </div>
+            {/* Per-group glyph subgrid */}
+            {!isCollapsed && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gridAutoRows: rowHeight + 'px', gap: 8 }}>
+                {grp.glyphs.map((x) => (
+                  <GlyphCell
+                    key={x.gid}
+                    gid={x.gid}
+                    ch={x.ch}
+                    keys={x.keys}
+                    off={isItemDeleted(x.gid)}
+                    color={KIND_COLOR[node.kind]}
+                    onToggle={onToggleGlyph}
+                    modifierLabel={x.modifierLabel}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
