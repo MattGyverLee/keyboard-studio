@@ -1,7 +1,7 @@
 // Unit tests for the pure infoFor() and keyHint() functions in InfoView.tsx.
 
 import { describe, it, expect } from 'vitest';
-import { infoFor, keyHint } from './InfoView';
+import { infoFor, keyHint, capabilityHint } from './InfoView';
 import type { CarveNode } from '../../lib/irToCarveNodes';
 
 // ---------------------------------------------------------------------------
@@ -334,6 +334,68 @@ describe('keyHint distinctness', () => {
 });
 
 // ---------------------------------------------------------------------------
+// capabilityHint() — pure function, one hint per RemovalCapability value
+// ---------------------------------------------------------------------------
+
+describe('capabilityHint — removable:simple', () => {
+  it('mentions direct key-to-character rule and safe', () => {
+    const hint = capabilityHint('removable:simple');
+    expect(hint).toMatch(/direct key.*character/i);
+    expect(hint).toMatch(/safe/i);
+  });
+});
+
+describe('capabilityHint — removable:slot-fill', () => {
+  it('mentions deadkey character set', () => {
+    const hint = capabilityHint('removable:slot-fill');
+    expect(hint).toMatch(/deadkey character set/i);
+  });
+  it('mentions the rest keeps working', () => {
+    expect(capabilityHint('removable:slot-fill')).toMatch(/rest working/i);
+  });
+});
+
+describe('capabilityHint — not-removable:opaque', () => {
+  it('mentions advanced syntax', () => {
+    expect(capabilityHint('not-removable:opaque')).toMatch(/advanced syntax/i);
+  });
+  it("mentions removing won't take effect", () => {
+    expect(capabilityHint('not-removable:opaque')).toMatch(/won't take effect|wont take effect/i);
+  });
+});
+
+describe('capabilityHint — not-removable:context-sensitive', () => {
+  it('mentions surrounding context', () => {
+    expect(capabilityHint('not-removable:context-sensitive')).toMatch(/surrounding context/i);
+  });
+  it("mentions can't be removed individually", () => {
+    expect(capabilityHint('not-removable:context-sensitive')).toMatch(/individually/i);
+  });
+});
+
+describe('capabilityHint — not-removable:unknown', () => {
+  it("mentions couldn't determine", () => {
+    expect(capabilityHint('not-removable:unknown')).toMatch(/couldn't determine|could not determine/i);
+  });
+});
+
+describe('capabilityHint distinctness', () => {
+  const vals = [
+    'removable:simple',
+    'removable:slot-fill',
+    'not-removable:opaque',
+    'not-removable:context-sensitive',
+    'not-removable:unknown',
+  ] as const;
+
+  it('all 5 capability values produce distinct hint strings', () => {
+    const hints = vals.map((v) => capabilityHint(v));
+    const unique = new Set(hints);
+    expect(unique.size).toBe(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // RTL render — store-driven: InfoView reads from useHoverInfoStore, no props
 // ---------------------------------------------------------------------------
 
@@ -369,7 +431,7 @@ describe('<InfoView> info:null', () => {
 describe('<InfoView> kind:"key"', () => {
   it('renders the character and keyHint(false) text when off is false', () => {
     useHoverInfoStore.setState({
-      info: { kind: 'key', keys: ['Shift', 'K_A'], ch: 'Á', off: false },
+      info: { kind: 'key', keys: ['Shift', 'K_A'], ch: 'Á', off: false, capability: 'removable:simple' },
     });
     render(<InfoView />);
 
@@ -380,12 +442,52 @@ describe('<InfoView> kind:"key"', () => {
 
   it('renders the keyHint(true) restore text when off is true', () => {
     useHoverInfoStore.setState({
-      info: { kind: 'key', keys: ['K_A'], ch: 'a', off: true },
+      info: { kind: 'key', keys: ['K_A'], ch: 'a', off: true, capability: 'not-removable:unknown' },
     });
     render(<InfoView />);
 
     const hint = keyHint(true);
     expect(document.body.textContent).toContain(hint.slice(0, 30));
+  });
+
+  it('renders the capabilityHint for removable:simple', () => {
+    useHoverInfoStore.setState({
+      info: { kind: 'key', keys: ['K_A'], ch: 'a', off: false, capability: 'removable:simple' },
+    });
+    render(<InfoView />);
+    expect(document.body.textContent).toContain(capabilityHint('removable:simple').slice(0, 30));
+  });
+
+  it('renders the capabilityHint for removable:slot-fill', () => {
+    useHoverInfoStore.setState({
+      info: { kind: 'key', keys: ['‹dk›', 'a'], ch: 'À', off: false, capability: 'removable:slot-fill' },
+    });
+    render(<InfoView />);
+    expect(document.body.textContent).toContain(capabilityHint('removable:slot-fill').slice(0, 30));
+  });
+
+  it('renders the capabilityHint for not-removable:opaque', () => {
+    useHoverInfoStore.setState({
+      info: { kind: 'key', keys: ['K_A'], ch: 'a', off: false, capability: 'not-removable:opaque' },
+    });
+    render(<InfoView />);
+    expect(document.body.textContent).toContain(capabilityHint('not-removable:opaque').slice(0, 30));
+  });
+
+  it('renders the capabilityHint for not-removable:context-sensitive', () => {
+    useHoverInfoStore.setState({
+      info: { kind: 'key', keys: ['K_A'], ch: 'a', off: false, capability: 'not-removable:context-sensitive' },
+    });
+    render(<InfoView />);
+    expect(document.body.textContent).toContain(capabilityHint('not-removable:context-sensitive').slice(0, 30));
+  });
+
+  it('renders the capabilityHint for not-removable:unknown', () => {
+    useHoverInfoStore.setState({
+      info: { kind: 'key', keys: ['K_A'], ch: 'a', off: false, capability: 'not-removable:unknown' },
+    });
+    render(<InfoView />);
+    expect(document.body.textContent).toContain(capabilityHint('not-removable:unknown').slice(0, 30));
   });
 });
 

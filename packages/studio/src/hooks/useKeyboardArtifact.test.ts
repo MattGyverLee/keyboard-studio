@@ -73,6 +73,8 @@ const mockEngine = {
     kmn,
     stripped: [] as string[],
   })),
+  // classifyRemovalCapabilities — returns an empty map (no capabilities needed in this test).
+  classifyRemovalCapabilities: vi.fn((_ir: KeyboardIR) => new Map()),
 };
 
 // Mock @keyboard-studio/engine so loadEngine() finds compile+fetchKeyboardSourceToVfs+init.
@@ -163,6 +165,9 @@ describe("useKeyboardArtifact — onInstantiate timing", () => {
     // parseKmn + recognizePatterns mocked above → IR must be non-null.
     expect(calledOpts.ir).not.toBeNull();
     expect(calledOpts.vfs).not.toBeNull();
+    // classifyRemovalCapabilities wired → removalCapabilities must be a Map
+    // reflecting the mock's returned map (the mock returns new Map() each call).
+    expect(calledOpts.removalCapabilities).toBeInstanceOf(Map);
   });
 
   it("carries the base's shipped .keyman-touch-layout into ir.touchLayout", async () => {

@@ -12,6 +12,7 @@ import {
   PatternSchema,
   RawPatternSchema,
   CriterionSchema,
+  RemovalCapabilitySchema,
 } from "./schemas";
 import { samplePatterns } from "./fixtures/patterns";
 import { ALL_CRITERIA } from "./criteriaData";
@@ -141,5 +142,36 @@ describe("CriterionSchema (spec §11)", () => {
       id: "1.5-x", section: "1. Test", band: "purple-haze", description: "x",
     });
     expect(result.success).toBe(false);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// RemovalCapabilitySchema — five-value enum (spec §531 classifier)
+// -----------------------------------------------------------------------------
+
+describe("RemovalCapabilitySchema", () => {
+  const VALID_VALUES = [
+    "removable:simple",
+    "removable:slot-fill",
+    "not-removable:opaque",
+    "not-removable:context-sensitive",
+    "not-removable:unknown",
+  ] as const;
+
+  it("accepts all five valid capability values", () => {
+    for (const value of VALID_VALUES) {
+      const result = RemovalCapabilitySchema.safeParse(value);
+      expect(result.success, `expected ${value} to be valid`).toBe(true);
+      if (result.success) {
+        expect(result.data).toBe(value);
+      }
+    }
+  });
+
+  it("rejects an out-of-vocabulary value", () => {
+    expect(RemovalCapabilitySchema.safeParse("removable:beep-insertion").success).toBe(false);
+    expect(RemovalCapabilitySchema.safeParse("not-removable").success).toBe(false);
+    expect(RemovalCapabilitySchema.safeParse("").success).toBe(false);
+    expect(RemovalCapabilitySchema.safeParse(42).success).toBe(false);
   });
 });

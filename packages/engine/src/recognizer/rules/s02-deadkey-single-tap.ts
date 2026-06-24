@@ -22,7 +22,7 @@ function isTrigger(rule: IRRule): boolean {
 
 // A body rule has context = [dk(D), any(BASE_STORE)], output = [index(OUT_STORE, 2)].
 // offset === 2 (v1.1 scope; non-standard offsets fall back to raw — not matched here).
-function isBody(rule: IRRule): boolean {
+export function isBody(rule: IRRule): boolean {
   if (rule.context.length !== 2) return false;
   const c0 = rule.context[0];
   const c1 = rule.context[1];
