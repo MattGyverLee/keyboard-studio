@@ -187,3 +187,41 @@ group(main) using keys
     expect(reasons).toContain(OPAQUE_REASONS.CALL_RETURN);
   });
 });
+
+// outs(store) inside a STORE BODY (not just a rule output). Before the fix,
+// parseStoreItems dropped outs(...) to a raw item and emitted the store
+// normally, producing broken .kmn when the store was later referenced.
+describe("parse opaque — outs(store) inside a store body", () => {
+  const OUTS_IN_STORE_KMN = `store(&NAME) 'Outs In Store'
+store(whitespace) ' ' U+00A0
+store(whitespace-dk) outs(whitespace) dk(1)
+
+begin Unicode > use(main)
+group(main) using keys
++ [K_A] > U+0061
+`;
+
+  it("marks the store opaque with reason outs-expansion", () => {
+    const { ir } = parse(OUTS_IN_STORE_KMN, "outs-in-store");
+    const reasons = ir.raw.map((r) => r.reason);
+    expect(reasons).toContain(OPAQUE_REASONS.OUTS_EXPANSION);
+  });
+
+  it("does NOT emit the opaque store into ir.stores (no malformed raw item)", () => {
+    const { ir } = parse(OUTS_IN_STORE_KMN, "outs-in-store");
+    // whitespace-dk went opaque → it must not appear as a normal store, and no
+    // store may carry a raw "outs(...)" item.
+    expect(ir.stores.find((s) => s.name === "whitespace-dk")).toBeUndefined();
+    const rawOutsItem = ir.stores
+      .flatMap((s) => s.items)
+      .some((it) => it.kind === "raw" && /outs\(/.test(it.text ?? ""));
+    expect(rawOutsItem).toBe(false);
+  });
+
+  it("preserves the store source verbatim in the RawKmnFragment", () => {
+    const { ir } = parse(OUTS_IN_STORE_KMN, "outs-in-store");
+    const frag = ir.raw.find((r) => r.reason === OPAQUE_REASONS.OUTS_EXPANSION);
+    expect(frag?.sourceText).toContain("store(whitespace-dk)");
+    expect(frag?.sourceText).toContain("outs(whitespace)");
+  });
+});

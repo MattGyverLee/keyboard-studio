@@ -262,6 +262,16 @@ function parseStoreItems(rawValue: string): { items: StoreItem[]; opaqueReason: 
       items.push({ kind: "vkey", name: vk.name });
       continue;
     }
+    // outs(store) — inline expansion of another store's content. The typed
+    // store-item model can't represent it, so (like parseOutputElements, which
+    // classifies the same token as OPAQUE_REASONS.OUTS_EXPANSION) mark the whole
+    // store opaque. Checked before the raw fallback so "outs(...)" is preserved
+    // verbatim as a RawKmnFragment rather than emitted as literal store content
+    // — which would produce broken .kmn once the store is referenced via
+    // any()/notany().
+    if (parseOuts(tok) !== null) {
+      return { items, opaqueReason: OPAQUE_REASONS.OUTS_EXPANSION };
+    }
     // bare identifier (treated as raw if unrecognized)
     items.push({ kind: "raw", text: tok });
   }
