@@ -171,6 +171,15 @@ export interface WorkingCopyState {
     skippedChars: string[];
   } | null;
 
+  /**
+   * One-time gallery intro splashes the author has dismissed this working-copy
+   * session, keyed by gallery. Both the desktop Mechanism Gallery (Phase C) and
+   * the Touch Gallery (Phase E) show a brief orientation splash on first entry;
+   * this records which have been seen so back-and-forth navigation does not
+   * re-show them. Cleared on reset and on a new instantiation.
+   */
+  galleryIntrosSeen: { mechanism: boolean; touch: boolean };
+
   // -- Actions (irStore) -------------------------------------------------------
   /** Set the carve working IR, clearing carve deletion state. */
   setIR: (ir: KeyboardIR) => void;
@@ -228,6 +237,8 @@ export interface WorkingCopyState {
   setTouchDraft: (
     draft: { charTouchEntries: Array<[string, TouchAssignment]>; skippedChars: string[] } | null,
   ) => void;
+  /** Mark a gallery's one-time intro splash as seen for this working-copy session. */
+  markGalleryIntroSeen: (gallery: "mechanism" | "touch") => void;
   /**
    * Reset the entire working copy to initial state. Clears all slots
    * including base keyboard, base VFS, base IR, identity, carve IR,
@@ -317,7 +328,7 @@ const INITIAL_STATE: Omit<
   | "isDeleted" | "deleteItem" | "restoreItem" | "isItemDeleted" | "keepAll" | "restoreAll"
   | "recordPhase" | "recordAssignments"
   | "setIrAxes" | "lockDesktop" | "unlockDesktop"
-  | "setTouchLayoutJson" | "setTouchDraft" | "reset"
+  | "setTouchLayoutJson" | "setTouchDraft" | "markGalleryIntroSeen" | "reset"
   | "instantiateFromBase" | "instantiateFromExisting" | "setIdentity" | "isInstantiated"
 > = {
   // instantiation mode
@@ -337,6 +348,7 @@ const INITIAL_STATE: Omit<
   desktopLocked: false,
   touchLayoutJson: null,
   touchDraft: null,
+  galleryIntrosSeen: { mechanism: false, touch: false },
 };
 
 // ---------------------------------------------------------------------------
@@ -454,12 +466,18 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
   setTouchDraft: (draft) =>
     set({ touchDraft: draft }),
 
+  markGalleryIntroSeen: (gallery) =>
+    set((s) => ({
+      galleryIntrosSeen: { ...s.galleryIntrosSeen, [gallery]: true },
+    })),
+
   reset: () =>
     set({
       ...INITIAL_STATE,
       // Re-initialize mutable objects so mutations do not bleed across resets.
       deletedNodeIds: new Set(),
       deletedItemIds: new Set(),
+      galleryIntrosSeen: { mechanism: false, touch: false },
       // instantiationMode is null in INITIAL_STATE; explicit for clarity.
       instantiationMode: null,
     }),
@@ -500,6 +518,7 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       desktopLocked: false,
       touchLayoutJson: null,
       touchDraft: null,
+      galleryIntrosSeen: { mechanism: false, touch: false },
     });
   },
 
@@ -530,6 +549,7 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       desktopLocked: false,
       touchLayoutJson: null,
       touchDraft: null,
+      galleryIntrosSeen: { mechanism: false, touch: false },
     }),
 
   setIdentity: (patch) =>

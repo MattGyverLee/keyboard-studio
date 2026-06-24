@@ -137,13 +137,20 @@ function setMockStage(s: Stage) {
 }
 
 /** Seed confirmedInventory via Phase B result. baseIr stays null so
- *  useInventoryDiff returns lettersToAdd === inventory (no diff). */
-function seedInventory(chars: string[]) {
+ *  useInventoryDiff returns lettersToAdd === inventory (no diff).
+ *
+ *  The first-entry intro splash shows until the mechanism gallery intro is
+ *  marked seen. Mark it by default so tests land directly on the gallery; pass
+ *  { intro: true } to leave it unseen and exercise the intro itself. */
+function seedInventory(chars: string[], opts: { intro?: boolean } = {}) {
   useWorkingCopyStore.getState().recordPhase({
     phase: "B",
     answers: [],
     confirmedInventory: chars,
   });
+  if (!opts.intro) {
+    useWorkingCopyStore.getState().markGalleryIntroSeen("mechanism");
+  }
 }
 
 afterEach(() => {
@@ -919,5 +926,46 @@ describe("MechanismGallery — vfsTransform passed to useKeyboardArtifact", () =
     // GalleryPreviewWithPatterns mounted → useKeyboardArtifact called → transform captured.
     expect(_lastVfsTransform).not.toBeNull();
     expect(typeof _lastVfsTransform).toBe("function");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Intro splash — first-entry orientation
+// ---------------------------------------------------------------------------
+
+describe("MechanismGallery — intro splash", () => {
+  it("shows the intro on first entry and reveals the gallery after 'Get started'", async () => {
+    seedInventory(["á"], { intro: true });
+
+    await act(async () => {
+      render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // Intro visible; the gallery's coverage status line is not yet shown.
+    expect(screen.queryByText(/Welcome to the Mechanism Gallery/i)).not.toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+
+    const startBtn = screen.getByRole("button", { name: /start the mechanism gallery/i });
+    await act(async () => {
+      fireEvent.click(startBtn);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // Gallery now visible; intro gone.
+    expect(screen.queryByText(/Welcome to the Mechanism Gallery/i)).toBeNull();
+    expect(screen.queryByRole("status")).not.toBeNull();
+  });
+
+  it("does NOT show the intro on a return visit (intro already marked seen)", async () => {
+    seedInventory(["á"]); // default: marks the intro seen
+
+    await act(async () => {
+      render(<MechanismGallery selectedBaseKeyboard={basicKbdus} />);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(screen.queryByText(/Welcome to the Mechanism Gallery/i)).toBeNull();
+    expect(screen.queryByRole("status")).not.toBeNull();
   });
 });

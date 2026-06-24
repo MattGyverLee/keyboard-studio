@@ -95,6 +95,21 @@ describe("tokenize", () => {
     expect(ruleText).not.toMatch(/^\s*>/);
   });
 
+  it("a comment ending in a backslash does NOT swallow the next line", () => {
+    // kmcmplib ends a `c` comment at the newline regardless of a trailing `\`.
+    // Before the fix the continuation join treated `c \` as a continuation and
+    // merged the following `store(...)` into the comment, dropping the store
+    // from the IR (real case: sil_euro_latin lines 120-121).
+    const tokens = tokenize("c \\\nstore(specialO) 'abc'\n");
+    const comment = tokens.find((t) => t.kind === "comment");
+    const store = tokens.find((t) => t.kind === "store");
+    // The comment stays on its own line and the store survives intact.
+    expect(comment?.line).toBe(1);
+    expect(store).toBeDefined();
+    expect(store?.line).toBe(2);
+    expect(store?.text).toContain("specialO");
+  });
+
   it("target-selector $keymanweb: prefix is stripped and stored on the token (#412)", () => {
     // tokenize must parse the $keymanweb: prefix off the line, classify the
     // remainder correctly (here a rule), and record targetSelector='keymanweb'.
