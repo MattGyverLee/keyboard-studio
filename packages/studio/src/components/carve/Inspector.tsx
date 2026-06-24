@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { CarveNode, CarveGlyph } from '../../lib/irToCarveNodes.ts';
+import type { CarveNode } from '../../lib/irToCarveNodes.ts';
 import { nodeState, displayChar, MOD_GROUP_DEFS, glyphsTriState } from '../../lib/irToCarveNodes.ts';
 import { ToggleBox } from './ToggleBox.tsx';
 import { GlyphCell } from './GlyphCell.tsx';

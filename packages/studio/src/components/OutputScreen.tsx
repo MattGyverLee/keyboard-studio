@@ -166,7 +166,7 @@ export function OutputScreen() {
                     lineHeight: 1.6,
                   }}
                 >
-                  {downloadWarnings.map((w, i) => (
+                  {downloadWarnings.map((w) => (
                     <li key={w}>{w}</li>
                   ))}
                 </ul>

@@ -10,6 +10,12 @@ export type { ApplyAssignmentsResult } from "./applyAssignments.js";
 export { applyAssignmentsToVfs } from "./applyAssignmentsToVfs.js";
 
 export { applyCarveToVfs } from "./applyCarveToVfs.js";
+export type { ApplyCarveToVfsOpts } from "./applyCarveToVfs.js";
+
+export { applyStoreSlotRemovals } from "./applyStoreSlotRemovals.js";
+export type { StoreSlotRemovalResult } from "./applyStoreSlotRemovals.js";
+
+export { parseSlotId } from "./slotId.js";
 
 export { applyKeycapLabelsToVfs } from "./applyKeycapLabelsToVfs.js";
 

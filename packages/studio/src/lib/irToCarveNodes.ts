@@ -189,34 +189,139 @@ export function outputToChar(output: OutputElement[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// ruleToGlyph — single IRRule → CarveGlyph (null if not displayable)
+// isParallelStoreDeadkeyRule — detect a parallel-store deadkey rule
+//
+// A rule matches when:
+//   - Its output is exactly one `index` element (the output store ref)
+//   - Its context contains at least one `deadkey` element
+//   - Its context contains at least one `any` element (the input store ref)
 // ---------------------------------------------------------------------------
 
-// gid == rule.nodeId so deletedItemIds can be forwarded directly to applyCarveToVfs
-function ruleToGlyph(rule: IRRule): CarveGlyph | null {
+function isParallelStoreDeadkeyRule(rule: IRRule): boolean {
+  if (rule.output.length !== 1) return false;
+  const out = rule.output[0];
+  if (!out || out.kind !== 'index') return false;
+  const hasDeadkey = rule.context.some((el) => el.kind === 'deadkey');
+  const hasAny = rule.context.some((el) => el.kind === 'any');
+  return hasDeadkey && hasAny;
+}
+
+// ---------------------------------------------------------------------------
+// expandParallelStoreRule — one CarveGlyph per char-slot in the output store
+//
+// gid contract (locked): `${outputStore.nodeId}#${i}` where i is the
+// 0-based index into outputStore.items (the full items array).
+// Non-char slots (beep/nul/raw) are skipped — they represent already-removed
+// or reserved positions and must not produce tiles.
+// Falls back to a single '...' glyph when the output store cannot be resolved.
+// ---------------------------------------------------------------------------
+
+function expandParallelStoreRule(rule: IRRule, ir: KeyboardIR): CarveGlyph[] {
+  const outputEl = rule.output[0];
+  if (!outputEl || outputEl.kind !== 'index') return [];
+
+  const outputStore = ir.stores.find((s) => s.name === outputEl.storeRef);
+  if (!outputStore) {
+    // Fallback: unresolvable store — return a single '...' glyph with bare nodeId
+    const keys = contextToKeys(rule.context);
+    if (keys.length === 0) return [];
+    return [{
+      gid: rule.nodeId,
+      keys,
+      ch: '…',
+      modifierLayer: ruleModifier(rule),
+      modifierLabel: modifierLabel(rule),
+    }];
+  }
+
+  // Resolve the input store for key labels (best-effort; fall back to '?')
+  const inputAnyEl = rule.context.find((el) => el.kind === 'any');
+  const inputStoreName = inputAnyEl && inputAnyEl.kind === 'any' ? inputAnyEl.storeRef : undefined;
+  const inputStore = inputStoreName !== undefined
+    ? ir.stores.find((s) => s.name === inputStoreName)
+    : undefined;
+
+  const modLayer = ruleModifier(rule);
+  const modLabel = modifierLabel(rule);
+
+  const glyphs: CarveGlyph[] = [];
+  const seen = new Set<string>();
+
+  for (let i = 0; i < outputStore.items.length; i++) {
+    const outputItem = outputStore.items[i];
+    if (!outputItem || outputItem.kind !== 'char') continue;  // skip beep/nul/raw slots
+
+    const ch = displayChar(outputItem.value);
+
+    // Build input-side key label for this slot
+    const inputItem = inputStore ? inputStore.items[i] : undefined;
+    const inputLabel = (inputItem && inputItem.kind === 'char')
+      ? displayChar(inputItem.value)
+      : '?';
+    const keys = ['‹dk›', inputLabel];
+
+    const gid = `${outputStore.nodeId}#${i}`;
+    if (seen.has(gid)) continue;  // dedup: same store+index appearing in multiple rules
+    seen.add(gid);
+
+    glyphs.push({ gid, keys, ch, modifierLayer: modLayer, modifierLabel: modLabel });
+  }
+
+  return glyphs;
+}
+
+// ---------------------------------------------------------------------------
+// ruleToGlyphs — single IRRule → CarveGlyph[] (empty if not displayable)
+//
+// Parallel-store deadkey rules expand into one tile per output-store char slot.
+// All other rules produce at most one tile, with gid == rule.nodeId.
+// ---------------------------------------------------------------------------
+
+function ruleToGlyphs(rule: IRRule, ir: KeyboardIR): CarveGlyph[] {
+  if (isParallelStoreDeadkeyRule(rule)) {
+    return expandParallelStoreRule(rule, ir);
+  }
+  // Standard single-output rule (original behavior)
   const keys = contextToKeys(rule.context);
-  if (keys.length === 0) return null;
+  if (keys.length === 0) return [];
   const ch = outputToChar(rule.output);
-  if (ch === '?' || ch === '‹dk›') return null;
-  return {
+  if (ch === '?' || ch === '‹dk›') return [];
+  return [{
     gid: rule.nodeId,
     keys,
     ch,
     modifierLayer: ruleModifier(rule),
     modifierLabel: modifierLabel(rule),
-  };
+  }];
 }
 
 // ---------------------------------------------------------------------------
 // groupToGlyphs — all displayable rules in a group
 // ---------------------------------------------------------------------------
 
-export function groupToGlyphs(group: IRGroup): CarveGlyph[] {
+// The ir parameter is optional for backwards-compatibility with existing tests
+// that pass only a group.  When absent, parallel-store expansion is a no-op
+// because the fallback path in expandParallelStoreRule still fires (store
+// lookup returns undefined → single '…' tile) — and for the simple vkey/char
+// rules that tests exercise, isParallelStoreDeadkeyRule returns false anyway.
+const EMPTY_IR: KeyboardIR = {
+  origin: 'scaffolded',
+  header: { keyboardId: '', name: '', bcp47: [], copyright: '', version: '', targets: [], storeDirectives: [] },
+  stores: [],
+  groups: [],
+  comments: [],
+  raw: [],
+  recognizedPatterns: [],
+};
+
+export function groupToGlyphs(group: IRGroup, ir: KeyboardIR = EMPTY_IR): CarveGlyph[] {
   const glyphs: CarveGlyph[] = [];
+  const seen = new Set<string>();
   group.rules.forEach((rule) => {
     if (rule.ownedByPattern !== undefined) return;
-    const g = ruleToGlyph(rule);
-    if (g) glyphs.push(g);
+    for (const g of ruleToGlyphs(rule, ir)) {
+      if (!seen.has(g.gid)) { seen.add(g.gid); glyphs.push(g); }
+    }
   });
   return glyphs;
 }
@@ -230,12 +335,14 @@ export function patternToGlyphs(pattern: Pattern, ir: KeyboardIR): CarveGlyph[] 
 
   const ownedIds = new Set(pattern.ownedNodes.map((n) => n.nodeId));
   const glyphs: CarveGlyph[] = [];
+  const seen = new Set<string>();
 
   for (const group of ir.groups) {
     group.rules.forEach((rule) => {
       if (!ownedIds.has(rule.nodeId)) return;
-      const g = ruleToGlyph(rule);
-      if (g) glyphs.push(g);
+      for (const g of ruleToGlyphs(rule, ir)) {
+        if (!seen.has(g.gid)) { seen.add(g.gid); glyphs.push(g); }
+      }
     });
   }
 
@@ -364,7 +471,7 @@ export function toRailNodes(ir: KeyboardIR): CarveNode[] {
 
   for (const group of ir.groups) {
     if (!group.rules.some((r) => r.ownedByPattern === undefined)) continue;
-    const glyphs = groupToGlyphs(group);
+    const glyphs = groupToGlyphs(group, ir);
     nodes.push({
       nodeId: group.nodeId,
       kind: 'group',
