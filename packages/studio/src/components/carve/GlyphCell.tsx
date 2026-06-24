@@ -10,9 +10,10 @@ interface GlyphCellProps {
   off: boolean;
   color: string;
   onToggle: (gid: string) => void;
+  modifierLabel: string;
 }
 
-export const GlyphCell = memo(function GlyphCell({ gid, ch, keys, off, color, onToggle }: GlyphCellProps) {
+export const GlyphCell = memo(function GlyphCell({ gid, ch, keys, off, color, onToggle, modifierLabel }: GlyphCellProps) {
   const setInfo = useHoverInfoStore((s) => s.setInfo);
   const clearInfo = useHoverInfoStore((s) => s.clearInfo);
   const display = displayChar(ch);
@@ -41,7 +42,7 @@ export const GlyphCell = memo(function GlyphCell({ gid, ch, keys, off, color, on
       <span style={{ font: "400 24px/1 'Lora', Georgia, serif", color: off ? 'var(--app-text-subtle)' : 'var(--app-text)' }}>
         {display}
       </span>
-      <KeySeq keys={keys} dim={off} />
+      <KeySeq keys={keys} prefix={modifierLabel} dim={off} />
     </button>
   );
 });
