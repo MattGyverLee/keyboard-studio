@@ -184,9 +184,9 @@ export async function fetchKeyboardSourceToVfs(
     }
     const path = `source/${r.store.path}`;
     // Text vs binary: kmcmplib's text inputs are .kmn / .keyman-touch-layout / .kvks
-    // (XML) / .js (KMW_EMBEDJS) / .htm. Binary: .ico / fonts.
+    // (XML) / .js (KMW_EMBEDJS) / .css (KMW_EMBEDCSS) / .htm. Binary: .ico / fonts.
     const isText =
-      /\.(kmn|keyman-touch-layout|kvks|js|htm|html|txt|xml)$/i.test(r.store.path);
+      /\.(kmn|keyman-touch-layout|kvks|js|css|htm|html|txt|xml)$/i.test(r.store.path);
     if (isText) {
       vfs.set(path, new TextDecoder().decode(r.bytes));
     } else {
