@@ -180,8 +180,9 @@ export function projectWorkingCopyVfs(
   // Partition them so the two mechanisms receive the correct inputs.
   // An id that does not parse as a slot id (parseSlotId returns null — e.g. bare
   // rule nodeIds whose suffix is not an integer) falls through to wholeNodeItemIds
-  // and is treated as a whole-node deletion. Real slot ids whose store cannot be
-  // found are caught by applyStoreSlotRemovals' guards.
+  // and is treated as a whole-node deletion. An id that does parse as a slot id
+  // but whose store is not found in baseIr also falls through to wholeNodeItemIds
+  // and becomes a no-op whole-node deletion (applyStoreSlotRemovals never sees it).
   const storeNodeIdSet = new Set(baseIr.stores.map((s) => s.nodeId));
 
   const slotIds = new Set<string>();
