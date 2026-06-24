@@ -55,6 +55,12 @@ function stripBom(text: string): string {
   return text;
 }
 
+// A full-line `c` comment ends at the newline. kmcmplib does NOT honor a
+// trailing backslash inside a comment as a line-continuation, so a line like
+// `c \` must not swallow the following line. Mirrors the comment classifier
+// below (`/^c(?:\s|$)/i`), but tests the untrimmed physical line.
+const COMMENT_LINE_RE = /^\s*c(?:\s|$)/i;
+
 /**
  * Tokenize .kmn source text into a flat Token array.
  *
@@ -70,11 +76,6 @@ export function tokenize(source: string): Token[] {
   // whitespace is tolerated because real keyboard sources sometimes ship
   // `\ ` or `\  ` (e.g. basic_kbdoldit line 92, store(unused) continuation).
   const CONTINUATION_RE = /\\\s*$/;
-  // A full-line `c` comment ends at the newline. kmcmplib does NOT honor a
-  // trailing backslash inside a comment as a line-continuation, so a line like
-  // `c \` must not swallow the following line. Mirrors the comment classifier
-  // below (`/^c(?:\s|$)/i`), but tests the untrimmed physical line.
-  const COMMENT_LINE_RE = /^\s*c(?:\s|$)/i;
   const logicalLines: Array<{ text: string; line: number }> = [];
   let i = 0;
   while (i < physicalLines.length) {
