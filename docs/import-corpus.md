@@ -22,7 +22,7 @@ Complete `RawKmnFragment` boundary list across `release/` — the input to #232 
 | `if-option-store` | 40820 |
 | `named-deadkey` | 5710 |
 | `smp-literal` | 2151 |
-| `outs-expansion` | 911 |
+| `outs-expansion` | 1257 |
 | `option-store-directive` | 126 |
 | `call-return` | 44 |
 | `unknown-pre-begin` | 4 |
@@ -614,7 +614,7 @@ Complete `RawKmnFragment` boundary list across `release/` — the input to #232 
 | `br_nativo` | round-trip-divergence | 0.06 | 0 | structural-divergence | — |
 | `breton_chwerty` | round-trip-divergence | 0.05 | 0 | structural-divergence | — |
 | `btl_kenya` | round-trip-divergence | 0.00 | 24 | structural-divergence | if-option-store×18, outs-expansion×6 |
-| `bu_phonetic` | round-trip-divergence | 0.00 | 339 | structural-divergence | outs-expansion×339 |
+| `bu_phonetic` | round-trip-divergence | 0.00 | 669 | structural-divergence | outs-expansion×669 |
 | `burushaski_girminas` | round-trip-divergence | 0.00 | 0 | structural-divergence | — |
 | `cabecar` | round-trip-divergence | 0.00 | 11 | structural-divergence | named-deadkey×11 |
 | `camoes` | round-trip-divergence | 0.05 | 0 | structural-divergence | — |
@@ -746,9 +746,9 @@ Complete `RawKmnFragment` boundary list across `release/` — the input to #232 
 | `gff_amharic_classic` | round-trip-divergence | 0.00 | 48 | structural-divergence | if-option-store×48 |
 | `gff_awngi_xamtanga` | round-trip-divergence | 0.01 | 51 | structural-divergence | if-option-store×51 |
 | `gff_blin` | round-trip-divergence | 0.01 | 51 | structural-divergence | if-option-store×51 |
-| `gff_ethiopic` | round-trip-divergence | 0.01 | 90 | structural-divergence | if-option-store×89, outs-expansion×1 |
-| `gff_ethiopic_7` | round-trip-divergence | 0.01 | 1 | structural-divergence | outs-expansion×1 |
-| `gff_geez` | round-trip-divergence | 0.01 | 1 | structural-divergence | outs-expansion×1 |
+| `gff_ethiopic` | round-trip-divergence | 0.01 | 91 | structural-divergence | if-option-store×89, outs-expansion×2 |
+| `gff_ethiopic_7` | round-trip-divergence | 0.01 | 2 | structural-divergence | outs-expansion×2 |
+| `gff_geez` | round-trip-divergence | 0.01 | 2 | structural-divergence | outs-expansion×2 |
 | `gff_gurage` | round-trip-divergence | 0.05 | 69 | structural-divergence | if-option-store×69 |
 | `gff_gurage_legacy` | round-trip-divergence | 0.06 | 0 | structural-divergence | — |
 | `gff_harari` | round-trip-divergence | 0.01 | 69 | structural-divergence | if-option-store×69 |
@@ -761,7 +761,7 @@ Complete `RawKmnFragment` boundary list across `release/` — the input to #232 
 | `ghana` | round-trip-divergence | 0.00 | 12 | structural-divergence | named-deadkey×12 |
 | `glagolitic_phonetic` | round-trip-divergence | 0.00 | 6 | structural-divergence | named-deadkey×4, outs-expansion×1, smp-literal×1 |
 | `gondi_dev` | round-trip-divergence | 0.01 | 1 | structural-divergence | outs-expansion×1 |
-| `greek_tonizo` | round-trip-divergence | 0.00 | 35 | structural-divergence | if-option-store×28, outs-expansion×7 |
+| `greek_tonizo` | round-trip-divergence | 0.00 | 36 | structural-divergence | if-option-store×28, outs-expansion×8 |
 | `greekclassical` | round-trip-divergence | 0.00 | 0 | structural-divergence | — |
 | `hanunoo` | round-trip-divergence | 0.00 | 0 | structural-divergence | — |
 | `haroi` | round-trip-divergence | 0.00 | 12 | structural-divergence | named-deadkey×3, outs-expansion×9 |
@@ -799,7 +799,7 @@ Complete `RawKmnFragment` boundary list across `release/` — the input to #232 
 | `kui_odia_winscript` | round-trip-divergence | 0.00 | 13 | structural-divergence | named-deadkey×11, outs-expansion×2 |
 | `lahu` | round-trip-divergence | 1.00 | 0 | structural-divergence | — |
 | `lao_2008_basic` | round-trip-divergence | 0.12 | 0 | structural-divergence | — |
-| `lao_2008_rapid` | round-trip-divergence | 0.03 | 30 | structural-divergence | call-return×22, outs-expansion×8 |
+| `lao_2008_rapid` | round-trip-divergence | 0.03 | 31 | structural-divergence | call-return×22, outs-expansion×9 |
 | `lao_phonetic` | round-trip-divergence | 0.01 | 5 | structural-divergence | outs-expansion×5 |
 | `lavanya` | round-trip-divergence | 0.08 | 18 | structural-divergence | named-deadkey×16, outs-expansion×2 |
 | `laz` | round-trip-divergence | 0.00 | 33 | structural-divergence | if-option-store×5, named-deadkey×28 |
@@ -931,7 +931,7 @@ Complete `RawKmnFragment` boundary list across `release/` — the input to #232 
 | `thamizha_bamini` | round-trip-divergence | 0.04 | 0 | structural-divergence | — |
 | `thamizha_new_typewriter` | round-trip-divergence | 0.03 | 1 | structural-divergence | named-deadkey×1 |
 | `thamizha_tamil99_ext` | round-trip-divergence | 0.00 | 3 | structural-divergence | outs-expansion×3 |
-| `tibetan_direct_input` | round-trip-divergence | 0.02 | 19 | structural-divergence | outs-expansion×19 |
+| `tibetan_direct_input` | round-trip-divergence | 0.02 | 30 | structural-divergence | outs-expansion×30 |
 | `tibetan_ewts` | round-trip-divergence | 0.00 | 0 | structural-divergence | — |
 | `tohono_oodham` | round-trip-divergence | 0.00 | 0 | structural-divergence | — |
 | `triqui_itunyoso` | round-trip-divergence | 0.00 | 165 | structural-divergence | if-option-store×34, named-deadkey×129, outs-expansion×2 |

@@ -23,7 +23,7 @@
     },
     {
       "feature": "outs-expansion",
-      "count": 911
+      "count": 1257
     },
     {
       "feature": "option-store-directive",
@@ -7543,14 +7543,14 @@
       "opaqueFeatureInventory": [
         {
           "feature": "outs-expansion",
-          "count": 339
+          "count": 669
         }
       ],
       "recognizedRatio": 0,
       "i2": "structural-divergence",
-      "ruleCount": 454,
+      "ruleCount": 124,
       "groupCount": 2,
-      "rawFragmentCount": 339
+      "rawFragmentCount": 669
     },
     {
       "keyboardId": "burushaski_girminas",
@@ -9295,14 +9295,14 @@
         },
         {
           "feature": "outs-expansion",
-          "count": 1
+          "count": 2
         }
       ],
-      "recognizedRatio": 0.00625,
+      "recognizedRatio": 0.006289308176100629,
       "i2": "structural-divergence",
-      "ruleCount": 160,
+      "ruleCount": 159,
       "groupCount": 2,
-      "rawFragmentCount": 90
+      "rawFragmentCount": 91
     },
     {
       "keyboardId": "gff_ethiopic_7",
@@ -9312,14 +9312,14 @@
       "opaqueFeatureInventory": [
         {
           "feature": "outs-expansion",
-          "count": 1
+          "count": 2
         }
       ],
-      "recognizedRatio": 0.009009009009009009,
+      "recognizedRatio": 0.00909090909090909,
       "i2": "structural-divergence",
-      "ruleCount": 111,
+      "ruleCount": 110,
       "groupCount": 3,
-      "rawFragmentCount": 1
+      "rawFragmentCount": 2
     },
     {
       "keyboardId": "gff_geez",
@@ -9329,14 +9329,14 @@
       "opaqueFeatureInventory": [
         {
           "feature": "outs-expansion",
-          "count": 1
+          "count": 2
         }
       ],
-      "recognizedRatio": 0.008064516129032258,
+      "recognizedRatio": 0.008130081300813009,
       "i2": "structural-divergence",
-      "ruleCount": 124,
+      "ruleCount": 123,
       "groupCount": 2,
-      "rawFragmentCount": 1
+      "rawFragmentCount": 2
     },
     {
       "keyboardId": "gff_gurage",
@@ -9552,14 +9552,14 @@
         },
         {
           "feature": "outs-expansion",
-          "count": 7
+          "count": 8
         }
       ],
       "recognizedRatio": 0,
       "i2": "structural-divergence",
-      "ruleCount": 119,
+      "ruleCount": 118,
       "groupCount": 7,
-      "rawFragmentCount": 35
+      "rawFragmentCount": 36
     },
     {
       "keyboardId": "greekclassical",
@@ -10231,14 +10231,14 @@
         },
         {
           "feature": "outs-expansion",
-          "count": 8
+          "count": 9
         }
       ],
-      "recognizedRatio": 0.02631578947368421,
+      "recognizedRatio": 0.026490066225165563,
       "i2": "structural-divergence",
-      "ruleCount": 152,
+      "ruleCount": 151,
       "groupCount": 4,
-      "rawFragmentCount": 30
+      "rawFragmentCount": 31
     },
     {
       "keyboardId": "lao_phonetic",
@@ -12385,14 +12385,14 @@
       "opaqueFeatureInventory": [
         {
           "feature": "outs-expansion",
-          "count": 19
+          "count": 30
         }
       ],
-      "recognizedRatio": 0.018518518518518517,
+      "recognizedRatio": 0.019867549668874173,
       "i2": "structural-divergence",
-      "ruleCount": 162,
+      "ruleCount": 151,
       "groupCount": 5,
-      "rawFragmentCount": 19
+      "rawFragmentCount": 30
     },
     {
       "keyboardId": "tibetan_ewts",
