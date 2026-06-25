@@ -1,10 +1,12 @@
 // kmcmplib WASM oracle wrapper.
 //
 // validateWithOracle(source, options?) is the public entry point for
-// Issue #16. It runs the TS-portable checks (currently the `lexical`
-// group: checks #1-#4) and, when the WASM oracle is available, runs the
-// WASM-side checks (the WASM-half of `reference` + `behavior` +
-// `passthrough` groups) concurrently per spec.md §14 D3.
+// Issue #16. It runs the TS-portable checks — the `lexical` group plus
+// the TS half of `reference` (checks #5/#6/#8/#9) — and, when the WASM
+// oracle is available, runs the WASM-side checks (the WASM-half of
+// `reference` + `behavior` + `passthrough` groups) concurrently per
+// spec.md §14 D3. This is the SPA's single validation entry point
+// (useValidator), so a WASM-down state surfaces KM_WARN_ORACLE_UNAVAILABLE.
 //
 // On WASM load failure: catches OracleLoadError exactly once at lazy
 // init, sets `_wasmDown`, and from then on returns only TS-portable
@@ -29,6 +31,15 @@ import {
 } from "./wasmLoader.js";
 import { OracleLoadError } from "./OracleLoadError.js";
 import { runLexicalChecks } from "./index.js";
+// Individual reference-group + lexical-group TS checks, wired into their
+// groups below. The taxonomy (types.ts) places codepointFormat (#7) in
+// `lexical`; deadkeyResolution (#5), ifStoreResolution (#6),
+// contextOrdering (#8), and indexBounds (#9) in `reference`.
+import { checkCodepointFormat } from "./checks/codepointFormat.js";
+import { checkDeadkeyResolution } from "./checks/deadkeyResolution.js";
+import { checkIfStoreResolution } from "./checks/ifStoreResolution.js";
+import { checkContextOrdering } from "./checks/contextOrdering.js";
+import { checkIndexBounds } from "./checks/indexBounds.js";
 
 function severityRank(s: LintFinding["severity"]): number {
   switch (s) {
@@ -143,9 +154,19 @@ function makeOracle(load: LoadHandle): OracleInstance {
       const out: LintFinding[] = [];
       if (requested.includes("lexical")) {
         out.push(...runLexicalChecks(source));
+        // Check #7 (codepoint format) is a stateless token-level check —
+        // taxonomy (types.ts) assigns it to `lexical`, not `reference`.
+        out.push(...checkCodepointFormat(source));
       }
-      // The TS half of `reference` (checks #5/#6/#8/#9) will plug in
-      // here as those issues land.
+      // TS half of `reference` (checks #5/#6/#8/#9). The WASM half (#13/#14)
+      // flows through wasmTask; the two sets emit disjoint codes, so no
+      // duplicate findings arise from running both.
+      if (requested.includes("reference")) {
+        out.push(...checkDeadkeyResolution(source));
+        out.push(...checkIfStoreResolution(source));
+        out.push(...checkContextOrdering(source));
+        out.push(...checkIndexBounds(source));
+      }
       return out;
     })();
 
@@ -176,8 +197,21 @@ function makeOracle(load: LoadHandle): OracleInstance {
       }
     })();
 
+    // TODO(D3-suppression): spec §10 / Decision D3 states "A TS-check error
+    // suppresses the WASM call." Today tsTask and wasmTask always run as
+    // concurrent microtasks regardless of TS errors (the speed/authority
+    // trade-off in D3). Enforcing suppression means awaiting tsTask, inspecting
+    // for errors, then conditionally starting wasmTask — an architectural change
+    // deferred to its own issue (needs UX modelling + test coverage).
     const [tsFindings, wasmFindings] = await Promise.all([tsTask, wasmTask]);
 
+    // TODO(D3-supersession): spec §10 / D3 also states "a WASM diagnostic always
+    // supersedes a conflicting TS diagnostic." We currently concatenate both
+    // sets without deduplicating overlaps (e.g. a curated TS finding vs a
+    // passthrough KMCMP_* finding for the same defect). Curated codes are
+    // disjoint between the TS and WASM halves of `reference`, so no exact-code
+    // duplicates occur; semantic overlap via passthrough is deferred with the
+    // suppression work above.
     const merged: LintFinding[] = [...tsFindings, ...wasmFindings];
 
     if (wasmRequested && wasmDown) {
