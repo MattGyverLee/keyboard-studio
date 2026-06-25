@@ -1,3 +1,4 @@
+import type { RemovalCapability } from '@keyboard-studio/contracts';
 import type { CarveNode } from '../../lib/irToCarveNodes.ts';
 import { displayChar } from '../../lib/irToCarveNodes.ts';
 import { InfoIcon } from './carveShared.tsx';
@@ -14,6 +15,21 @@ export function keyHint(off: boolean): string {
     return "Click to remove — these keys will no longer type this character.";
   }
   return "Click to restore — these keys will type this character again.";
+}
+
+export function capabilityHint(capability: RemovalCapability): string {
+  switch (capability) {
+    case 'removable:simple':
+      return "Direct key-to-character rule — safe to remove on its own.";
+    case 'removable:slot-fill':
+      return "Part of a deadkey character set. Removing this one leaves the rest working.";
+    case 'not-removable:opaque':
+      return "Uses advanced syntax the editor can't rewrite, so removing it here won't take effect.";
+    case 'not-removable:context-sensitive':
+      return "Depends on surrounding context, so it can't be removed individually yet.";
+    case 'not-removable:unknown':
+      return "The editor couldn't determine whether this is safe to remove.";
+  }
 }
 
 export function infoFor(node: CarveNode | undefined): InfoContent {
@@ -122,6 +138,9 @@ export function InfoView() {
           </div>
           <div style={{ fontSize: 13, lineHeight: 1.55, color: 'var(--app-text-muted)' }}>
             {keyHint(info.off)}
+          </div>
+          <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.5, color: 'var(--app-text-subtle)' }}>
+            {capabilityHint(info.capability)}
           </div>
         </div>
       </div>

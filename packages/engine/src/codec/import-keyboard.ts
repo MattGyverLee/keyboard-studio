@@ -12,13 +12,13 @@
  *   8. buildImportReport(...)              → ImportReport
  */
 
-import type { VirtualFS, ImportReport, ImportStatus } from "@keyboard-studio/contracts";
+import type { VirtualFS, ImportReport, ImportStatus, RemovalCapability } from "@keyboard-studio/contracts";
 import { ImportStatus as IS } from "@keyboard-studio/contracts";
 import { parse } from "./parse.js";
 import { emit } from "./emit.js";
 import { addSidecar, SIDECAR_HASH_SUFFIX } from "../output/sidecar.js";
 import { computeSha256Hex } from "./hash.js";
-import { recognizePatterns } from "../recognizer/index.js";
+import { recognizePatterns, classifyRemovalCapabilities } from "../recognizer/index.js";
 import {
   runImportFidelityParseChecks,
   runImportFidelityEmitChecks,
@@ -35,6 +35,8 @@ export interface BuildImportReportParams {
   recognizedRatio: number;
   /** True if I2 produced a RoundTripDivergence (not reachable while I2 is a stub). */
   hasRoundTripDivergence: boolean;
+  /** Entry-array from classifyRemovalCapabilities(); absent on parse failure. */
+  removalCapabilities?: Array<[string, RemovalCapability]>;
 }
 
 /**
@@ -53,6 +55,7 @@ export function buildImportReport(params: BuildImportReportParams): ImportReport
     opaqueFeatures,
     recognizedRatio,
     hasRoundTripDivergence,
+    removalCapabilities,
   } = params;
 
   let status: ImportStatus;
@@ -69,13 +72,19 @@ export function buildImportReport(params: BuildImportReportParams): ImportReport
     status = IS.Clean;
   }
 
-  return {
+  const report: ImportReport = {
     keyboardId,
     status,
     parseErrors,
     opaqueFeatureInventory: opaqueFeatures,
     recognizedRatio,
   };
+
+  if (removalCapabilities !== undefined) {
+    report.removalCapabilities = removalCapabilities;
+  }
+
+  return report;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,6 +141,9 @@ export async function importKeyboard(
   // --- Step 2: Recognize patterns ---
   const { recognizedRatio } = recognizePatterns(ir);
 
+  // --- Step 2b: Classify removal capabilities ---
+  const removalCapabilities = [...classifyRemovalCapabilities(ir).entries()];
+
   // --- Step 3: Add sidecar (.kmn.imported) ---
   addSidecar(vfs, kmnText, keyboardId);
 
@@ -158,6 +170,7 @@ export async function importKeyboard(
     opaqueFeatures,
     recognizedRatio,
     hasRoundTripDivergence,
+    removalCapabilities,
   });
 
   return { report, findings: allFindings };

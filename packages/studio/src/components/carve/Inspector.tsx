@@ -327,6 +327,7 @@ export function Inspector({ node, nodes, isItemDeleted, onToggleGlyph, onSetMany
                     color={KIND_COLOR[node.kind]}
                     onToggle={onToggleGlyph}
                     modifierLabel={x.modifierLabel}
+                    capability={x.capability}
                   />
                 ))}
               </div>

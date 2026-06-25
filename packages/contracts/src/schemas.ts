@@ -19,6 +19,7 @@
 import { z } from "zod";
 import type { Pattern, PatternQuestion, TestVector, DemoObject } from "./pattern";
 import type { Criterion } from "./criteria";
+import type { RemovalCapability } from "./removalCapability";
 
 // ---------------------------------------------------------------------------
 // Leaf enums — mirror the string-literal unions in the contract types.
@@ -39,6 +40,14 @@ export const AnswerTypeSchema = z.enum([
 
 export const DiscusPrincipleSchema = z.enum([
   "discoverability", "intuition", "simplicity", "consistency", "usability", "standards",
+]);
+
+export const RemovalCapabilitySchema = z.enum([
+  "removable:simple",
+  "removable:slot-fill",
+  "not-removable:opaque",
+  "not-removable:context-sensitive",
+  "not-removable:unknown",
 ]);
 
 export const IRNodeRefSchema = z.object({
@@ -237,3 +246,4 @@ type _PatternQuestionGuard = Expect<
 type _TestVectorGuard = Expect<AssignableTo<z.infer<typeof TestVectorSchema>, TestVector>>;
 type _DemoObjectGuard = Expect<AssignableTo<z.infer<typeof DemoObjectSchema>, DemoObject>>;
 type _CriterionGuard = Expect<AssignableTo<z.infer<typeof CriterionSchema>, Criterion>>;
+type _RemovalCapabilityGuard = Expect<AssignableTo<z.infer<typeof RemovalCapabilitySchema>, RemovalCapability>>;

@@ -21,7 +21,7 @@ function formatMapLine(rule: IRRule): string {
   return `+ [${mods}${ctx.name}] > ${toUPlus(out.value)}`;
 }
 
-function isS01(rule: IRRule, groupName: string): boolean {
+export function isS01(rule: IRRule, groupName: string): boolean {
   return (
     groupName !== "deadkeys" &&
     rule.context.length === 1 &&
