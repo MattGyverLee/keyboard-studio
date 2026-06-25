@@ -7,9 +7,102 @@ import type {
   IRGroup,
   KeyboardIR,
   Pattern,
+  RemovalCapability,
   StoreItem,
 } from '@keyboard-studio/contracts';
 export type CardKind = 'pattern' | 'group' | 'store' | 'raw';
+
+// ---------------------------------------------------------------------------
+// ModifierLayer — which modifier bucket a rule belongs to
+// ---------------------------------------------------------------------------
+
+export type ModifierLayer = 'base' | 'shift' | 'ralt' | 'ctrl' | 'other';
+
+/** Single source of truth for the four visible modifier-layer buckets used by Inspector and Rail. */
+export interface ModGroupDef {
+  id: string;
+  /** Display label used by Inspector (e.g. 'Base', 'Shift'). Rail may derive a short label via .toLowerCase(). */
+  label: string;
+  layers: ModifierLayer[];
+}
+
+export const MOD_GROUP_DEFS: ModGroupDef[] = [
+  { id: 'base',  label: 'Base',  layers: ['base'] },
+  { id: 'shift', label: 'Shift', layers: ['shift'] },
+  { id: 'altgr', label: 'AltGr', layers: ['ralt'] },
+  { id: 'other', label: 'Other', layers: ['ctrl', 'other'] },
+];
+
+/**
+ * Classify the modifier set of an IRRule into a ModifierLayer bucket.
+ * // parallels classifyModifiers() in scaffoldTouchLayout.ts — keep buckets in sync
+ */
+export function ruleModifier(rule: IRRule): ModifierLayer {
+  const vkeyEl = rule.context.find((el) => el.kind === 'vkey');
+  if (!vkeyEl || vkeyEl.kind !== 'vkey') return 'base';
+
+  const mods = new Set(vkeyEl.modifiers.map((m) => m.toUpperCase()));
+  if (mods.size === 0) return 'base';
+
+  const hasShift = mods.has('SHIFT') || mods.has('RSHIFT');
+  const hasRalt = mods.has('RALT') || mods.has('RIGHTALT');
+  const hasCtrl = mods.has('CTRL') || mods.has('LCTRL') || mods.has('RCTRL');
+  const hasAlt = mods.has('ALT') || mods.has('LALT');
+  const hasCaps = mods.has('CAPS') || mods.has('NCAPS');
+
+  if (hasCaps) return 'other';
+  if (hasRalt && !hasShift && !hasCtrl && !hasAlt) return 'ralt';
+  if (hasShift && !hasRalt && !hasCtrl && !hasAlt) return 'shift';
+  if (hasCtrl && !hasShift && !hasRalt && !hasAlt) return 'ctrl';
+  if (!hasShift && !hasRalt && !hasCtrl && !hasAlt && !hasCaps) return 'base';
+  return 'other';
+}
+
+/** Map a raw modifier token to a friendly display name. */
+function prettyMod(token: string): string {
+  switch (token.toUpperCase()) {
+    case 'SHIFT':
+    case 'RSHIFT': return 'Shift';
+    case 'RALT':
+    case 'RIGHTALT': return 'AltGr';
+    case 'CTRL':
+    case 'LCTRL':
+    case 'RCTRL': return 'Ctrl';
+    case 'ALT':
+    case 'LALT': return 'Alt';
+    case 'CAPS': return 'Caps';
+    case 'NCAPS': return 'NCaps';
+    default: return token;
+  }
+}
+
+/**
+ * Return the display prefix for a rule's modifier layer.
+ * Base rules return '' (no prefix); others return a friendly label like 'Shift', 'AltGr',
+ * or a '+'-joined combo for 'other'.
+ */
+export function modifierLabel(rule: IRRule): string {
+  const vkeyEl = rule.context.find((el) => el.kind === 'vkey');
+  if (!vkeyEl || vkeyEl.kind !== 'vkey' || vkeyEl.modifiers.length === 0) return '';
+
+  const layer = ruleModifier(rule);
+  switch (layer) {
+    case 'base': return '';
+    case 'shift': return 'Shift';
+    case 'ralt': return 'AltGr';
+    case 'ctrl': return 'Ctrl';
+    case 'other': {
+      // Deduplicate friendly names, preserve canonical order from token list
+      const seen = new Set<string>();
+      const parts: string[] = [];
+      for (const tok of vkeyEl.modifiers) {
+        const pretty = prettyMod(tok);
+        if (!seen.has(pretty)) { seen.add(pretty); parts.push(pretty); }
+      }
+      return parts.join('+');
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // isCombining — true for Unicode non-spacing marks (Mn category, all scripts)
@@ -25,7 +118,7 @@ export function displayChar(ch: string): string {
 }
 
 // A glyph tile the user is hovering/focusing, plus its current removed state — used by the Info View.
-export interface HoverGlyph extends Pick<CarveGlyph, 'keys' | 'ch'> {
+export interface HoverGlyph extends Pick<CarveGlyph, 'keys' | 'ch' | 'capability'> {
   off: boolean;
 }
 
@@ -33,6 +126,9 @@ export interface CarveGlyph {
   gid: string;
   keys: string[];
   ch: string;
+  modifierLayer: ModifierLayer;
+  modifierLabel: string;
+  capability: RemovalCapability;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,28 +191,145 @@ export function outputToChar(output: OutputElement[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// ruleToGlyph — single IRRule → CarveGlyph (null if not displayable)
+// isParallelStoreDeadkeyRule — detect a parallel-store deadkey rule
+//
+// A rule matches when:
+//   - Its output is exactly one `index` element (the output store ref)
+//   - Its context contains at least one `deadkey` element
+//   - Its context contains at least one `any` element (the input store ref)
 // ---------------------------------------------------------------------------
 
-// gid == rule.nodeId so deletedItemIds can be forwarded directly to applyCarveToVfs
-function ruleToGlyph(rule: IRRule): CarveGlyph | null {
+function isParallelStoreDeadkeyRule(rule: IRRule): boolean {
+  if (rule.output.length !== 1) return false;
+  const out = rule.output[0];
+  if (!out || out.kind !== 'index') return false;
+  const hasDeadkey = rule.context.some((el) => el.kind === 'deadkey');
+  const hasAny = rule.context.some((el) => el.kind === 'any');
+  return hasDeadkey && hasAny;
+}
+
+// ---------------------------------------------------------------------------
+// expandParallelStoreRule — one CarveGlyph per char-slot in the output store
+//
+// gid contract (locked): `${outputStore.nodeId}#${i}` where i is the
+// 0-based index into outputStore.items (the full items array).
+// Non-char slots (beep/nul/raw) are skipped — they represent already-removed
+// or reserved positions and must not produce tiles.
+// Falls back to a single '...' glyph when the output store cannot be resolved.
+// ---------------------------------------------------------------------------
+
+function expandParallelStoreRule(rule: IRRule, ir: KeyboardIR, capabilities: Map<string, RemovalCapability>): CarveGlyph[] {
+  const outputEl = rule.output[0];
+  if (!outputEl || outputEl.kind !== 'index') return [];
+
+  const outputStore = ir.stores.find((s) => s.name === outputEl.storeRef);
+  if (!outputStore) {
+    // Fallback: unresolvable store — return a single '...' glyph with bare nodeId
+    const keys = contextToKeys(rule.context);
+    if (keys.length === 0) return [];
+    return [{
+      gid: rule.nodeId,
+      keys,
+      ch: '…',
+      modifierLayer: ruleModifier(rule),
+      modifierLabel: modifierLabel(rule),
+      capability: capabilities.get(rule.nodeId) ?? 'not-removable:unknown',
+    }];
+  }
+
+  // Resolve the input store for key labels (best-effort; fall back to '?')
+  const inputAnyEl = rule.context.find((el) => el.kind === 'any');
+  const inputStoreName = inputAnyEl && inputAnyEl.kind === 'any' ? inputAnyEl.storeRef : undefined;
+  const inputStore = inputStoreName !== undefined
+    ? ir.stores.find((s) => s.name === inputStoreName)
+    : undefined;
+
+  const modLayer = ruleModifier(rule);
+  const modLabel = modifierLabel(rule);
+
+  const glyphs: CarveGlyph[] = [];
+  const seen = new Set<string>();
+
+  // Slot tiles look up by output-store nodeId (the alias entry the classifier emits).
+  const slotCapability: RemovalCapability =
+    capabilities.get(outputStore.nodeId) ?? 'not-removable:unknown';
+
+  for (let i = 0; i < outputStore.items.length; i++) {
+    const outputItem = outputStore.items[i];
+    if (!outputItem || outputItem.kind !== 'char') continue;  // skip beep/nul/raw slots
+
+    const ch = displayChar(outputItem.value);
+
+    // Build input-side key label for this slot
+    const inputItem = inputStore ? inputStore.items[i] : undefined;
+    const inputLabel = (inputItem && inputItem.kind === 'char')
+      ? displayChar(inputItem.value)
+      : '?';
+    const keys = ['‹dk›', inputLabel];
+
+    const gid = `${outputStore.nodeId}#${i}`;
+    if (seen.has(gid)) continue;  // dedup: same store+index appearing in multiple rules
+    seen.add(gid);
+
+    glyphs.push({ gid, keys, ch, modifierLayer: modLayer, modifierLabel: modLabel, capability: slotCapability });
+  }
+
+  return glyphs;
+}
+
+// ---------------------------------------------------------------------------
+// ruleToGlyphs — single IRRule → CarveGlyph[] (empty if not displayable)
+//
+// Parallel-store deadkey rules expand into one tile per output-store char slot.
+// All other rules produce at most one tile, with gid == rule.nodeId.
+// ---------------------------------------------------------------------------
+
+function ruleToGlyphs(rule: IRRule, ir: KeyboardIR, capabilities: Map<string, RemovalCapability>): CarveGlyph[] {
+  if (isParallelStoreDeadkeyRule(rule)) {
+    return expandParallelStoreRule(rule, ir, capabilities);
+  }
+  // Standard single-output rule (original behavior)
   const keys = contextToKeys(rule.context);
-  if (keys.length === 0) return null;
+  if (keys.length === 0) return [];
   const ch = outputToChar(rule.output);
-  if (ch === '?' || ch === '‹dk›') return null;
-  return { gid: rule.nodeId, keys, ch };
+  if (ch === '?' || ch === '‹dk›') return [];
+  return [{
+    gid: rule.nodeId,
+    keys,
+    ch,
+    modifierLayer: ruleModifier(rule),
+    modifierLabel: modifierLabel(rule),
+    capability: capabilities.get(rule.nodeId) ?? 'not-removable:unknown',
+  }];
 }
 
 // ---------------------------------------------------------------------------
 // groupToGlyphs — all displayable rules in a group
 // ---------------------------------------------------------------------------
 
-export function groupToGlyphs(group: IRGroup): CarveGlyph[] {
+// The ir parameter is optional for backwards-compatibility with existing tests
+// that pass only a group.  When absent, parallel-store expansion is a no-op
+// because the fallback path in expandParallelStoreRule still fires (store
+// lookup returns undefined → single '…' tile) — and for the simple vkey/char
+// rules that tests exercise, isParallelStoreDeadkeyRule returns false anyway.
+const EMPTY_IR: KeyboardIR = {
+  origin: 'scaffolded',
+  header: { keyboardId: '', name: '', bcp47: [], copyright: '', version: '', targets: [], storeDirectives: [] },
+  stores: [],
+  groups: [],
+  comments: [],
+  raw: [],
+  recognizedPatterns: [],
+};
+
+export function groupToGlyphs(group: IRGroup, ir: KeyboardIR = EMPTY_IR, capabilities: Map<string, RemovalCapability> = new Map()): CarveGlyph[] {
   const glyphs: CarveGlyph[] = [];
+  const seen = new Set<string>();
   group.rules.forEach((rule) => {
     if (rule.ownedByPattern !== undefined) return;
-    const g = ruleToGlyph(rule);
-    if (g) glyphs.push(g);
+    for (const g of ruleToGlyphs(rule, ir, capabilities)) {
+      if (!seen.has(g.gid)) { seen.add(g.gid); glyphs.push(g); }
+    }
   });
   return glyphs;
 }
@@ -125,17 +338,19 @@ export function groupToGlyphs(group: IRGroup): CarveGlyph[] {
 // patternToGlyphs — derive character map from a Pattern's owned IR rules
 // ---------------------------------------------------------------------------
 
-export function patternToGlyphs(pattern: Pattern, ir: KeyboardIR): CarveGlyph[] {
+export function patternToGlyphs(pattern: Pattern, ir: KeyboardIR, capabilities: Map<string, RemovalCapability> = new Map()): CarveGlyph[] {
   if (!pattern.ownedNodes || pattern.ownedNodes.length === 0) return [];
 
   const ownedIds = new Set(pattern.ownedNodes.map((n) => n.nodeId));
   const glyphs: CarveGlyph[] = [];
+  const seen = new Set<string>();
 
   for (const group of ir.groups) {
     group.rules.forEach((rule) => {
       if (!ownedIds.has(rule.nodeId)) return;
-      const g = ruleToGlyph(rule);
-      if (g) glyphs.push(g);
+      for (const g of ruleToGlyphs(rule, ir, capabilities)) {
+        if (!seen.has(g.gid)) { seen.add(g.gid); glyphs.push(g); }
+      }
     });
   }
 
@@ -214,6 +429,20 @@ export interface CarveNode {
 }
 
 // ---------------------------------------------------------------------------
+// glyphsTriState — tri-state derived purely from a flat CarveGlyph array
+// ---------------------------------------------------------------------------
+
+export function glyphsTriState(
+  glyphs: CarveGlyph[],
+  isItemDeleted: (id: string) => boolean,
+): 'on' | 'partial' | 'off' {
+  const off = glyphs.filter((g) => isItemDeleted(g.gid)).length;
+  if (off === 0) return 'on';
+  if (off === glyphs.length) return 'off';
+  return 'partial';
+}
+
+// ---------------------------------------------------------------------------
 // nodeState — tri-state based on individual glyph or node deletion
 // ---------------------------------------------------------------------------
 
@@ -223,10 +452,7 @@ export function nodeState(
   isDeleted: (id: string) => boolean,
 ): 'on' | 'partial' | 'off' {
   if (node.glyphs && node.glyphs.length > 0) {
-    const off = node.glyphs.filter((g) => isItemDeleted(g.gid)).length;
-    if (off === 0) return 'on';
-    if (off === node.glyphs.length) return 'off';
-    return 'partial';
+    return glyphsTriState(node.glyphs, isItemDeleted);
   }
   return isDeleted(node.nodeId) ? 'off' : 'on';
 }
@@ -235,12 +461,12 @@ export function nodeState(
 // toRailNodes — build the full node list for the Rail from a KeyboardIR
 // ---------------------------------------------------------------------------
 
-export function toRailNodes(ir: KeyboardIR): CarveNode[] {
+export function toRailNodes(ir: KeyboardIR, capabilities: Map<string, RemovalCapability> = new Map()): CarveNode[] {
   const nodes: CarveNode[] = [];
   const recognized = ir.recognizedPatterns.filter((p) => p.origin === 'recognized');
 
   for (const pattern of recognized) {
-    const glyphs = patternToGlyphs(pattern, ir);
+    const glyphs = patternToGlyphs(pattern, ir, capabilities);
     nodes.push({
       nodeId: pattern.id,
       kind: 'pattern',
@@ -253,7 +479,7 @@ export function toRailNodes(ir: KeyboardIR): CarveNode[] {
 
   for (const group of ir.groups) {
     if (!group.rules.some((r) => r.ownedByPattern === undefined)) continue;
-    const glyphs = groupToGlyphs(group);
+    const glyphs = groupToGlyphs(group, ir, capabilities);
     nodes.push({
       nodeId: group.nodeId,
       kind: 'group',

@@ -60,3 +60,4 @@ export function recognizePatterns(
 }
 
 export type { RecognizerRule, MatchResult, RecognizeResult } from "./types.js";
+export { classifyRemovalCapabilities } from "./classifyRemovalCapabilities.js";

@@ -55,6 +55,27 @@ function stripBom(text: string): string {
   return text;
 }
 
+// Module-scope regexes (compiled once; file convention after the COMMENT_LINE_RE
+// hoist — all single-use tokenizer patterns live here rather than inside
+// tokenize()).
+
+// A backslash at the end of a physical line — optionally followed by trailing
+// whitespace — joins the next physical line. The trailing whitespace is
+// tolerated because real keyboard sources sometimes ship `\ ` or `\  `
+// (e.g. basic_kbdoldit line 92, store(unused) continuation).
+const CONTINUATION_RE = /\\\s*$/;
+
+// A full-line `c` comment ends at the newline. kmcmplib does NOT honor a
+// trailing backslash inside a comment as a line-continuation, so a line like
+// `c \` must not swallow the following line. Mirrors the comment classifier
+// below (`/^c(?:\s|$)/i`), but tests the untrimmed physical line.
+const COMMENT_LINE_RE = /^\s*c(?:\s|$)/i;
+
+// Target-selector prefix matchers (case-insensitive; kmcmplib uses u16nicmp).
+// The colon is required; whitespace between the prefix and the rest of the
+// line is optional.
+const TARGET_PREFIX_RE = /^\$(keyman|keymanweb|keymanonly):\s*/i;
+
 /**
  * Tokenize .kmn source text into a flat Token array.
  *
@@ -64,18 +85,17 @@ export function tokenize(source: string): Token[] {
   const clean = stripBom(source);
   const physicalLines = clean.split(/\r?\n/);
 
-  // Step 1: join continuation lines.
-  // A backslash at the end of a physical line — optionally followed by
-  // trailing whitespace — joins the next physical line. The trailing
-  // whitespace is tolerated because real keyboard sources sometimes ship
-  // `\ ` or `\  ` (e.g. basic_kbdoldit line 92, store(unused) continuation).
-  const CONTINUATION_RE = /\\\s*$/;
+  // Step 1: join continuation lines (CONTINUATION_RE, module scope above).
   const logicalLines: Array<{ text: string; line: number }> = [];
   let i = 0;
   while (i < physicalLines.length) {
     let text = physicalLines[i] ?? "";
     const startLine = i + 1; // 1-based
-    while (CONTINUATION_RE.test(text) && i + 1 < physicalLines.length) {
+    while (
+      CONTINUATION_RE.test(text) &&
+      !COMMENT_LINE_RE.test(text) &&
+      i + 1 < physicalLines.length
+    ) {
       text = text.replace(CONTINUATION_RE, ""); // drop backslash + trailing ws
       i++;
       text = text + (physicalLines[i] ?? "").trimStart();
@@ -85,11 +105,6 @@ export function tokenize(source: string): Token[] {
   }
 
   const tokens: Token[] = [];
-
-  // Target-selector prefix matchers (case-insensitive; kmcmplib uses u16nicmp).
-  // The colon is required; whitespace between the prefix and the rest of the
-  // line is optional.
-  const TARGET_PREFIX_RE = /^\$(keyman|keymanweb|keymanonly):\s*/i;
 
   for (const { text, line } of logicalLines) {
     let trimmed = text.trim();

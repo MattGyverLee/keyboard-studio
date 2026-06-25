@@ -1,5 +1,6 @@
+import { useMemo } from 'react';
 import type { CarveNode } from '../../lib/irToCarveNodes.ts';
-import { nodeState } from '../../lib/irToCarveNodes.ts';
+import { nodeState, MOD_GROUP_DEFS } from '../../lib/irToCarveNodes.ts';
 import { KIND_COLOR } from './KindBadge.tsx';
 import { ToggleBox } from './ToggleBox.tsx';
 import { WarnIcon } from './carveShared.tsx';
@@ -52,6 +53,24 @@ export function Rail({ nodes, selectedId, onSelect, isItemDeleted, isDeleted, on
   const setInfo = useHoverInfoStore((s) => s.setInfo);
   const clearInfo = useHoverInfoStore((s) => s.clearInfo);
 
+  // Pre-compute per-node modifier breakdown once per render cycle (O(nodes × glyphs)).
+  // Keyed on nodes identity; isItemDeleted is a stable function ref from the store.
+  const nodeBreakdownMap = useMemo(() => {
+    const map = new Map<string, { label: string; kept: number }[]>();
+    for (const node of nodes) {
+      if (!node.glyphs || node.glyphs.length === 0) continue;
+      const breakdown: { label: string; kept: number }[] = [];
+      for (const grp of MOD_GROUP_DEFS) {
+        const kept = node.glyphs
+          .filter((g) => grp.layers.includes(g.modifierLayer) && !isItemDeleted(g.gid))
+          .length;
+        if (kept > 0) breakdown.push({ label: grp.id, kept });
+      }
+      map.set(node.nodeId, breakdown);
+    }
+    return map;
+  }, [nodes, isItemDeleted]);
+
   return (
     <div style={{ width: 308, flex: '0 0 auto', borderRight: '1px solid var(--app-border)', background: 'var(--app-surface)', overflowY: 'auto' }}>
       {SECTIONS.map((sec) => {
@@ -64,6 +83,9 @@ export function Rail({ nodes, selectedId, onSelect, isItemDeleted, isDeleted, on
           const active = node.nodeId === selectedId;
           const total = node.glyphs?.length ?? null;
           const keptN = total !== null ? (node.glyphs?.filter((g) => !isItemDeleted(g.gid)).length ?? 0) : null;
+
+          const modBreakdown = nodeBreakdownMap.get(node.nodeId) ?? [];
+          const showBreakdown = modBreakdown.length > 1;
 
           const handleToggle = (e: MouseEvent) => {
             e.stopPropagation();
@@ -100,8 +122,18 @@ export function Rail({ nodes, selectedId, onSelect, isItemDeleted, isDeleted, on
                   {node.name}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 2 }}>
-                  {total !== null && (
+                  {total !== null && !showBreakdown && (
                     <span style={{ fontSize: 11, color: 'var(--app-text-subtle)' }}>{keptN}/{total}</span>
+                  )}
+                  {showBreakdown && (
+                    <span style={{ fontSize: 11, color: 'var(--app-text-subtle)' }}>
+                      {modBreakdown.map((g, i) => (
+                        <span key={g.label}>
+                          {i > 0 && <span style={{ margin: '0 2px' }}>·</span>}
+                          {g.kept} {g.label}
+                        </span>
+                      ))}
+                    </span>
                   )}
                   {node.strategy !== undefined && (
                     <span style={{ font: '600 10px/1 var(--app-font-mono)', color: 'var(--app-text-subtle)' }}>{node.strategy}</span>

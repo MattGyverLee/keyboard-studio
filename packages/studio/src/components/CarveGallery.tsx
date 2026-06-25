@@ -19,6 +19,7 @@ interface CarveGalleryProps {
 
 export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
   const ir = useWorkingCopyStore((s) => s.ir);
+  const removalCapabilities = useWorkingCopyStore((s) => s.removalCapabilities);
   const instantiationMode = useWorkingCopyStore((s) => s.instantiationMode);
   const deletedNodeIds = useWorkingCopyStore((s) => s.deletedNodeIds);
   const deletedItemIds = useWorkingCopyStore((s) => s.deletedItemIds);
@@ -37,7 +38,7 @@ export function CarveGallery({ onComplete, onBack }: CarveGalleryProps) {
   // Clear stale hover info when CarveGallery unmounts (e.g. navigating away).
   useEffect(() => () => clearInfo(), [clearInfo]);
 
-  const nodes = useMemo(() => (ir ? toRailNodes(ir) : []), [ir]);
+  const nodes = useMemo(() => (ir ? toRailNodes(ir, removalCapabilities) : []), [ir, removalCapabilities]);
 
   // Gate: show the "all clear" screen only when ALL of the following hold:
   //   1. Track 1 (adapting a base) — Track 2 authors know their own keyboard and want to review it.
