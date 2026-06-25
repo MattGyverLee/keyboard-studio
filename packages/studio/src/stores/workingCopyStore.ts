@@ -18,7 +18,7 @@
 //   - Worker boundary upheld: WASM is not imported here.
 
 import { create } from "zustand";
-import type { BaseKeyboard, KeyboardIR, VirtualFS } from "@keyboard-studio/contracts";
+import type { BaseKeyboard, KeyboardIR, RemovalCapability, VirtualFS } from "@keyboard-studio/contracts";
 import {
   mergePhaseResults,
   type DiscoveryAxisVector,
@@ -120,6 +120,13 @@ export interface WorkingCopyState {
    * Null until the compile step sets it.
    */
   ir: KeyboardIR | null;
+  /**
+   * Per-rule removal capability map, computed once at instantiation from the
+   * base IR by `classifyRemovalCapabilities`. Keyed by rule.nodeId (and by
+   * output-store nodeId for S-02 slot tiles). Never recomputed on carve edits —
+   * it derives from the base IR, not the carve working IR.
+   */
+  removalCapabilities: Map<string, RemovalCapability>;
   /**
    * Set of node IDs the user has marked for deletion in the carve gallery.
    * Kept as a layer (not an eager IR mutation) so undo is O(1).
@@ -265,7 +272,7 @@ export interface WorkingCopyState {
    */
   instantiateFromBase: (
     base: BaseKeyboard,
-    opts: { vfs: VirtualFS; ir: KeyboardIR },
+    opts: { vfs: VirtualFS; ir: KeyboardIR; removalCapabilities?: Map<string, RemovalCapability> },
   ) => void;
 
   /**
@@ -283,7 +290,7 @@ export interface WorkingCopyState {
    */
   instantiateFromExisting: (
     keyboard: BaseKeyboard,
-    opts: { vfs: VirtualFS; ir: KeyboardIR },
+    opts: { vfs: VirtualFS; ir: KeyboardIR; removalCapabilities?: Map<string, RemovalCapability> },
   ) => void;
 
   /**
@@ -340,6 +347,7 @@ const INITIAL_STATE: Omit<
   identity: null,
   // carve IR slots
   ir: null,
+  removalCapabilities: new Map(),
   deletedNodeIds: new Set(),
   deletedItemIds: new Set(),
   undoStack: [],
@@ -477,6 +485,7 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       // Re-initialize mutable objects so mutations do not bleed across resets.
       deletedNodeIds: new Set(),
       deletedItemIds: new Set(),
+      removalCapabilities: new Map(),
       galleryIntrosSeen: { mechanism: false, touch: false },
       // instantiationMode is null in INITIAL_STATE; explicit for clarity.
       instantiationMode: null,
@@ -484,7 +493,7 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
 
   // -- Instantiation actions (spec §8 v1.3.0) ----------------------------------
 
-  instantiateFromBase: (base, { vfs, ir }) => {
+  instantiateFromBase: (base, { vfs, ir, removalCapabilities }) => {
     // Idempotence guard: if already instantiated with the SAME base keyboard id,
     // do nothing. This prevents an async re-fire of onInstantiate from wiping
     // recorded survey answers when the user has not actually changed the base.
@@ -508,6 +517,7 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       identity: null,
       // Seed the carve working IR from the base IR; clear any prior carve state.
       ir,
+      removalCapabilities: removalCapabilities ?? new Map(),
       deletedNodeIds: new Set(),
       deletedItemIds: new Set(),
       undoStack: [],
@@ -522,7 +532,7 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
     });
   },
 
-  instantiateFromExisting: (keyboard, { vfs, ir }) =>
+  instantiateFromExisting: (keyboard, { vfs, ir, removalCapabilities }) =>
     // Track 2: adapt existing keyboard — identity PRESERVED from loaded keyboard.
     set({
       instantiationMode: "adapt-existing",
@@ -541,6 +551,7 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       },
       // Seed the carve working IR from the existing keyboard's IR.
       ir,
+      removalCapabilities: removalCapabilities ?? new Map(),
       deletedNodeIds: new Set(),
       deletedItemIds: new Set(),
       undoStack: [],

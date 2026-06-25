@@ -350,4 +350,39 @@ describe("buildImportReport", () => {
     });
     expect(report.roundTripDiff).toBeUndefined();
   });
+
+  it("removalCapabilities is ABSENT on the report when not provided (parse-failure path)", () => {
+    // When parse() throws, importKeyboard returns early without classifying removal
+    // capabilities. buildImportReport is called without removalCapabilities, so the
+    // report must NOT carry the field — consumers use its absence to gate IR-dependent
+    // features gracefully rather than operating on an empty/stale map.
+    const report = buildImportReport({
+      keyboardId: "kb",
+      parseError: "codec gap: unexpected token at line 3",
+      opaqueFeatures: [],
+      recognizedRatio: 0,
+      hasRoundTripDivergence: false,
+      // removalCapabilities intentionally omitted
+    });
+    expect(report.removalCapabilities).toBeUndefined();
+  });
+
+  it("removalCapabilities IS present on the report when provided (success path)", () => {
+    // On a successful parse + classify, buildImportReport receives the entries array
+    // and must surface it on the report.
+    const entries: Array<[string, import("@keyboard-studio/contracts").RemovalCapability]> = [
+      ["rule#1", "removable:simple"],
+      ["rule#2", "removable:slot-fill"],
+    ];
+    const report = buildImportReport({
+      keyboardId: "kb",
+      parseError: null,
+      opaqueFeatures: [],
+      recognizedRatio: 1.0,
+      hasRoundTripDivergence: false,
+      removalCapabilities: entries,
+    });
+    expect(report.removalCapabilities).toBeDefined();
+    expect(report.removalCapabilities).toEqual(entries);
+  });
 });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BaseKeyboard, VirtualFS, KeyboardIR, TouchLayoutIR, KpsFontEntry, KpsStylesheetEntry } from "@keyboard-studio/contracts";
+import type { BaseKeyboard, VirtualFS, KeyboardIR, RemovalCapability, TouchLayoutIR, KpsFontEntry, KpsStylesheetEntry } from "@keyboard-studio/contracts";
 import type { CompileResult } from "@keyboard-studio/contracts";
 import { createVirtualFS } from "@keyboard-studio/contracts";
 import { LOCAL_PROXY_BASE, getScaffolderService } from "../lib/services.ts";
@@ -21,6 +21,7 @@ interface EngineModule {
   isReady?: () => boolean;
   parseKmn?: (text: string, keyboardId: string) => { ir: KeyboardIR; opaqueFeatures: Array<{ feature: string; count: number }> };
   recognizePatterns?: (ir: KeyboardIR) => { ir: KeyboardIR; recognizedRatio: number };
+  classifyRemovalCapabilities?: (ir: KeyboardIR) => Map<string, RemovalCapability>;
   /**
    * Parse a `.keyman-touch-layout` JSON string into a TouchLayoutIR. Used at
    * import time to carry the base's shipped touch layout into `ir.touchLayout`
@@ -147,7 +148,7 @@ export type VfsTransform = (
  */
 export type OnInstantiateCallback = (
   base: BaseKeyboard,
-  opts: { vfs: VirtualFS; ir: KeyboardIR | null },
+  opts: { vfs: VirtualFS; ir: KeyboardIR | null; removalCapabilities: Map<string, RemovalCapability> },
 ) => void;
 
 export interface KeyboardArtifactResult {
@@ -278,6 +279,7 @@ export function useKeyboardArtifact(
 
     let result: CompileResult;
     let parsedIr: KeyboardIR | null = null;
+    let parsedRemovalCapabilities: Map<string, RemovalCapability> = new Map();
     const compileId = scaffoldSpec?.keyboardId ?? kb.id;
     // Parse failure is captured here so it can be surfaced as a non-fatal
     // warning rather than aborting the compile/preview flow (slice 4, AC #4).
@@ -347,7 +349,15 @@ export function useKeyboardArtifact(
                 }
               }
             }
-            return { ...pr, ir };
+            // Classify removal capabilities from the recognized IR. Run after
+            // recognizePatterns so ownedByPattern is set on rules (the classifier
+            // depends on it for S-02 escape-rule handling). Defensive: if the
+            // engine method is absent, leave the map empty.
+            const caps: Map<string, RemovalCapability> =
+              typeof engine.classifyRemovalCapabilities === "function"
+                ? engine.classifyRemovalCapabilities(ir)
+                : new Map();
+            return { ...pr, ir, removalCapabilities: caps };
           } catch (parseErr: unknown) {
             // Record the gap so it surfaces as a warning on the ready stage.
             // Do not re-throw — compile must still succeed independently.
@@ -361,6 +371,7 @@ export function useKeyboardArtifact(
       result = compileResult;
       if (parseResult) {
         parsedIr = parseResult.ir;
+        parsedRemovalCapabilities = parseResult.removalCapabilities;
       }
     } catch (err: unknown) {
       if (runId.current !== thisRunId) return;
@@ -409,7 +420,7 @@ export function useKeyboardArtifact(
     // Fire onInstantiate on full runs only (not recompile). The working-copy
     // store takes ownership of the IR here; the hook no longer calls setIR.
     if (isFullRun && onInstantiate !== null && onInstantiate !== undefined) {
-      onInstantiate(kb, { vfs, ir: parsedIr });
+      onInstantiate(kb, { vfs, ir: parsedIr, removalCapabilities: parsedRemovalCapabilities });
     }
 
     // Carry font face info (added by the .kps font-loading path) onto the ready stage.
