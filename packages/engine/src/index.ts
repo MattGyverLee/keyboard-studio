@@ -69,7 +69,7 @@ export { bumpKeyboardVersion, stageAdaptHistory } from "./output/index.js";
 // browser-targeted SPA from following that import chain.
 
 // Issue #234 — pattern recognizer public surface.
-export { recognizePatterns } from "./recognizer/index.js";
+export { recognizePatterns, classifyRemovalCapabilities } from "./recognizer/index.js";
 export type { RecognizerRule, MatchResult, RecognizeResult } from "./recognizer/index.js";
 
 // Issue #19 — scaffolder (template-cleanup pipeline).

@@ -232,7 +232,7 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
     selectedTrackRef.current = selectedTrack;
   }, [selectedTrack]);
 
-  const onInstantiate = useCallback<OnInstantiateCallback>((base, { vfs, ir }) => {
+  const onInstantiate = useCallback<OnInstantiateCallback>((base, { vfs, ir, removalCapabilities }) => {
     const track = selectedTrackRef.current;
     if (track === "adapt") {
       // Track 2: preserve existing keyboard identity.
@@ -240,10 +240,10 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
         console.warn("[studio] Track 2 instantiate skipped: no parsed IR (mock engine?)");
         return;
       }
-      useWorkingCopyStore.getState().instantiateFromExisting(base, { vfs, ir });
+      useWorkingCopyStore.getState().instantiateFromExisting(base, { vfs, ir, removalCapabilities });
     } else {
       // Track 1 (or null/default): new keyboard from base, with rebase guard.
-      instantiateFromBaseIfConfirmed(base, { vfs, ir });
+      instantiateFromBaseIfConfirmed(base, { vfs, ir, removalCapabilities });
     }
   }, []);
 

@@ -17,7 +17,7 @@
 //   shared implementation eliminates the duplication and ensures the guard
 //   logic stays in sync.
 
-import type { BaseKeyboard, VirtualFS, KeyboardIR } from "@keyboard-studio/contracts";
+import type { BaseKeyboard, RemovalCapability, VirtualFS, KeyboardIR } from "@keyboard-studio/contracts";
 import { useWorkingCopyStore } from "../stores/workingCopyStore.ts";
 
 export function confirmRebaseIfEdited(): boolean {
@@ -45,13 +45,17 @@ export function confirmRebaseIfEdited(): boolean {
  */
 export function instantiateFromBaseIfConfirmed(
   base: BaseKeyboard,
-  { vfs, ir }: { vfs: VirtualFS | null; ir: KeyboardIR | null },
+  { vfs, ir, removalCapabilities }: { vfs: VirtualFS | null; ir: KeyboardIR | null; removalCapabilities?: Map<string, RemovalCapability> },
 ): boolean {
   if (ir === null || vfs === null) {
     console.warn("[studio] instantiate skipped: no parsed IR (mock engine?)");
     return false;
   }
   if (!confirmRebaseIfEdited()) return false;
-  useWorkingCopyStore.getState().instantiateFromBase(base, { vfs, ir });
+  useWorkingCopyStore.getState().instantiateFromBase(base, {
+    vfs,
+    ir,
+    ...(removalCapabilities !== undefined ? { removalCapabilities } : {}),
+  });
   return true;
 }
