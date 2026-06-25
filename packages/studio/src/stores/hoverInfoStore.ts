@@ -6,12 +6,11 @@
 // re-render on info changes.
 
 import { create } from 'zustand';
-import type { RemovalCapability } from '@keyboard-studio/contracts';
 import type { CarveNode, HoverGlyph } from '../lib/irToCarveNodes.ts';
 
 export type HoverInfo =
   | { kind: 'node'; node: CarveNode }
-  | ({ kind: 'key' } & HoverGlyph & { capability: RemovalCapability })
+  | ({ kind: 'key' } & HoverGlyph)
   | { kind: 'text'; title: string; body: string };
 
 interface HoverInfoState {

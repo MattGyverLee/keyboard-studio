@@ -146,7 +146,7 @@ describe("CriterionSchema (spec §11)", () => {
 });
 
 // -----------------------------------------------------------------------------
-// RemovalCapabilitySchema — five-value enum (spec §531 classifier)
+// RemovalCapabilitySchema — five-value enum (carve-gallery removal classifier)
 // -----------------------------------------------------------------------------
 
 describe("RemovalCapabilitySchema", () => {
