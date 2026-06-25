@@ -4,7 +4,7 @@ import type {
   ScaffoldResult,
   RoutingGroup,
 } from "@keyboard-studio/contracts";
-import type { BaseKeyboard, VirtualFS } from "@keyboard-studio/contracts";
+import type { BaseKeyboard, VirtualFS, KeyboardIR } from "@keyboard-studio/contracts";
 import {
   createVirtualFS,
   validateScaffolderKeyboardId as contractsValidateKeyboardId,
@@ -12,6 +12,7 @@ import {
 import { fetchKeyboardSourceToVfs, type FetchFn } from "../loader/fetchKeyboardSourceToVfs.js";
 import { parse } from "../codec/parse.js";
 import { emit } from "../codec/emit.js";
+import { detectBaseLayoutFamily } from "../placement/filters.js";
 import { scaffoldIR } from "./scaffold-ir.js";
 
 export { scaffoldIR, resetIdentity } from "./scaffold-ir.js";
@@ -50,6 +51,13 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * Id-string fallback for routing-group detection, used before the base IR is
+ * parsed and whenever the structural detector cannot determine the layout.
+ * The id heuristic alone misses AZERTY keyboards whose id lacks the
+ * "azerty"/"fr*" tokens (Belgian kbdbe, African French, basic_kbdfr, …); those
+ * are corrected by groupFromLayoutFamily() once the IR is available.
+ */
 function detectGroup(base: BaseKeyboard): RoutingGroup {
   if (base.script !== "Latn") return "non-roman";
   const id = base.id.toLowerCase();
@@ -57,6 +65,19 @@ function detectGroup(base: BaseKeyboard): RoutingGroup {
     return "azerty";
   }
   return "qwerty-qwertz";
+}
+
+/**
+ * Map a structurally-detected layout family (from the parsed base IR) to its
+ * routing group. Returns null for "other" (structurally undetermined) so the
+ * caller falls back to the id-based detectGroup() heuristic.
+ */
+function groupFromLayoutFamily(
+  family: ReturnType<typeof detectBaseLayoutFamily>,
+): RoutingGroup | null {
+  if (family === "AZERTY") return "azerty";
+  if (family === "QWERTY" || family === "QWERTZ") return "qwerty-qwertz";
+  return null;
 }
 
 // Escape regex metacharacters in a literal string so it can be used as a token.
@@ -398,7 +419,14 @@ export function createScaffolderService(opts?: ScaffolderServiceOptions): Scaffo
       }
 
       displayName = sanitizeDisplayName(displayName);
-      const group: RoutingGroup = scaffoldOpts?.group ?? detectGroup(base);
+      // Initial group: explicit override, else the id-string fallback. When a
+      // base IR becomes available below, structural layout detection refines
+      // this (it reliably identifies AZERTY that the id heuristic misses).
+      let group: RoutingGroup = scaffoldOpts?.group ?? detectGroup(base);
+      const refineGroupFromIR = (ir: KeyboardIR): void => {
+        if (scaffoldOpts?.group !== undefined || base.script !== "Latn") return;
+        group = groupFromLayoutFamily(detectBaseLayoutFamily(ir)) ?? group;
+      };
       const vfs = createVirtualFS();
       const warnings: string[] = [];
 
@@ -430,6 +458,7 @@ export function createScaffolderService(opts?: ScaffolderServiceOptions): Scaffo
       const kmnEntry = vfs.get(`source/${actualBaseId}.kmn`);
       if (kmnEntry !== undefined && typeof kmnEntry.content === "string") {
         const ir = scaffoldOpts?.ir ?? parse(kmnEntry.content, actualBaseId).ir;
+        refineGroupFromIR(ir);
         scaffoldIR(ir, {
           identity: { keyboardId, displayName },
           group,
@@ -438,6 +467,7 @@ export function createScaffolderService(opts?: ScaffolderServiceOptions): Scaffo
       } else if (scaffoldOpts?.ir !== undefined) {
         // No base .kmn was fetched but caller supplied a pre-parsed IR — use it.
         const ir = scaffoldOpts.ir;
+        refineGroupFromIR(ir);
         scaffoldIR(ir, {
           identity: { keyboardId, displayName },
           group,

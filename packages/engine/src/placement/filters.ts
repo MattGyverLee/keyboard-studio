@@ -119,11 +119,17 @@ export function detectBaseLayoutFamily(
     for (const rule of group.rules) {
       if (rule.context.length !== 1) continue;
       const ctx = rule.context[0];
-      if (!ctx || ctx.kind !== "vkey" || ctx.modifiers.length !== 0) continue;
+      if (!ctx || ctx.kind !== "vkey") continue;
+      // Unshifted base layer only. Real keyboards encode the base letter row
+      // with the NCAPS (caps-lock-off) modifier, not an empty modifier list, so
+      // accept NCAPS-only alongside the bare form; reject anything carrying
+      // SHIFT/CAPS/CTRL/ALT etc. (those are the shifted/AltGr layers).
+      if (ctx.modifiers.some((m) => m !== "NCAPS")) continue;
       if (rule.output.length !== 1) continue;
       const out = rule.output[0];
       if (!out || out.kind !== "char") continue;
-      map.set(ctx.name, out.value);
+      // Prefer the bare/NCAPS unshifted value; don't let a later layer clobber it.
+      if (!map.has(ctx.name)) map.set(ctx.name, out.value);
     }
   }
   const q = map.get("K_Q");
