@@ -80,7 +80,7 @@ export function hasNonUSBase(ir: KeyboardIR, threshold = 3): boolean {
       if (rule.context.length !== 1) continue;
       const ctx = rule.context[0];
       if (!ctx || ctx.kind !== "vkey") continue;
-      if (ctx.modifiers.length !== 0) continue;
+      if (ctx.modifiers.some((m) => m !== "NCAPS")) continue;
       const expected = US_UNSHIFTED[ctx.name];
       if (expected === undefined) continue;
       // Output must be a single char.
