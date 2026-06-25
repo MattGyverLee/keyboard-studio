@@ -34,6 +34,11 @@ import {
   googleExchange,
   type GoogleHandlerConfig,
 } from "./google-handlers.js";
+import { ManagedPRBodySchema } from "./managed-pr-schemas.js";
+import {
+  submitManagedPR,
+  type ManagedPRPipelineConfig,
+} from "./github-pipeline.js";
 
 // ---------------------------------------------------------------------------
 // Startup validation — fail fast if secrets are absent
@@ -44,6 +49,8 @@ function loadConfig(): {
   clientSecret: string;
   googleClientId: string;
   googleClientSecret: string;
+  orgToken: string;
+  orgLogin: string;
   allowedOrigins: string[];
   port: number;
 } {
@@ -82,9 +89,24 @@ function loadConfig(): {
     new Set([...devOrigins, ...staticOrigins])
   );
 
+  // Org service-account credentials for Option B. Optional: the org bot
+  // identity is still being finalised (§5 Q3), so their absence is not fatal —
+  // the managed-PR route returns 503 until they are provisioned.
+  const orgToken = (process.env["GITHUB_ORG_TOKEN"] ?? "").trim();
+  const orgLogin = (process.env["GITHUB_ORG_LOGIN"] ?? "").trim();
+
   const port = parseInt(process.env["PORT"] ?? "8787", 10);
 
-  return { clientId, clientSecret, googleClientId, googleClientSecret, allowedOrigins, port };
+  return {
+    clientId,
+    clientSecret,
+    googleClientId,
+    googleClientSecret,
+    orgToken,
+    orgLogin,
+    allowedOrigins,
+    port,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -117,12 +139,29 @@ function staticZodDetail(issue: ZodIssue): string {
 // Server factory (exported for testing)
 // ---------------------------------------------------------------------------
 
+/**
+ * Max request body for POST /submit/managed-pr. Sized to comfortably exceed
+ * the ManagedPRBodySchema ceiling (50 files × 1 MiB content + attribution +
+ * a 64 KiB PR body + JSON structural/escaping overhead). The schema enforces
+ * the real per-file and file-count limits; this just stops Fastify's 1 MiB
+ * default from 413-ing valid submissions before validation runs.
+ */
+const MANAGED_PR_BODY_LIMIT = 64 * 1024 * 1024;
+
 export async function buildServer(opts: {
   clientId: string;
   clientSecret: string;
   googleClientId: string;
   googleClientSecret: string;
   allowedOrigins: string[];
+  /**
+   * Org service-account token + login for the Option B managed-PR path.
+   * Optional: when absent, POST /submit/managed-pr returns 503 rather than
+   * blocking server boot (the org bot identity is still being finalised —
+   * docs/github-integration.md §5 Q3). Never logged.
+   */
+  orgToken?: string;
+  orgLogin?: string;
   /** Injected fetch implementation — defaults to globalThis.fetch */
   fetchFn?: OAuthFetchFn;
 }): Promise<ReturnType<typeof Fastify>> {
@@ -185,6 +224,12 @@ export async function buildServer(opts: {
     googleClientSecret: opts.googleClientSecret,
     fetch: nodeFetch,
   };
+
+  // Managed-PR pipeline config is present only when org credentials are set.
+  const managedPRConfig: ManagedPRPipelineConfig | undefined =
+    opts.orgToken && opts.orgLogin
+      ? { orgToken: opts.orgToken, orgLogin: opts.orgLogin, fetch: nodeFetch }
+      : undefined;
 
   // -------------------------------------------------------------------------
   // GET /oauth/health
@@ -250,6 +295,41 @@ export async function buildServer(opts: {
     return reply.status(200).send(result.data);
   });
 
+  // -------------------------------------------------------------------------
+  // POST /submit/managed-pr — Option B org-mediated fork+PR (no user token)
+  //
+  // bodyLimit is raised well above Fastify's 1 MiB default: the schema permits
+  // up to 50 source files of 1 MiB each (managed-pr-schemas.ts), so the default
+  // would 413 a legitimate multi-file submission before zod could enforce the
+  // per-file/file-count caps. The schema — not Fastify — is the cap here.
+  // -------------------------------------------------------------------------
+  app.post("/submit/managed-pr", { bodyLimit: MANAGED_PR_BODY_LIMIT }, async (req, reply) => {
+    if (managedPRConfig === undefined) {
+      // Org bot identity not yet provisioned (§5 Q3) — fail soft, not 500.
+      return reply.status(503).send({ error: "submission_not_configured" });
+    }
+
+    const parsed = ManagedPRBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: "invalid_request",
+        details: parsed.error.issues.map(staticZodDetail),
+      });
+    }
+
+    const result = await submitManagedPR(parsed.data, managedPRConfig);
+    if (!result.ok) {
+      if (result.retryAfterSeconds !== undefined) {
+        reply.header("Retry-After", String(result.retryAfterSeconds));
+      }
+      return reply.status(result.status).send({
+        error: result.error,
+        ...(result.branchName !== undefined ? { branchName: result.branchName } : {}),
+      });
+    }
+    return reply.status(200).send(result.data);
+  });
+
   return app;
 }
 
@@ -269,6 +349,8 @@ if (isMain) {
     clientSecret: config.clientSecret,
     googleClientId: config.googleClientId,
     googleClientSecret: config.googleClientSecret,
+    ...(config.orgToken ? { orgToken: config.orgToken } : {}),
+    ...(config.orgLogin ? { orgLogin: config.orgLogin } : {}),
     allowedOrigins: config.allowedOrigins,
   });
   const address = await app.listen({ port: config.port, host: "0.0.0.0" });

@@ -133,7 +133,7 @@ exactly.
 
 > Keep this section up to date as work lands. Update it whenever a delivery
 > option moves from "not started" to "in progress" or "done".
-> Last updated: 2026-06-24
+> Last updated: 2026-06-25
 
 ### Pipeline prerequisites (must exist before any delivery option works)
 
@@ -175,15 +175,18 @@ exactly.
 
 | Step | Status | Notes |
 |---|---|---|
-| Contract extension (`publishManagedPR`) | Not started | New method needed on `OutputService`; current contract only covers Option A |
-| Backend proxy (Cloudflare Worker / Vercel) | Not started | Required before any code can be written; org token must live server-side |
-| Attribution (Co-authored-by) commit format | Not started | |
-| Studio UI — attribution form + submit | Not started | |
+| Contract extension (`publishManagedPR`) | **Done** | `packages/contracts/src/outputService.ts` — `publishManagedPR()`, `PublishManagedPROptions`, `ManagedPRAttribution`, and a distinct `PublishManagedPRError` union (no `auth`/`scope`: the user holds no token here) |
+| Engine client (`createManagedPROutputService`) | **Done** | `packages/engine/src/output/managed-pr.ts` — filters VFS to source files (SS1, reuses `isSourceFile`), POSTs to the proxy, maps HTTP status → `PublishManagedPRError`; 13 vitest specs |
+| Backend pipeline + route (`POST /submit/managed-pr`) | **Done (code) / deploy pending** | `utilities/oauth-backend/src/github-pipeline.ts` + `managed-pr-schemas.ts`; org-token fork→tree→commit→branch→draft-PR; raised `bodyLimit`; 35+ vitest specs (schema rejection, token-never-leaks, CORS, error mapping, stateless) |
+| Attribution (Co-authored-by) commit format | **Done** | `buildCommitMessage()` in `github-pipeline.ts` — org committer + `Co-authored-by: <name> <email>` trailer |
+| Branch-collision suffix (§5 Q1) | **Done** | `buildManagedBranchName()` — `add/<keyboardId>-<short7sha>`; content-unique, no `Date`/random |
+| Org bot identity + deploy (§5 Q3) | Not started | `GITHUB_ORG_TOKEN` / `GITHUB_ORG_LOGIN` unset → route returns `503`; org service-account + standing fork still to be provisioned (tracked with #550 deploy) |
+| Studio UI — attribution form + submit routing | Not started | Default submit action must collect displayName/email and call `publishManagedPR`. Gated on §5 Q7 (working copy must survive the OAuth redirect — currently the in-memory zustand store does not persist) |
 
 ### Summary
 
 ```
 Option C  [====================]  100%  engine + studio UI done; full end-to-end zip download wired (#32)
 Option A  [==================--]   90%  engine + OAuth backend + studio sign-up (identity) UI done; submit action deferred to Option B (§1a); OAuth App registration + backend deploy remaining
-Option B  [--------------------]    0%  now the DEFAULT submit path (§1a); design done (github_flow.md); nothing built
+Option B  [=============-------]   65%  DEFAULT submit path (§1a); contract + engine client + backend pipeline/route done & tested; remaining: org bot identity + deploy (§5 Q3), studio attribution-form UI (gated on §5 Q7 working-copy-survives-redirect)
 ```

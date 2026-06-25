@@ -4,6 +4,8 @@ import type {
   OutputService,
   PublishPROptions,
   PublishPRResult,
+  PublishManagedPROptions,
+  PublishManagedPRResult,
   VerifyTokenResult,
 } from "../outputService";
 import type { VirtualFS } from "../virtualFS";
@@ -60,6 +62,20 @@ export const mockOutputService: OutputService = {
       commitSha: `deadbeef00000000000000000000000000000000`,
     };
     // Suppress unused-variable lint for opts fields that a real impl would use.
+    void opts;
+    return Promise.resolve(result);
+  },
+
+  publishManagedPR(
+    _fs: VirtualFS,
+    opts: PublishManagedPROptions
+  ): Promise<PublishManagedPRResult> {
+    // Reuses the same success shape as the Option A path (PublishPRResult).
+    const result: PublishManagedPRResult = {
+      prUrl: `https://github.com/keymanapp/keyboards/pull/9999`,
+      commitSha: `deadbeef00000000000000000000000000000000`,
+    };
+    // Suppress unused-variable lint for opts fields a real impl would use.
     void opts;
     return Promise.resolve(result);
   },

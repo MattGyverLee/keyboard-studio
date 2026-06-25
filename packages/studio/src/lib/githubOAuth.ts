@@ -38,7 +38,22 @@ export type { PkcePair } from "./pkce.ts";
 /** GitHub's OAuth authorize endpoint. */
 const GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
 
-/** The only scope the fork+PR path needs (spec §12). */
+/**
+ * Scope for the **sign-up / identity** flow (docs/github-integration.md §1a).
+ * Sign-up establishes *who the user is* and nothing more — `user:email` reads
+ * the login and the verified primary email (used for commit attribution),
+ * with **no** repository access. This is the default scope for {@link
+ * beginAuthorize}; `public_repo` is requested separately and only when the user
+ * opts into the self-fork submit path (Option A), per the §1a decoupling of
+ * identity from submission (incremental authorization).
+ */
+export const IDENTITY_SCOPE = "user:email";
+
+/**
+ * Scope the fork+PR submit path needs (spec §12, Option A). Requested only on
+ * the explicit "fork & submit yourself" opt-in — never at sign-up. `verifyToken`
+ * (engine `github.ts`) gates the submit action on this scope being present.
+ */
 export const REQUIRED_SCOPE = "public_repo";
 
 /** sessionStorage keys. Namespaced so they never collide with other state. */
@@ -96,7 +111,7 @@ export interface BuildAuthorizeUrlInput {
   redirectUri: string;
   state: string;
   codeChallenge: string;
-  /** Defaults to {@link REQUIRED_SCOPE}. */
+  /** Defaults to {@link IDENTITY_SCOPE} (sign-up). Pass {@link REQUIRED_SCOPE} for the submit opt-in. */
   scope?: string;
 }
 
@@ -110,7 +125,7 @@ export function buildAuthorizeUrl(input: BuildAuthorizeUrlInput): string {
   const params = new URLSearchParams({
     client_id: input.clientId,
     redirect_uri: input.redirectUri,
-    scope: input.scope ?? REQUIRED_SCOPE,
+    scope: input.scope ?? IDENTITY_SCOPE,
     state: input.state,
     code_challenge: input.codeChallenge,
     code_challenge_method: "S256",
@@ -186,9 +201,14 @@ export function clearStoredToken(): void {
  * Begin the OAuth flow: generate PKCE + state, persist the scratch state, and
  * return the GitHub authorize URL. The caller assigns it to window.location.
  *
+ * @param scope - Defaults to {@link IDENTITY_SCOPE} ("user:email") for sign-up.
+ *   Pass {@link REQUIRED_SCOPE} ("public_repo") only for the explicit self-fork
+ *   submit opt-in (Option A) — sign-up must never request repository access
+ *   (docs/github-integration.md §1a, incremental authorization).
+ *
  * Throws if VITE_GITHUB_CLIENT_ID is not configured.
  */
-export async function beginAuthorize(): Promise<string> {
+export async function beginAuthorize(scope: string = IDENTITY_SCOPE): Promise<string> {
   const clientId = getClientId();
   if (clientId === "") {
     throw new Error(
@@ -203,6 +223,7 @@ export async function beginAuthorize(): Promise<string> {
     redirectUri: getRedirectUri(),
     state,
     codeChallenge: challenge,
+    scope,
   });
 }
 

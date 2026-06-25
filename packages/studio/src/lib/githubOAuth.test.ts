@@ -16,6 +16,7 @@ import {
   clearStoredToken,
   hasRequiredScope,
   REQUIRED_SCOPE,
+  IDENTITY_SCOPE,
   type StoredGitHubToken,
 } from "./githubOAuth.ts";
 
@@ -72,7 +73,7 @@ describe("generatePkce", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildAuthorizeUrl", () => {
-  it("includes the PKCE + flow params with S256 method and public_repo scope", () => {
+  it("includes the PKCE + flow params with S256 method and defaults to the identity scope", () => {
     const url = buildAuthorizeUrl({
       clientId: "cid123",
       redirectUri: "https://app.example/oauth/callback",
@@ -87,10 +88,23 @@ describe("buildAuthorizeUrl", () => {
     expect(parsed.searchParams.get("redirect_uri")).toBe(
       "https://app.example/oauth/callback",
     );
-    expect(parsed.searchParams.get("scope")).toBe(REQUIRED_SCOPE);
+    // Sign-up default is identity-only — never public_repo (§1a).
+    expect(parsed.searchParams.get("scope")).toBe(IDENTITY_SCOPE);
+    expect(IDENTITY_SCOPE).toBe("user:email");
     expect(parsed.searchParams.get("state")).toBe("state-abc");
     expect(parsed.searchParams.get("code_challenge")).toBe("chal-xyz");
     expect(parsed.searchParams.get("code_challenge_method")).toBe("S256");
+  });
+
+  it("honors an explicit submit scope for the self-fork opt-in (Option A)", () => {
+    const url = buildAuthorizeUrl({
+      clientId: "cid123",
+      redirectUri: "https://app.example/oauth/callback",
+      state: "state-abc",
+      codeChallenge: "chal-xyz",
+      scope: REQUIRED_SCOPE,
+    });
+    expect(new URL(url).searchParams.get("scope")).toBe(REQUIRED_SCOPE);
   });
 });
 
@@ -135,6 +149,18 @@ describe("beginAuthorize", () => {
     expect(parsed.searchParams.get("code_challenge")).toBe(
       await computeS256Challenge(verifier as string),
     );
+  });
+
+  it("defaults to the identity scope (sign-up never requests public_repo)", async () => {
+    vi.stubEnv("VITE_GITHUB_CLIENT_ID", "seeded-client-id");
+    const url = await beginAuthorize();
+    expect(new URL(url).searchParams.get("scope")).toBe(IDENTITY_SCOPE);
+  });
+
+  it("forwards an explicit scope for the submit opt-in", async () => {
+    vi.stubEnv("VITE_GITHUB_CLIENT_ID", "seeded-client-id");
+    const url = await beginAuthorize(REQUIRED_SCOPE);
+    expect(new URL(url).searchParams.get("scope")).toBe(REQUIRED_SCOPE);
   });
 
   it("uses a fresh state on each call (no state reuse across authorize attempts)", async () => {

@@ -76,6 +76,45 @@ export type PublishPRError =
   | { kind: "network"; message: string }
   | { kind: "unknown"; message: string; cause?: unknown };
 
+/** Author identity for org-mediated submission. No GitHub account required. */
+export interface ManagedPRAttribution {
+  /** Human-readable display name (Co-authored-by + PR body). */
+  displayName: string;
+  /** Email for the Co-authored-by trailer and PR body. */
+  email: string;
+}
+
+export interface PublishManagedPROptions {
+  attribution: ManagedPRAttribution;
+  /** Keyboard ID; backend forms branch add/<keyboardId>-<shortHash> and PR title "[<keyboardId>] ...". */
+  keyboardId: string;
+  /** Human PR title/description; the backend normalizes to upstream "[<keyboardId>] <desc>" form. */
+  prTitle: string;
+  /** SPA-assembled PR body markdown (criteria checklist, copyright attestation). */
+  prBody: string;
+  /** Optional import-attribution markdown block (same as PublishPROptions.importAttribution). */
+  importAttribution?: string;
+  /** Backend proxy URL (SPA reads from config; not hard-coded). */
+  proxyEndpoint: string;
+}
+
+/** Reuses the same success shape as the Option A path. */
+export type PublishManagedPRResult = PublishPRResult;
+
+/**
+ * Option B failure modes. Deliberately NOT PublishPRError: the user holds no
+ * token here, so "auth"/"scope" are meaningless; instead model proxy/upstream
+ * failures the SPA must surface distinctly.
+ */
+export type PublishManagedPRError =
+  | { kind: "proxy-rejected"; message: string; httpStatus: number }
+  | { kind: "proxy-unavailable"; message: string }
+  | { kind: "upstream-failure"; message: string }
+  | { kind: "rate-limit"; message: string; retryAfterSeconds: number }
+  | { kind: "branch-exists"; message: string; branchName: string }
+  | { kind: "network"; message: string }
+  | { kind: "unknown"; message: string; cause?: unknown };
+
 /** Result returned by {@link OutputService.verifyToken}. */
 export interface VerifyTokenResult {
   /** True when the token has all scopes needed for fork+PR. */
@@ -176,4 +215,13 @@ export interface OutputService {
    * @see spec.md §12 "GitHub OAuth fork+PR"
    */
   publishPR(fs: VirtualFS, opts: PublishPROptions): Promise<PublishPRResult>;
+
+  /**
+   * Submit via the studio org's standing fork without requiring the user to
+   * have a GitHub account. The fork+branch+commit+PR pipeline runs server-side
+   * in the oauth-backend proxy using the org service-account token.
+   * @throws Rejects with {@link PublishManagedPRError}.
+   * @see docs/github_flow.md "Option B — Org-mediated, abstracted"
+   */
+  publishManagedPR(fs: VirtualFS, opts: PublishManagedPROptions): Promise<PublishManagedPRResult>;
 }

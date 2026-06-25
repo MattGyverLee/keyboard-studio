@@ -5,13 +5,17 @@ import type {
   VirtualFS,
   PublishPROptions,
   PublishPRResult,
+  PublishManagedPROptions,
+  PublishManagedPRResult,
   VerifyTokenResult,
 } from "@keyboard-studio/contracts";
 import { toZip } from "./zip.js";
 
 export { toZip, serializeToZip } from "./zip.js";
-export { createGitHubOutputService } from "./github.js";
+export { createGitHubOutputService, isSourceFile } from "./github.js";
 export type { GitHubOutputConfig, GitHubFetchFn } from "./github.js";
+export { createManagedPROutputService } from "./managed-pr.js";
+export type { ManagedPRFetchFn, ManagedPROutputConfig } from "./managed-pr.js";
 export { addSidecar, isSidecarPath } from "./sidecar.js";
 export { buildImportAttributionBlock } from "./import-attribution.js";
 export type { ImportAttributionInput } from "./import-attribution.js";
@@ -44,6 +48,17 @@ export function createOutputService(): OutputService {
       return Promise.reject(
         new Error(
           "[output] publishPR not implemented — use createGitHubOutputService"
+        )
+      );
+    },
+
+    publishManagedPR(
+      _fs: VirtualFS,
+      _opts: PublishManagedPROptions
+    ): Promise<PublishManagedPRResult> {
+      return Promise.reject(
+        new Error(
+          "[output] publishManagedPR not implemented — use createManagedPROutputService"
         )
       );
     },

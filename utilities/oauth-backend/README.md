@@ -100,6 +100,36 @@ Liveness probe. No authentication required. Used by container healthcheck.
 { "status": "ok" }
 ```
 
+---
+
+### `POST /submit/managed-pr`
+
+Option B (org-mediated) submission. The SPA POSTs the pre-filtered source tree
+plus author attribution; the backend runs the full GitHub Git Data API pipeline
+(fork → tree → commit → branch → draft PR) using the org service-account token,
+which never leaves the server. The user holds no GitHub token in this path.
+
+**Request body (JSON)** — validated by `ManagedPRBodySchema`:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `attribution.displayName` | string (1–120) | yes | Author name for the `Co-authored-by` trailer + PR body |
+| `attribution.email` | email (≤254) | yes | Author email for the `Co-authored-by` trailer |
+| `keyboardId` | string `[a-z0-9_]` (1–80) | yes | Forms branch `add/<keyboardId>-<shortSha>` |
+| `prTitle` | string (1–200) | yes | PR title |
+| `prBody` | string (1–65536) | yes | SPA-assembled PR body markdown |
+| `importAttribution` | string (≤4096) | no | Optional import-attribution block appended to the PR body |
+| `sourceFiles` | array (1–50) of `{ path (≤512), content (≤1 MiB) }` | yes | Source files only — compiled artifacts excluded SPA-side (SS1) |
+
+**Success response `200`:** `{ "prUrl": string, "commitSha": string }`
+
+**Errors:** `400 invalid_request` (schema), `409 branch_exists` (+`branchName`),
+`429 rate_limited` (+`Retry-After`), `502 submission_unavailable` /
+`upstream_error`, `503 submission_not_configured` (org credentials unset).
+
+The route's body limit is raised to 64 MiB so a valid multi-file submission is
+bounded by the schema caps above, not by Fastify's 1 MiB default.
+
 ## Environment variables
 
 | Variable | Required | Default | Description |
@@ -108,12 +138,14 @@ Liveness probe. No authentication required. Used by container healthcheck.
 | `GITHUB_CLIENT_SECRET` | **yes** | — | GitHub OAuth App client secret — never logged, never in responses |
 | `GOOGLE_CLIENT_ID` | **yes** | — | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | **yes** | — | Google OAuth client secret — never logged, never in responses |
+| `GITHUB_ORG_TOKEN` | no | — | Org service-account token for `POST /submit/managed-pr` — never logged, never in responses. Absent → that route returns `503` |
+| `GITHUB_ORG_LOGIN` | no | — | GitHub login owning the studio's standing fork of `keymanapp/keyboards`. Absent → `503` on the managed-PR route |
 | `OAUTH_ALLOWED_ORIGINS` | no | _(none)_ | Comma-separated extra CORS origins e.g. `https://studio.example.com` |
 | `PORT` | no | `8787` | TCP port to listen on |
 
 `http://localhost:5173` (Vite default) is included in the CORS allowlist only when `NODE_ENV` is not `production`. In production, only the origins listed in `OAUTH_ALLOWED_ORIGINS` are accepted. Wildcard `*` is never used.
 
-The service exits at startup with a fatal error if any of `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, or `GOOGLE_CLIENT_SECRET` are absent.
+The service exits at startup with a fatal error if any of `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`, or `GOOGLE_CLIENT_SECRET` are absent. `GITHUB_ORG_TOKEN` / `GITHUB_ORG_LOGIN` are **not** fatal when absent — the managed-PR route returns `503` until they are provisioned (the org bot identity is still being finalised).
 
 ## Running
 

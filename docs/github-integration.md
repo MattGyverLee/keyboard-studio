@@ -114,6 +114,25 @@ SPA ──token──▶ createGitHubOutputService({ token }).publishPR(...)
 - The engine must not log the token at any level. If a debug log of a request is needed, redact `Authorization:` before emitting.
 - If/when the SPA gains a "submit again" path (later session), it must re-acquire a fresh token via the SPA flow — the engine does not cache tokens across sessions.
 
+## 4a. GitHub OAuth App — registration & scopes (sign-up identity)
+
+The credential behind the **"Sign up with GitHub"** button (§1a). **It is an OAuth App, not a GitHub App.** The shipped flow ([packages/studio/src/lib/githubOAuth.ts](../packages/studio/src/lib/githubOAuth.ts)) is the OAuth *web-application* flow — `github.com/login/oauth/authorize` with `client_id` + `client_secret` + **scopes** + PKCE, with the code→token exchange done by the `oauth-backend` (§4). A GitHub *App* (fine-grained permissions + installation tokens) is a different primitive and would not work against any of `beginAuthorize` / `exchangeCode` / `verifyToken`. (The org-mediated submission bot of §5 Q3 is a separate, still-undecided credential — do not conflate the two.)
+
+**Registration fields** (GitHub → Settings → Developer settings → **OAuth Apps** → New):
+- **Authorization callback URL** — must exactly match [`getRedirectUri()`](../packages/studio/src/lib/githubOAuth.ts): `https://<host>/oauth/callback` (path-based, not hash). Register one OAuth App per environment (prod + a `http://localhost:<port>/oauth/callback` for dev).
+- **Client id** → SPA env `VITE_GITHUB_CLIENT_ID` (public, safe to ship).
+- **Client secret** → `oauth-backend` env `GITHUB_CLIENT_SECRET` only — never the browser (§4 invariant).
+- Device flow: **off**.
+
+**Scopes — incremental authorization (decided 2026-06-24).** OAuth Apps have no permission grid; access is the `scope` requested at authorize time. Per the §1a decoupling of identity from submission:
+
+| Flow | Scope | Constant |
+|---|---|---|
+| **Sign-up (identity)** — the default | **`user:email`** — login + verified primary email (for commit attribution); **no** repo access | `IDENTITY_SCOPE` |
+| **Self-fork submit (Option A opt-in)** — requested only when the user chooses "fork & submit yourself" | **`public_repo`** | `REQUIRED_SCOPE` |
+
+The sign-up button must **never** request `public_repo` — that would show an "access your repositories" consent screen just to log in, contradicting the §1 north star. [`beginAuthorize(scope = IDENTITY_SCOPE)`](../packages/studio/src/lib/githubOAuth.ts) defaults to identity; the submit path passes `REQUIRED_SCOPE` explicitly. A user who signs up with `user:email` lands in the hook's `needs-scope` state, which `SignUpPanel` correctly treats as "signed up" — the missing-scope distinction matters only at submit.
+
 ## 5. Open questions (parked, surface before implementing)
 
 1. **Branch naming.** The convention is `add/<keyboardId>` — matching the shipped contract (`packages/contracts/src/outputService.ts` §12, `PublishPROptions.branchName` JSDoc) and the engine implementation (`packages/engine/src/output/github.ts`). Open question: whether to append a uniqueness suffix (e.g. `add/<keyboardId>-<shortHash>`, as Option B already does) to avoid collisions when the same keyboard is re-submitted while its prior branch is still open on the fork. Decide before second-submission UX lands.
