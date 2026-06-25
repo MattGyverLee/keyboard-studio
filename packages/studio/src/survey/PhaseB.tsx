@@ -11,6 +11,7 @@
 
 import { useCallback, useMemo, useState, useRef, useEffect } from "react";
 import type { SurveyAnswer, SurveyPhaseResult, LintFinding, PlacementMap } from "@keyboard-studio/contracts";
+import { toUPlusNotation } from "@keyboard-studio/contracts";
 import { SurveyRunner } from "./SurveyRunner.tsx";
 import { loadModularFlow } from "./loadModularFlow.ts";
 import type { SurveyContext, FlowDef } from "./types.ts";
@@ -239,7 +240,7 @@ function CharChipEditor({ chars, onChange, autoFocus = false }: CharChipEditorPr
                 key={c}
                 type="button"
                 onClick={() => onChange(chars.filter((x) => x !== c))}
-                aria-label={`Remove ${c} (U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")})`}
+                aria-label={`Remove ${c} (${toUPlusNotation(c)})`}
                 style={{
                   display: "flex",
                   flexDirection: "column",
@@ -270,7 +271,7 @@ function CharChipEditor({ chars, onChange, autoFocus = false }: CharChipEditorPr
                     fontFamily: "monospace",
                   }}
                 >
-                  {"U+" + c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}
+                  {toUPlusNotation(c)}
                 </span>
                 <span style={{ fontSize: 10, color: "#f85149" }}>x</span>
               </button>
@@ -293,7 +294,7 @@ interface SuggestionChipProps {
 }
 
 function SuggestionChip({ char, checked, onToggle }: SuggestionChipProps) {
-  const cp = "U+" + char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0");
+  const cp = toUPlusNotation(char);
   return (
     <button
       type="button"
