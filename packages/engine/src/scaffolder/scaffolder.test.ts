@@ -246,6 +246,58 @@ describe("createScaffolderService", () => {
       expect(content).toContain("store(&CasedKeys) [K_A]..[K_Z] [K_0]..[K_9]");
     });
 
+    it("structurally detects an AZERTY base whose id lacks an azerty/fr token (regression: #384)", async () => {
+      // base_keyboard's id has no "azerty"/"fr*" token, so the id-string
+      // heuristic alone would route it to qwerty-qwertz. The NCAPS base row is
+      // structurally AZERTY (K_Q->a, K_A->q, K_Z->w) and must win.
+      const azertyKmn = `store(&KEYBOARDVERSION) '1.0'
+begin Unicode > use(main)
+group(main) using keys
++ [NCAPS K_Q] > 'a'
++ [CAPS K_Q] > 'A'
++ [NCAPS K_A] > 'q'
++ [CAPS K_A] > 'Q'
++ [NCAPS K_Z] > 'w'
++ [CAPS K_Z] > 'W'
+`;
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes(".kmn")) return Promise.resolve(makeTextResponse(azertyKmn));
+        return Promise.resolve(makeNotFoundResponse());
+      });
+
+      const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
+      // No explicit group passed — relies on structural detection.
+      const { vfs } = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard");
+
+      const content = vfs.get("source/my_keyboard.kmn")!.content as string;
+      // Extended AZERTY CasedKeys range (includes [K_0]..[K_9]) proves group=azerty.
+      expect(content).toContain("store(&CasedKeys) [K_A]..[K_Z] [K_0]..[K_9]");
+    });
+
+    it("explicit scaffoldOpts.group overrides structural detection", async () => {
+      // Same AZERTY base, but caller forces qwerty-qwertz — the override wins.
+      const azertyKmn = `store(&KEYBOARDVERSION) '1.0'
+begin Unicode > use(main)
+group(main) using keys
++ [NCAPS K_Q] > 'a'
++ [NCAPS K_A] > 'q'
++ [NCAPS K_Z] > 'w'
+`;
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes(".kmn")) return Promise.resolve(makeTextResponse(azertyKmn));
+        return Promise.resolve(makeNotFoundResponse());
+      });
+
+      const service = createScaffolderService({ fetchImpl: mockFetch as typeof fetch });
+      const { vfs } = await service.scaffold(baseKeyboard, "my_keyboard", "My Keyboard", {
+        group: "qwerty-qwertz",
+      });
+
+      const content = vfs.get("source/my_keyboard.kmn")!.content as string;
+      expect(content).toContain("store(&CasedKeys) [K_A]..[K_Z]");
+      expect(content).not.toContain("[K_0]..[K_9]");
+    });
+
     it("omits CasedKeys for non-roman group", async () => {
       const kmnWithCaps = `store(&KEYBOARDVERSION) '1.0'\nbegin Unicode > use(main)\ngroup(main) using keys\n+ [CAPS K_A] > 'x'\n+ [K_A] > 'a'\n`;
       const mockFetch = vi.fn().mockImplementation((url: string) => {

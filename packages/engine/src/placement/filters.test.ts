@@ -3,8 +3,12 @@ import {
   isMnemonicKeyboard,
   hasNonUSBase,
   dedupCapsNcaps,
+  detectBaseLayoutFamily,
 } from "./filters.js";
 import { parse } from "../codec/parse.js";
+import { existsSync, readFileSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import type { PlacementCandidate } from "@keyboard-studio/contracts";
 import { makeTestIR } from "@keyboard-studio/contracts/fixtures";
 
@@ -128,6 +132,22 @@ describe("hasNonUSBase", () => {
     expect(hasNonUSBase(ir, 5)).toBe(false);
     expect(hasNonUSBase(ir, 4)).toBe(true);
   });
+
+  it("counts deviations on an NCAPS-encoded base row (regression: #384 sibling)", () => {
+    // Real keyboards write the unshifted base row as [NCAPS K_x]. Before the
+    // NCAPS-tolerant guard, hasNonUSBase skipped these rows entirely and a
+    // non-US (AZERTY) base would have been misreported as US (0 deviations).
+    const kmn = makeUnicodeKmn(
+      [
+        "+ [NCAPS K_A] > 'q'",
+        "+ [NCAPS K_B] > 'w'",
+        "+ [NCAPS K_C] > 'e'",
+        "+ [NCAPS K_D] > 'r'",
+      ].join("\n"),
+    );
+    const { ir } = parse(kmn, "kb-ncaps-azerty");
+    expect(hasNonUSBase(ir)).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -208,5 +228,72 @@ describe("dedupCapsNcaps", () => {
     ];
     const result = dedupCapsNcaps(input);
     expect(result).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectBaseLayoutFamily
+// ---------------------------------------------------------------------------
+
+describe("detectBaseLayoutFamily", () => {
+  // Bare-modifier base rows (q/a/z at their physical key positions).
+  const bareQwerty = "+ [K_Q] > 'q'\n+ [K_A] > 'a'\n+ [K_Z] > 'z'";
+  const bareAzerty = "+ [K_Q] > 'a'\n+ [K_A] > 'q'\n+ [K_Z] > 'w'";
+  const bareQwertz = "+ [K_Q] > 'q'\n+ [K_A] > 'a'\n+ [K_Z] > 'y'";
+
+  it("detects QWERTY from a bare-modifier base row", () => {
+    expect(detectBaseLayoutFamily(parse(makeUnicodeKmn(bareQwerty), "k").ir)).toBe("QWERTY");
+  });
+
+  it("detects AZERTY from a bare-modifier base row", () => {
+    expect(detectBaseLayoutFamily(parse(makeUnicodeKmn(bareAzerty), "k").ir)).toBe("AZERTY");
+  });
+
+  it("detects QWERTZ from a bare-modifier base row", () => {
+    expect(detectBaseLayoutFamily(parse(makeUnicodeKmn(bareQwertz), "k").ir)).toBe("QWERTZ");
+  });
+
+  it("detects AZERTY when the base row is encoded with the NCAPS modifier (regression: #384)", () => {
+    // Real keyboards (e.g. basic_kbdbe) write the unshifted letter row as
+    // [NCAPS K_x], never with an empty modifier list. Before the fix the
+    // detector skipped these and returned "other".
+    const ncapsAzerty = [
+      "+ [NCAPS K_Q] > 'a'",
+      "+ [CAPS K_Q] > 'A'",
+      "+ [NCAPS SHIFT K_Q] > 'A'",
+      "+ [NCAPS K_A] > 'q'",
+      "+ [CAPS K_A] > 'Q'",
+      "+ [NCAPS K_Z] > 'w'",
+      "+ [CAPS K_Z] > 'W'",
+    ].join("\n");
+    expect(detectBaseLayoutFamily(parse(makeUnicodeKmn(ncapsAzerty), "k").ir)).toBe("AZERTY");
+  });
+
+  it("ignores SHIFT/CAPS rows so an all-uppercase shifted layer is not misread", () => {
+    // Only shifted/caps rows present -> no unshifted base row -> undetermined.
+    const onlyShifted = "+ [SHIFT K_Q] > 'Q'\n+ [CAPS K_A] > 'A'\n+ [SHIFT K_Z] > 'Z'";
+    expect(detectBaseLayoutFamily(parse(makeUnicodeKmn(onlyShifted), "k").ir)).toBe("other");
+  });
+
+  it("returns 'other' for an unrecognised base row", () => {
+    expect(detectBaseLayoutFamily(parse(makeUnicodeKmn("+ [K_Q] > 'x'"), "k").ir)).toBe("other");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectBaseLayoutFamily — real corpus (Belgian AZERTY base)
+// ---------------------------------------------------------------------------
+
+describe("detectBaseLayoutFamily against the real basic_kbdbe AZERTY base", () => {
+  const __dir = dirname(fileURLToPath(import.meta.url));
+  const KMN_PATH = resolve(
+    __dir,
+    "../../../../../keyboards/release/basic/basic_kbdbe/source/basic_kbdbe.kmn"
+  );
+  const available = existsSync(KMN_PATH);
+
+  it.skipIf(!available)("classifies basic_kbdbe as AZERTY (not QWERTY/QWERTZ)", () => {
+    const { ir } = parse(readFileSync(KMN_PATH, "utf-8"), "basic_kbdbe");
+    expect(detectBaseLayoutFamily(ir)).toBe("AZERTY");
   });
 });

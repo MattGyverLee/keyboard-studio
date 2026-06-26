@@ -101,6 +101,15 @@ describe("buildImportAttributionBlock", () => {
     expect(block).toContain("call-return");
   });
 
+  it("CleanWithOpaque + empty inventory — throws rather than rendering '0 opaque features' (refs #239)", () => {
+    expect(() =>
+      buildImportAttributionBlock({
+        sourcePath: "release/c/cm_qwerty",
+        report: makeReport(ImportStatus.CleanWithOpaque, []),
+      }),
+    ).toThrow(/CleanWithOpaque requires at least one entry/);
+  });
+
   it("ParseFailure status — renders informative warning message", () => {
     const block = buildImportAttributionBlock({
       sourcePath: "release/x/some_kb",

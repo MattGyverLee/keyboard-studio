@@ -3,11 +3,9 @@ import { recognizePatterns } from "./index.js";
 import type { IRGroup, IRRule, IRStore } from "@keyboard-studio/contracts";
 import { makeTestIR, charItems } from "@keyboard-studio/contracts/fixtures";
 
-const makeIR = (groups: IRGroup[]) => makeTestIR(groups);
-
 describe("recognizePatterns", () => {
   it("empty IR (no groups) returns empty recognizedPatterns and recognizedRatio 0", () => {
-    const ir = makeIR([]);
+    const ir = makeTestIR([]);
     const { ir: out, recognizedRatio } = recognizePatterns(ir);
     expect(out.recognizedPatterns).toHaveLength(0);
     // 0/0 => 0 per spec (no rules means nothing to recognize)
@@ -32,7 +30,7 @@ describe("recognizePatterns", () => {
         },
       ],
     };
-    const ir = makeIR([group]);
+    const ir = makeTestIR([group]);
     const { ir: out, recognizedRatio } = recognizePatterns(ir);
     expect(out.recognizedPatterns).toHaveLength(0);
     expect(recognizedRatio).toBe(0);
@@ -51,7 +49,7 @@ describe("recognizePatterns", () => {
       readonly: false,
       rules: [rule],
     };
-    const ir = makeIR([group]);
+    const ir = makeTestIR([group]);
     const { ir: out, recognizedRatio } = recognizePatterns(ir);
 
     expect(out.recognizedPatterns).toHaveLength(1);
@@ -78,7 +76,7 @@ describe("recognizePatterns", () => {
       readonly: false,
       rules: [rule],
     };
-    const ir = makeIR([group]);
+    const ir = makeTestIR([group]);
 
     const { recognizedRatio: ratio1 } = recognizePatterns(ir);
     expect(ir.recognizedPatterns).toHaveLength(1);

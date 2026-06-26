@@ -35,3 +35,11 @@ export function makeTestIR(groups: IRGroup[], stores: IRStore[] = []): KeyboardI
 export function charItems(chars: string): StoreItem[] {
   return [...chars].map((c) => ({ kind: "char" as const, value: c }));
 }
+
+/**
+ * Build a non-system IRStore from a string of characters (one char StoreItem
+ * per code unit). Shared by recognizer tests that construct from/to store pairs.
+ */
+export function makeCharStore(nodeId: string, name: string, chars: string): IRStore {
+  return { nodeId, name, items: charItems(chars), isSystem: false };
+}
