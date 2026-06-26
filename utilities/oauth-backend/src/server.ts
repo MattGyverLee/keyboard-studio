@@ -400,8 +400,8 @@ if (isMain) {
     googleOAuthEnabled: config.googleOAuthEnabled,
     googleClientId: config.googleClientId,
     googleClientSecret: config.googleClientSecret,
-    ...(config.orgToken ? { orgToken: config.orgToken } : {}),
-    ...(config.orgLogin ? { orgLogin: config.orgLogin } : {}),
+    orgToken: config.orgToken,
+    orgLogin: config.orgLogin,
     allowedOrigins: config.allowedOrigins,
   });
   const address = await app.listen({ port: config.port, host: "0.0.0.0" });

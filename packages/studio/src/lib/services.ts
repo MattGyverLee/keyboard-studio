@@ -15,6 +15,7 @@ import type {
 } from "@keyboard-studio/contracts";
 import type { MissingCharSuggestions, CldrFullLoader } from "@keyboard-studio/engine";
 import { mockBaseBrowser, mockOutputService, mockScaffolder } from "@keyboard-studio/contracts/mocks";
+import { getBackendUrl } from "./githubOAuth.ts";
 import { localBaseBrowser, LOCAL_PROXY_BASE } from "./localBaseBrowser.ts";
 import { getPatternLibraryService as getBrowserPatternLibraryService } from "./browserPatternLibrary.ts";
 import { mockPatternLibrary } from "@keyboard-studio/contracts/mocks";
@@ -144,7 +145,7 @@ export async function getManagedPROutputService(): Promise<ManagedPROutputServic
  * serverless function — see MEMORY deployment note). Not hard-coded.
  */
 export function getManagedPRProxyEndpoint(): string {
-  const base = import.meta.env.VITE_OAUTH_BACKEND_URL ?? "";
+  const base = getBackendUrl();
   return `${base}/submit/managed-pr`;
 }
 
