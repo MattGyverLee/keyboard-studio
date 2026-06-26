@@ -600,6 +600,37 @@ index**, reading `steps/manifest.ts`. It shows, per step:
   and inputs-satisfiability — flagging unreachable steps, off-spine dead-ends,
   cycles, and unsatisfiable `inputs`.
 
+#### Dev-only authoring: the dashboard also EDITS the flow (Decided 2026-06-26)
+
+The dashboard is **not only a viewer.** Behind a **dev-only gate** (excluded from
+production builds), it is also an **editor** for the flow's **ordering** and
+**constraints** — the same manifest it visualizes, it can also mutate.
+
+- **What's editable:**
+  - **Order** — the manifest-driven step **sequence** (§3.4). Reordering steps in
+    the dashboard is reordering the flow.
+  - **Constraints** — **locks**, **side-trail / spine placement** (`spine` /
+    `joinTarget`), and **visibility / branch conditions** (`definition.next`),
+    i.e. the §3.5 CYOA metadata.
+  - **Promotion from the library** — promoting a reserve question (§3.8) into the
+    flow is the **same gesture** as any other edit: add its `definition.id` to a
+    phase manifest. No separate path, no code-rescue.
+- **Persistence — edits round-trip to source, not just runtime state.**
+  Reordering / constraint edits **write back to the flow manifest**
+  (`content/flows/*.modular.yaml`, §3.4) as the **source of truth**, so a change
+  lands as a **reviewable diff in git**, not as hidden runtime mutation. To be
+  explicit: the dashboard edits the **manifest / config**; it does **not**
+  hand-edit the question `.ts` modules.
+- **Guardrails — the editor is held to the same invariants as the engine.** An
+  edit that would break the §3.5 **acyclicity** (no-cycle) invariant, or the
+  **completeness / spine-prefix shippability** checks, is **rejected (or flagged)
+  in the editor before it can be saved**, reusing the **same validation** the
+  build / CI runs (§7). The editor surfaces the §3.5 **staleness** closure **live**
+  as you reorder, so the downstream impact of a move is visible before it is
+  committed.
+- **Dev-only.** The authoring affordance is gated (a **dev flag / non-prod
+  build**) so it **never ships to end users**; end users get the **viewer only**.
+
 ### 3.8 Question library / reserve — preserve, don't delete (Decided 2026-06-26)
 
 Not every authored question is wired into the live flow, and **that is
