@@ -12,7 +12,7 @@
 import type { TouchLayoutIR, TouchKeyIR } from "@keyboard-studio/contracts";
 import type { TouchAssignment } from "@keyboard-studio/contracts";
 import { NodeIdMinter } from "../shared/node-ids.js";
-import { charToUnicodeKeyId } from "../codec/touch-ids.js";
+import { charToUnicodeKeyId } from "../shared/touch-ids.js";
 import { isTouchSubKeyDuplicate } from "./touch-mechanism-shared.js";
 
 // ---------------------------------------------------------------------------
