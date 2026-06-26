@@ -223,6 +223,15 @@ STASH_OUTPUT=$(git stash --include-untracked 2>&1)
 git pull --ff-only --quiet
 [[ "$STASH_OUTPUT" != "No local changes to save" ]] && git stash pop --quiet || true
 
+# Worktree-isolation baseline: snapshot main tree state ONCE per sweep, before
+# any iteration touches a PR. git pull --ff-only ran above (once, outside the
+# loop), so HEAD does not legitimately move between iterations and the main tree
+# stays pristine throughout — re-asserted after every fix-mode claude call, and
+# any mismatch aborts the entire sweep. Captured here (not inside the loop) so a
+# breach in one iteration cannot re-baseline as "clean" in the next.
+SWEEP_START_PORCELAIN="$(git status --porcelain=v1 --untracked-files=all)"
+SWEEP_START_HEAD="$(git rev-parse HEAD)"
+
 # ── Iteration loop ────────────────────────────────────────────────────────────
 
 for i in $(seq 1 "$MAX_ITERATIONS"); do
@@ -235,11 +244,6 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   LOG="$STATE_DIR/runs/${STAMP}-iter${i}.log"
 
   echo "[km-triage] $SWEEP_ID starting" | tee -a "$LOG"
-
-  # Worktree-isolation baseline: snapshot main tree state before touching any PR.
-  # Re-asserted after every fix-mode claude call; mismatch aborts the sweep.
-  MAIN_PORCELAIN_SNAPSHOT="$(git status --porcelain=v1 --untracked-files=all)"
-  MAIN_HEAD_SNAPSHOT="$(git rev-parse HEAD)"
 
   # ── Discover all open PRs (one API call per iteration) ────────────────────
 
@@ -456,20 +460,22 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     # Assert that km-programmer (if it ran in fix mode) did not leak files into
     # the main working tree. Check HEAD SHA and porcelain state independently.
     POST_HEAD="$(git rev-parse HEAD)"
-    if [[ "$POST_HEAD" != "$MAIN_HEAD_SNAPSHOT" ]]; then
-      echo "[CRITICAL] worktree isolation breach on PR #$NUM — HEAD moved in main tree ($MAIN_HEAD_SNAPSHOT -> $POST_HEAD)" >&2
+    if [[ "$POST_HEAD" != "$SWEEP_START_HEAD" ]]; then
+      echo "[CRITICAL] worktree isolation breach on PR #$NUM — HEAD moved in main tree ($SWEEP_START_HEAD -> $POST_HEAD)" >&2
       printf '[CRITICAL] worktree isolation breach on PR #%s — HEAD moved in main tree (%s -> %s)\n' \
-        "$NUM" "$MAIN_HEAD_SNAPSHOT" "$POST_HEAD" | tee -a "$LOG"
+        "$NUM" "$SWEEP_START_HEAD" "$POST_HEAD" | tee -a "$LOG"
       printf '{"ts":"%s","action_taken":"isolation_breach_head","pr":%s,"old_sha":"%s","new_sha":"%s"}\n' \
-        "$(ts)" "$NUM" "$MAIN_HEAD_SNAPSHOT" "$POST_HEAD" >> "$AUDIT_LOG"
+        "$(ts)" "$NUM" "$SWEEP_START_HEAD" "$POST_HEAD" >> "$AUDIT_LOG"
       {
         printf '## [CRITICAL] Isolation breach on PR #%s — HEAD moved\n' "$NUM"
-        printf '%s -> %s\n' "$MAIN_HEAD_SNAPSHOT" "$POST_HEAD"
+        printf '%s -> %s\n' "$SWEEP_START_HEAD" "$POST_HEAD"
       } >> "$STATE_DIR/INBOX.md"
-      break
+      # Stop the entire sweep, not just this PR loop — a breach must halt all
+      # iterations until investigated. exit (not break) escapes the outer for-i.
+      exit 1
     fi
     POST_PORCELAIN="$(git status --porcelain=v1 --untracked-files=all)"
-    if [[ "$POST_PORCELAIN" != "$MAIN_PORCELAIN_SNAPSHOT" ]]; then
+    if [[ "$POST_PORCELAIN" != "$SWEEP_START_PORCELAIN" ]]; then
       echo "[CRITICAL] worktree isolation breach on PR #$NUM — main tree contaminated (stray index/untracked files)" >&2
       printf '[CRITICAL] worktree isolation breach on PR #%s — main tree contaminated\n' "$NUM" | tee -a "$LOG"
       printf '{"ts":"%s","action_taken":"isolation_breach_porcelain","pr":%s}\n' \
@@ -477,10 +483,11 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
       {
         printf '## [CRITICAL] Isolation breach on PR #%s — working tree contaminated\n' "$NUM"
         printf 'Diff:\n'
-        diff <(echo "$MAIN_PORCELAIN_SNAPSHOT") <(echo "$POST_PORCELAIN") | grep '^[<>]' \
+        diff <(echo "$SWEEP_START_PORCELAIN") <(echo "$POST_PORCELAIN") | grep '^[<>]' \
           | sed 's/^< /-/; s/^> /+/' || true
       } >> "$STATE_DIR/INBOX.md"
-      break
+      # Stop the entire sweep, not just this PR loop (see HEAD branch above).
+      exit 1
     fi
 
   done 3< <(echo "$PRS_JSON" | jq -c '.[]')

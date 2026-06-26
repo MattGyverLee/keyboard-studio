@@ -126,6 +126,18 @@ if ($dirty) { git stash push --include-untracked --quiet }
 git pull --ff-only --quiet
 if ($dirty) { git stash pop --quiet }
 
+# Worktree-isolation baseline: snapshot main tree state ONCE per sweep, before
+# any iteration touches a PR. git pull --ff-only ran above (once, outside the
+# loop), so HEAD does not legitimately move between iterations and the main tree
+# stays pristine throughout — re-asserted after every fix-mode claude call, and
+# any mismatch aborts the entire sweep. Captured here (not inside the loop) so a
+# breach in one iteration cannot re-baseline as "clean" in the next. NOTE: this
+# is separate from the pre-pull $dirty check at line ~124 above. Wrap in @(...)
+# so empty or single-line output is always an array; snapshot and post-check
+# must use identical capture so a clean tree compares equal.
+$sweepStartPorcelain = [string]::Join("`n", @(git status --porcelain=v1 --untracked-files=all))
+$sweepStartHead      = (git rev-parse HEAD).Trim()
+
 # ── Iteration loop ─────────────────────────────────────────────────────────────
 
 for ($i = 1; $i -le $maxIterations; $i++) {
@@ -137,14 +149,6 @@ for ($i = 1; $i -le $maxIterations; $i++) {
   $log = "$stateDir\runs\$stamp-iter$i.log"
 
   "[km-triage] $sweepId starting" | Tee-Object -FilePath $log -Append | Write-Host
-
-  # Worktree-isolation baseline: snapshot main tree state before touching any PR.
-  # Re-asserted after every fix-mode claude call; mismatch aborts the sweep.
-  # NOTE: this is separate from the pre-pull $dirty check at line ~124 above.
-  # Wrap in @(...) so empty or single-line output is always an array; snapshot
-  # and post-check must use identical capture so a clean tree compares equal.
-  $mainPorcelainSnapshot = [string]::Join("`n", @(git status --porcelain=v1 --untracked-files=all))
-  $mainHeadSnapshot      = (git rev-parse HEAD).Trim()
 
   # ── Discover all open PRs (one API call per iteration) ──────────────────
 
@@ -359,22 +363,25 @@ Please rebase against ``main`` first; the next sweep will run the full review cr
     # ── Worktree-isolation post-condition ──────────────────────────────────────
     # Assert km-programmer did not leak files into the main working tree.
     $postHead = (git rev-parse HEAD).Trim()
-    if ($postHead -ne $mainHeadSnapshot) {
-      $msg = "[CRITICAL] worktree isolation breach on PR #$num - HEAD moved in main tree ($mainHeadSnapshot -> $postHead)"
+    if ($postHead -ne $sweepStartHead) {
+      $msg = "[CRITICAL] worktree isolation breach on PR #$num - HEAD moved in main tree ($sweepStartHead -> $postHead)"
       $msg | Tee-Object -FilePath $log -Append | Write-Host
       Write-Error $msg
       $ts = Get-Ts
       Add-Content -Path $auditLog -Value (
-        '{"ts":"{0}","action_taken":"isolation_breach_head","pr":{1},"old_sha":"{2}","new_sha":"{3}"}' -f $ts, $num, $mainHeadSnapshot, $postHead
+        '{"ts":"{0}","action_taken":"isolation_breach_head","pr":{1},"old_sha":"{2}","new_sha":"{3}"}' -f $ts, $num, $sweepStartHead, $postHead
       )
       Add-Content -Path "$stateDir\INBOX.md" -Value (
-        "## [CRITICAL] Isolation breach on PR #$num - HEAD moved`n$mainHeadSnapshot -> $postHead"
+        "## [CRITICAL] Isolation breach on PR #$num - HEAD moved`n$sweepStartHead -> $postHead"
       )
-      break
+      # Stop the entire sweep, not just this PR loop — a breach must halt all
+      # iterations until investigated. PowerShell has no `break N`, so exit the
+      # whole script (escapes both the inner foreach and the outer for-i).
+      exit 1
     }
     # Snapshot and post must use identical capture so a clean tree compares equal.
     $postPorcelain = [string]::Join("`n", @(git status --porcelain=v1 --untracked-files=all))
-    if ($postPorcelain -ne $mainPorcelainSnapshot) {
+    if ($postPorcelain -ne $sweepStartPorcelain) {
       $msg = "[CRITICAL] worktree isolation breach on PR #$num - main tree contaminated (stray index/untracked files)"
       $msg | Tee-Object -FilePath $log -Append | Write-Host
       Write-Error $msg
@@ -383,13 +390,14 @@ Please rebase against ``main`` first; the next sweep will run the full review cr
         '{"ts":"{0}","action_taken":"isolation_breach_porcelain","pr":{1}}' -f $ts, $num
       )
       # Produce a +/- line-level diff matching the Linux output shape.
-      $diffLines = Compare-Object ($mainPorcelainSnapshot -split "`n") ($postPorcelain -split "`n") |
+      $diffLines = Compare-Object ($sweepStartPorcelain -split "`n") ($postPorcelain -split "`n") |
         ForEach-Object { if ($_.SideIndicator -eq '=>') { "+$($_.InputObject)" } else { "-$($_.InputObject)" } }
       Add-Content -Path "$stateDir\INBOX.md" -Value (
         "## [CRITICAL] Isolation breach on PR #$num - working tree contaminated`nDiff:`n" +
         ($diffLines -join "`n")
       )
-      break
+      # Stop the entire sweep, not just this PR loop (see HEAD branch above).
+      exit 1
     }
   }
 
