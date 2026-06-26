@@ -2,6 +2,7 @@
 // Ported verbatim from content/flows/phase_b_characters.yaml.
 
 import type { QuestionModule, ValidationResult } from "../../types.ts";
+import { irPath, ARRAY_INDEX } from "@keyboard-studio/contracts";
 
 export const definition = {
   id: "pb_standard_letters",
@@ -79,5 +80,16 @@ export const fixtures: QuestionModule["fixtures"] = {
   ],
 };
 
-const mod: QuestionModule = { definition, validate, fixtures };
+// T010: representative module declaring inputs/writes per the P2 contract.
+// This question reads the header BCP47 tag (set by Phase A identity) and writes
+// the recognized script group into the stores array — declared now, executed in P5.
+export const inputs = [
+  irPath("header", "bcp47"),
+] as const;
+
+export const writes = [
+  irPath("stores", ARRAY_INDEX),
+] as const;
+
+const mod: QuestionModule = { definition, validate, fixtures, inputs, writes };
 export default mod;
