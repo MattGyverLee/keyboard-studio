@@ -7,6 +7,7 @@ import type {
   IRGroup,
   KeyboardIR,
   Pattern,
+  RemovalCapability,
   StoreItem,
 } from '@keyboard-studio/contracts';
 export type CardKind = 'pattern' | 'group' | 'store' | 'raw';
@@ -117,7 +118,7 @@ export function displayChar(ch: string): string {
 }
 
 // A glyph tile the user is hovering/focusing, plus its current removed state — used by the Info View.
-export interface HoverGlyph extends Pick<CarveGlyph, 'keys' | 'ch'> {
+export interface HoverGlyph extends Pick<CarveGlyph, 'keys' | 'ch' | 'capability'> {
   off: boolean;
 }
 
@@ -127,6 +128,7 @@ export interface CarveGlyph {
   ch: string;
   modifierLayer: ModifierLayer;
   modifierLabel: string;
+  capability: RemovalCapability;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +218,7 @@ function isParallelStoreDeadkeyRule(rule: IRRule): boolean {
 // Falls back to a single '...' glyph when the output store cannot be resolved.
 // ---------------------------------------------------------------------------
 
-function expandParallelStoreRule(rule: IRRule, ir: KeyboardIR): CarveGlyph[] {
+function expandParallelStoreRule(rule: IRRule, ir: KeyboardIR, capabilities: Map<string, RemovalCapability>): CarveGlyph[] {
   const outputEl = rule.output[0];
   if (!outputEl || outputEl.kind !== 'index') return [];
 
@@ -231,6 +233,7 @@ function expandParallelStoreRule(rule: IRRule, ir: KeyboardIR): CarveGlyph[] {
       ch: '…',
       modifierLayer: ruleModifier(rule),
       modifierLabel: modifierLabel(rule),
+      capability: capabilities.get(rule.nodeId) ?? 'not-removable:unknown',
     }];
   }
 
@@ -246,6 +249,10 @@ function expandParallelStoreRule(rule: IRRule, ir: KeyboardIR): CarveGlyph[] {
 
   const glyphs: CarveGlyph[] = [];
   const seen = new Set<string>();
+
+  // Slot tiles look up by output-store nodeId (the alias entry the classifier emits).
+  const slotCapability: RemovalCapability =
+    capabilities.get(outputStore.nodeId) ?? 'not-removable:unknown';
 
   for (let i = 0; i < outputStore.items.length; i++) {
     const outputItem = outputStore.items[i];
@@ -264,7 +271,7 @@ function expandParallelStoreRule(rule: IRRule, ir: KeyboardIR): CarveGlyph[] {
     if (seen.has(gid)) continue;  // dedup: same store+index appearing in multiple rules
     seen.add(gid);
 
-    glyphs.push({ gid, keys, ch, modifierLayer: modLayer, modifierLabel: modLabel });
+    glyphs.push({ gid, keys, ch, modifierLayer: modLayer, modifierLabel: modLabel, capability: slotCapability });
   }
 
   return glyphs;
@@ -277,9 +284,9 @@ function expandParallelStoreRule(rule: IRRule, ir: KeyboardIR): CarveGlyph[] {
 // All other rules produce at most one tile, with gid == rule.nodeId.
 // ---------------------------------------------------------------------------
 
-function ruleToGlyphs(rule: IRRule, ir: KeyboardIR): CarveGlyph[] {
+function ruleToGlyphs(rule: IRRule, ir: KeyboardIR, capabilities: Map<string, RemovalCapability>): CarveGlyph[] {
   if (isParallelStoreDeadkeyRule(rule)) {
-    return expandParallelStoreRule(rule, ir);
+    return expandParallelStoreRule(rule, ir, capabilities);
   }
   // Standard single-output rule (original behavior)
   const keys = contextToKeys(rule.context);
@@ -292,6 +299,7 @@ function ruleToGlyphs(rule: IRRule, ir: KeyboardIR): CarveGlyph[] {
     ch,
     modifierLayer: ruleModifier(rule),
     modifierLabel: modifierLabel(rule),
+    capability: capabilities.get(rule.nodeId) ?? 'not-removable:unknown',
   }];
 }
 
@@ -314,12 +322,12 @@ const EMPTY_IR: KeyboardIR = {
   recognizedPatterns: [],
 };
 
-export function groupToGlyphs(group: IRGroup, ir: KeyboardIR = EMPTY_IR): CarveGlyph[] {
+export function groupToGlyphs(group: IRGroup, ir: KeyboardIR = EMPTY_IR, capabilities: Map<string, RemovalCapability> = new Map()): CarveGlyph[] {
   const glyphs: CarveGlyph[] = [];
   const seen = new Set<string>();
   group.rules.forEach((rule) => {
     if (rule.ownedByPattern !== undefined) return;
-    for (const g of ruleToGlyphs(rule, ir)) {
+    for (const g of ruleToGlyphs(rule, ir, capabilities)) {
       if (!seen.has(g.gid)) { seen.add(g.gid); glyphs.push(g); }
     }
   });
@@ -330,7 +338,7 @@ export function groupToGlyphs(group: IRGroup, ir: KeyboardIR = EMPTY_IR): CarveG
 // patternToGlyphs — derive character map from a Pattern's owned IR rules
 // ---------------------------------------------------------------------------
 
-export function patternToGlyphs(pattern: Pattern, ir: KeyboardIR): CarveGlyph[] {
+export function patternToGlyphs(pattern: Pattern, ir: KeyboardIR, capabilities: Map<string, RemovalCapability> = new Map()): CarveGlyph[] {
   if (!pattern.ownedNodes || pattern.ownedNodes.length === 0) return [];
 
   const ownedIds = new Set(pattern.ownedNodes.map((n) => n.nodeId));
@@ -340,7 +348,7 @@ export function patternToGlyphs(pattern: Pattern, ir: KeyboardIR): CarveGlyph[] 
   for (const group of ir.groups) {
     group.rules.forEach((rule) => {
       if (!ownedIds.has(rule.nodeId)) return;
-      for (const g of ruleToGlyphs(rule, ir)) {
+      for (const g of ruleToGlyphs(rule, ir, capabilities)) {
         if (!seen.has(g.gid)) { seen.add(g.gid); glyphs.push(g); }
       }
     });
@@ -453,12 +461,12 @@ export function nodeState(
 // toRailNodes — build the full node list for the Rail from a KeyboardIR
 // ---------------------------------------------------------------------------
 
-export function toRailNodes(ir: KeyboardIR): CarveNode[] {
+export function toRailNodes(ir: KeyboardIR, capabilities: Map<string, RemovalCapability> = new Map()): CarveNode[] {
   const nodes: CarveNode[] = [];
   const recognized = ir.recognizedPatterns.filter((p) => p.origin === 'recognized');
 
   for (const pattern of recognized) {
-    const glyphs = patternToGlyphs(pattern, ir);
+    const glyphs = patternToGlyphs(pattern, ir, capabilities);
     nodes.push({
       nodeId: pattern.id,
       kind: 'pattern',
@@ -471,7 +479,7 @@ export function toRailNodes(ir: KeyboardIR): CarveNode[] {
 
   for (const group of ir.groups) {
     if (!group.rules.some((r) => r.ownedByPattern === undefined)) continue;
-    const glyphs = groupToGlyphs(group, ir);
+    const glyphs = groupToGlyphs(group, ir, capabilities);
     nodes.push({
       nodeId: group.nodeId,
       kind: 'group',

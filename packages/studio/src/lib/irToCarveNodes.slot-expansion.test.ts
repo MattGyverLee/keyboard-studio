@@ -6,9 +6,11 @@
 //   2. A simple `+ [K_A] > 'x'` rule still produces exactly one glyph with
 //      gid === rule.nodeId (no `#`).
 //   3. glyphsTriState: deleting one of N parallel-store glyphs yields 'partial'.
+//   4. (issue #531) CarveGlyph.capability resolves for both gid forms; defaults to
+//      'not-removable:unknown' when the map lacks the key.
 
 import { describe, it, expect } from 'vitest';
-import type { IRRule, IRGroup, IRStore, KeyboardIR, StoreItem } from '@keyboard-studio/contracts';
+import type { IRRule, IRGroup, IRStore, KeyboardIR, RemovalCapability, StoreItem } from '@keyboard-studio/contracts';
 import { groupToGlyphs, toRailNodes, glyphsTriState } from './irToCarveNodes.ts';
 
 // ---------------------------------------------------------------------------
@@ -252,5 +254,94 @@ describe('irToCarveNodes — toRailNodes with parallel-store group', () => {
 
     // Simple rule glyph has bare nodeId
     expect(gids).toContain('rule#simple');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. (issue #531) CarveGlyph.capability — both gid forms resolve correctly
+// ---------------------------------------------------------------------------
+
+describe('irToCarveNodes — CarveGlyph.capability resolution (issue #531)', () => {
+  it('standard rule tile resolves capability via rule.nodeId', () => {
+    const ir = makeTestIR();
+    const group = ir.groups[0]!;
+    const simpleOnlyGroup = {
+      ...group,
+      rules: group.rules.filter((r) => r.nodeId === 'rule#simple'),
+    };
+
+    const caps = new Map<string, RemovalCapability>([
+      ['rule#simple', 'removable:simple'],
+    ]);
+    const glyphs = groupToGlyphs(simpleOnlyGroup, ir, caps);
+
+    expect(glyphs).toHaveLength(1);
+    expect(glyphs[0]!.capability).toBe('removable:simple');
+  });
+
+  it('slot tile resolves capability via output-store nodeId (not rule.nodeId)', () => {
+    const ir = makeTestIR();
+    const group = ir.groups[0]!;
+    const parallelOnlyGroup = {
+      ...group,
+      rules: group.rules.filter((r) => r.nodeId === 'rule#dk'),
+    };
+
+    // Keyed by the OUTPUT STORE nodeId, as the classifier emits alias entries.
+    const caps = new Map<string, RemovalCapability>([
+      ['store#dkt', 'removable:slot-fill'],
+    ]);
+    const glyphs = groupToGlyphs(parallelOnlyGroup, ir, caps);
+
+    expect(glyphs.length).toBeGreaterThan(0);
+    // Every slot tile must carry the store-aliased capability.
+    glyphs.forEach((g) => {
+      expect(g.capability).toBe('removable:slot-fill');
+    });
+  });
+
+  it("defaults to 'not-removable:unknown' when the map lacks the key (standard rule)", () => {
+    const ir = makeTestIR();
+    const group = ir.groups[0]!;
+    const simpleOnlyGroup = {
+      ...group,
+      rules: group.rules.filter((r) => r.nodeId === 'rule#simple'),
+    };
+
+    const glyphs = groupToGlyphs(simpleOnlyGroup, ir, new Map());
+    expect(glyphs).toHaveLength(1);
+    expect(glyphs[0]!.capability).toBe('not-removable:unknown');
+  });
+
+  it("defaults to 'not-removable:unknown' when the map lacks the output-store nodeId (slot tile)", () => {
+    const ir = makeTestIR();
+    const group = ir.groups[0]!;
+    const parallelOnlyGroup = {
+      ...group,
+      rules: group.rules.filter((r) => r.nodeId === 'rule#dk'),
+    };
+
+    const glyphs = groupToGlyphs(parallelOnlyGroup, ir, new Map());
+    expect(glyphs.length).toBeGreaterThan(0);
+    glyphs.forEach((g) => {
+      expect(g.capability).toBe('not-removable:unknown');
+    });
+  });
+
+  it('toRailNodes threads capabilities into group glyphs', () => {
+    const ir = makeTestIR();
+    const caps = new Map<string, RemovalCapability>([
+      ['rule#simple', 'removable:simple'],
+      ['store#dkt', 'removable:slot-fill'],
+    ]);
+    const nodes = toRailNodes(ir, caps);
+    const groupNode = nodes.find((n) => n.nodeId === 'group#main');
+    expect(groupNode?.glyphs).toBeDefined();
+
+    const simpleGlyph = groupNode!.glyphs!.find((g) => g.gid === 'rule#simple');
+    expect(simpleGlyph?.capability).toBe('removable:simple');
+
+    const slotGlyph = groupNode!.glyphs!.find((g) => g.gid === 'store#dkt#0');
+    expect(slotGlyph?.capability).toBe('removable:slot-fill');
   });
 });

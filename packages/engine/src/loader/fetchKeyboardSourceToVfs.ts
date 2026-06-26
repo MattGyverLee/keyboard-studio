@@ -3,15 +3,16 @@
 //
 // Resolves `<proxyBase>/<baseKeyboard.path>/source/<id>.kmn`, parses the
 // header for sibling deps (LAYOUTFILE / VISUALKEYBOARD / KMW_EMBEDJS /
-// KMW_EMBEDCSS / BITMAP / KMW_HELPFILE), fetches each, plus the optional <id>.kpj for
-// compiler flags. Writes everything flat into the VFS at `source/...`
-// (the layout CompilerService.compile() expects).
+// KMW_EMBEDCSS / BITMAP / KMW_HELPFILE / DISPLAYMAP / INCLUDECODES), fetches each,
+// plus the optional <id>.kpj for compiler flags. Writes everything flat into the
+// VFS at `source/...` (the layout CompilerService.compile() expects).
 
 import type { BaseKeyboard, VirtualFS, KpsFontEntry, KpsStylesheetEntry } from "@keyboard-studio/contracts";
 import { parseKmnHeaderStores } from "../compiler/parseKmnHeaderStores.js";
 import { parseKpjFlags, type CompilerOptions } from "../compiler/parseKpjFlags.js";
 import { parseKpsFonts } from "../compiler/parseKpsFonts.js";
-import { parseKvksFontFamily } from "../compiler/parseKvksFontFamily.js";
+import { parseKvks } from "../codec/parse-kvks.js";
+import { pathUtils } from "../compiler/pathUtils.js";
 
 /** Structural fetch type — avoids pulling in the DOM lib for an isomorphic package. */
 export type FetchFn = (
@@ -70,18 +71,11 @@ const DEFAULT_PROXY = "/kbd-proxy";
  * Exported so unit tests can exercise path-traversal edge cases in isolation.
  */
 export function resolveKpsFontPath(rawPath: string, kbPath: string): string | null {
-  const normalized = rawPath.replace(/\\/g, "/");
-  // Start from <kbPath>/source (the directory the .kps lives in).
-  const segments = [...kbPath.split("/"), "source"];
-  for (const part of normalized.split("/")) {
-    if (part === "..") {
-      // Guard against underflow: only pop when there is a segment to remove.
-      if (segments.length > 0) segments.pop();
-    } else if (part !== "." && part !== "") {
-      segments.push(part);
-    }
-  }
-  const resolved = segments.join("/");
+  // The font path is relative to <kbPath>/source (where the .kps lives).
+  // pathUtils.normalize handles the separators + `.`/`..` resolution.
+  const resolved = pathUtils.normalize(`${kbPath}/source/${rawPath}`);
+  // Domain guard: a resolved path that escaped the release/ tree is rejected
+  // (the intentional traversal safety net). The caller must skip null results.
   if (!resolved.startsWith("release/")) return null;
   return resolved;
 }
@@ -123,9 +117,9 @@ async function getBytes(
  * Populate the VFS with the source files for the chosen base keyboard.
  *
  * Throws on a missing required file (the `.kmn` itself, or a required
- * sibling named in a LAYOUTFILE / VISUALKEYBOARD / KMW_EMBEDJS store).
- * Returns silently on missing optional files (BITMAP / KMW_HELPFILE / KMW_EMBEDCSS / .kpj),
- * adding a warning string.
+ * sibling named in a LAYOUTFILE / VISUALKEYBOARD / KMW_EMBEDJS / INCLUDECODES store).
+ * Returns silently on missing optional files (BITMAP / KMW_HELPFILE / KMW_EMBEDCSS /
+ * DISPLAYMAP / .kpj), adding a warning string.
  */
 export async function fetchKeyboardSourceToVfs(
   baseKeyboard: BaseKeyboard,
@@ -186,7 +180,7 @@ export async function fetchKeyboardSourceToVfs(
     // Text vs binary: kmcmplib's text inputs are .kmn / .keyman-touch-layout / .kvks
     // (XML) / .js (KMW_EMBEDJS) / .css (KMW_EMBEDCSS) / .htm. Binary: .ico / fonts.
     const isText =
-      /\.(kmn|keyman-touch-layout|kvks|js|css|htm|html|txt|xml)$/i.test(r.store.path);
+      /\.(kmn|keyman-touch-layout|kvks|js|css|htm|html|txt|xml|json)$/i.test(r.store.path);
     if (isText) {
       vfs.set(path, new TextDecoder().decode(r.bytes));
     } else {
@@ -220,7 +214,7 @@ export async function fetchKeyboardSourceToVfs(
     let kvksFamilyStr: string | undefined;
     const kvksEntry = vfs.get(kvksVfsPath);
     if (kvksEntry !== undefined && typeof kvksEntry.content === "string") {
-      kvksFamilyStr = parseKvksFontFamily(kvksEntry.content) ?? undefined;
+      kvksFamilyStr = parseKvks(kvksEntry.content).fontFamily;
     }
     // Fallback: check the touch-layout's top-level "font" value.
     if (kvksFamilyStr === undefined) {

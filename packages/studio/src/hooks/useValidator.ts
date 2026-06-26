@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { LintFinding } from "@keyboard-studio/contracts";
 import { validateWithOracle } from "@keyboard-studio/engine";
 import { useDebounce, DEBOUNCE_MS } from "./useDebounce.ts";
+import { VALIDATOR_ERROR_FINDING } from "../lint/validationErrorFindings.ts";
 
 export interface ValidatorResult {
   findings: LintFinding[];
@@ -28,6 +29,10 @@ export function useValidator(kmnSource: string | null): ValidatorResult {
     }
     // Stale-guard: a newer debounced source must win even if its async
     // validation resolves before an in-flight older one. Flip on cleanup.
+    // The guard is required in .finally() too: a superseded cycle must NOT
+    // clear `running`, because the newer cycle (which already called
+    // setRunning(true)) is still in flight — clearing it here would race it
+    // to a spurious running:false. Only the live cycle controls `running`.
     let cancelled = false;
     setRunning(true);
     validateWithOracle(debouncedSource)
@@ -37,8 +42,10 @@ export function useValidator(kmnSource: string | null): ValidatorResult {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
+        // An unexpected rejection must stay user-visible (#606): surface the
+        // synthetic VALIDATOR_ERROR_FINDING rather than silently clearing to [].
         console.error("[useValidator] validateWithOracle threw:", err);
-        setFindings([]);
+        setFindings([VALIDATOR_ERROR_FINDING]);
       })
       .finally(() => {
         if (cancelled) return;
