@@ -142,11 +142,26 @@ literally exist twice.
 > code's `TODO(#410)` markers — `phase_a.modular.yaml`, `phase_f.modular.yaml`,
 > `identity_lite.modular.yaml` — are **aspirational**, not the files on disk. The
 > real, existing thin manifests are **`phase_a_identity.modular.yaml`**,
-> **`phase_b_characters.modular.yaml`**, and **`phase_f_helpdocs.modular.yaml`**.
-> Critically, **`identity_lite.modular.yaml` does NOT exist yet** — identity-lite
-> has only its full-YAML form (`identity_lite.yaml`); the thin modular manifest
-> for it **must be created in P3** as part of the cutover. References to these
-> names in §3 / §5 / §6 reflect this reconciliation.
+> **`phase_b_characters.modular.yaml`**, and **`phase_f_helpdocs.modular.yaml`**
+> (these are the accurate current-state filenames on disk today). Critically,
+> **`identity_lite.modular.yaml` does NOT exist yet** — identity-lite has only its
+> full-YAML form (`identity_lite.yaml`); the thin modular manifest for it **must be
+> created in P3** as part of the cutover. References to these names in §3 / §5 / §6
+> reflect this reconciliation.
+>
+> **Target names follow the functional labels (Decision 2026-06-26).** Now that the
+> sequential A–G vocabulary is retired (§3.5), the *target/aspirational* manifest
+> names switch to their **functional** equivalents: `phase_a.modular.yaml` →
+> **`identity.modular.yaml`**, `phase_f.modular.yaml` → **`helpdocs.modular.yaml`**,
+> and `phase_b_characters.modular.yaml`'s target form → **`characters.modular.yaml`**
+> (rename direction: from phase-letter target names *to* functional names). This is
+> the renaming the cutover should land. It does **NOT** change the factual
+> current-state above: the on-disk files are still
+> `phase_a_identity.modular.yaml` / `phase_b_characters.modular.yaml` /
+> `phase_f_helpdocs.modular.yaml`, and the `TODO(#410)` markers in the code still
+> reference `phase_a.modular.yaml` — those existing names/markers stay accurate as
+> descriptions of what exists today and will simply be renamed under the functional
+> scheme when the cutover runs.
 
 ### Form 3 — Hand-built wizard-step components (ask questions, never registered)
 
@@ -272,6 +287,15 @@ into `ui/theme.ts`. Boundary note: `ui/` must remain dependency-free of `survey/
 
 ### 3.3 Question contract: declared `inputs` / `writes`
 
+> **Versioning (ratified §18 joint engine+content session, 2026-06-26).** Adding
+> `inputs`/`writes`/`IRPath` to the `QuestionModule` contract is a **MAJOR version
+> bump to `packages/contracts`** — **not** an additive-minor change shippable
+> independently. The §18 joint engine+content session ratified that these contract
+> additions (here and the `TouchKeyIR` provenance tag in §3.6) move
+> `packages/contracts` to a new major version and are gated on that bump, rather
+> than being treated as backward-compatible minor additions that any consumer can
+> absorb silently.
+
 Extend `QuestionModule` (in `survey/types.ts`) so **every question declares, as
 static data**, what it depends on and what KeyboardIR it will eventually write:
 
@@ -318,7 +342,15 @@ its own acceptance criteria:
 - **Write-surface AC.** A **unit test** asserts that every strategy-bearing
   question's declared `writes` match its `Pattern.strategyId` write surface
   (the IR locations that strategy actually populates), so declared `writes` and
-  the strategy's real effect cannot silently diverge.
+  the strategy's real effect cannot silently diverge. The strategy write surface
+  is **no longer unknowable/uncontracted**: the typed **§7.7 assignment-map
+  contract is ratified (§18 joint engine+content session, 2026-06-26)** and is
+  being built **incrementally ("along the way")** — the gallery's flat
+  `selectedPatternIds` is migrating to the typed assignment map, which *is* the
+  strategy write surface this AC cross-checks. The Write-surface AC is therefore
+  **buildable**; it lands **as/once the §7.7 typed write-surface becomes
+  available**, sequenced alongside that work — it is **not** blocked waiting on a
+  separate joint session or a yet-to-be-defined contract.
 
 ### 3.4 Manifest-driven ordering
 
@@ -381,18 +413,28 @@ each is its own check in `dashboard/completeness.ts`.
 > broken or a step is re-answered). It is reserved/added when the staleness logic
 > lands; pre-existing state defaults to "fresh."
 
+> **Decided 2026-06-26:** retire the sequential A–G phase vocabulary in favor of
+> functional labels (Identity, Characters, Carve, Mechanisms, Lock, Reorder,
+> Desktop-OSK, Touch, Help, Package); the A→B→F gaps proved the alphanumeric
+> scheme misleading. The functional spine order is **Identity → Characters →
+> Carve → Mechanisms → Lock → Reorder → Desktop-OSK → Touch → Help → Package**.
+> Note the critical fix this resolves: the old vocabulary mislabeled physical
+> carve as "Phase D" and physical add as "Phase C mechanisms," but the old spec's
+> Phase D actually meant OSK-desktop — under functional labels these become
+> **Carve** and **Mechanisms**, removing the conflict.
+
 **Spine order** (mirrors the `StudioShell` stages):
 
-1. language metadata / identity
+1. language metadata / identity (Identity)
 2. choose base keyboard
-3. define alphabet / needed keys (Phase B)
-4. physical carve (Phase D — remove unneeded base elements)
-5. physical add (Phase C mechanisms — place your items)
-6. 🔒 **physical lock**
-7. touch carve + touch add (Phase E)
+3. define alphabet / needed keys (Characters)
+4. physical carve — remove unneeded base elements (Carve)
+5. physical add — place your items (Mechanisms)
+6. 🔒 **physical lock** (Lock)
+7. touch carve + touch add (Touch)
 8. 🔒 **touch lock**
-9. documentation (Phase F)
-10. publish *(reserved; out of scope — see §1)*
+9. documentation (Help)
+10. publish *(reserved; out of scope — see §1)* (Package)
 
 #### Spine-prefix shippability (a DISTINCT invariant)
 
@@ -430,11 +472,28 @@ who owns the galleries, agree it over-abstracts). The correct decomposition is
 identity.
 
 The base template ships **both** a physical layout and a touch layout, so **touch
-also has carve+add.** Touch is **NOT a pure projection of physical.** It is
-**seeded** from the base touch layout + the physical edits, then **independently**
-carved/added (layers, long-press popups, key sizing — decisions physical never
-sees). The future "auto-update touch when physical changes" is therefore a
-**propagation/merge, not a re-projection.**
+also has carve+add.** Touch keyboards are **inherently built on the physical
+layout files + context rules**, which **compile into the touch keyboard's JS** —
+the physical layout is a **mandatory substrate**, not an optional or independent
+sibling. Touch is therefore always a **derivation/seed from the locked physical
+layout**: it is **seeded** from the physical-derived base (the base touch layout
+together with the locked physical edits), then refined with **additional
+touch-specific detail layered over that physical-derived substrate** (layers,
+long-press popups, key sizing). That touch-specific detail is layered **on top of**
+the physical-derived base — it is **not** a set of decisions independent of, or
+invisible to, physical.
+
+> **Why Decision 6 holds (the architectural reason).** A touch keyboard with **no
+> physical layout defined breaks the moment a Bluetooth keyboard is attached** to a
+> touch device: Keyman falls back to the physical layout files, and if they aren't
+> defined it becomes **impossible to use Keyman with a Bluetooth keyboard on that
+> device.** This is the real reason touch cannot be authored independently of
+> physical, and why the spec's locked **Decision 6** stands — **no touch-first
+> authoring and no reverse touch→physical derivation in v1**; touch is seeded from
+> the locked physical layout, never the other way around.
+
+The future "auto-update touch when physical changes" is therefore a
+**propagation/merge over the physical-derived substrate, not a re-projection.**
 
 #### The `touch_seed_source` CYOA fork (touch-phase entry)
 
@@ -443,14 +502,16 @@ The user chooses how the touch surface is seeded:
 
 - **(A) Start from the base touch layout, then carve + add.** Here `touchSuggest`
   acts as **proposed edits layered onto the existing base layout** (the "how/when
-  to apply" case).
+  to apply" case). That base touch layout is itself **physical-derived** (it ships
+  alongside, and compiles from, the physical layout substrate).
 - **(B) Start from a generated proposed layout** that `touchSuggest` **builds from
   the physical decisions**, then refine.
 
-Both branches **converge on the SAME carve/add shell.** They differ only in (a)
-the initial touch IR state (seed) and (b) whether the mapper *generates* the
-layout vs. *proposes changes* onto an existing one. **Don't fork the UI, just the
-seed.** As a `spine: false` fork it carries a `joinTarget` back to the touch
+Both branches **seed from a physical-derived layout** (consistent with Decision 6)
+and **converge on the SAME carve/add shell.** They differ only in (a) the initial
+touch IR state (seed) and (b) whether the mapper *generates* the layout vs.
+*proposes changes* onto an existing one. **Don't fork the UI, just the seed.** As
+a `spine: false` fork it carries a `joinTarget` back to the touch
 carve/add spine step (§3.5 rejoin invariant).
 
 #### Per-key provenance
@@ -466,7 +527,12 @@ and is essential to the seed fork above.
 > **Plan the provenance seam now, build later.** Reserve the per-key provenance
 > tag on the touch surface so P5 propagation has somewhere to land; pre-existing
 > touch keys default to `hand-set` (conservative — never auto-overwritten). No
-> propagation logic is built until P5.
+> propagation logic is built until P5. **Versioning:** adding this per-key
+> provenance tag to `TouchKeyIR` is part of the **MAJOR version bump to
+> `packages/contracts`** ratified at the §18 joint engine+content session
+> (2026-06-26) — it is **not** an additive-minor change shippable independently of
+> that bump. Reserving the tag is sequenced with the major-version release; only the
+> propagation *logic* waits for P5.
 
 #### `touchSuggest` — a DEFAULT ADAPTATION POLICY (defaults, not rules)
 
@@ -772,6 +838,12 @@ today — see §7).
 `inputs`/`writes` to `QuestionModule` and populate all 93 modules. Convert the
 handful of modules with companion artifacts to the `<id>/index.ts` + `extras/`
 form. Registry keeps resolving by `definition.id`.
+
+> **Contract-versioning gate (§18, 2026-06-26).** Adding `inputs`/`writes`/`IRPath`
+> to `QuestionModule` is a **MAJOR version bump to `packages/contracts`** ratified
+> at the §18 joint engine+content session — **not** an additive-minor change that
+> ships independently of that bump. P2 is gated on the major-version release of
+> `packages/contracts`; it does not land as a silently backward-compatible addition.
 - **AC:** `IRPath` makes an invalid path a compile error (Design AC, §3.3); a
   bogus `writes` path fails typecheck (Drift AC); the **unit test** asserting
   strategy-bearing questions' `writes` match their `Pattern.strategyId` write
@@ -782,8 +854,12 @@ form. Registry keeps resolving by `definition.id`.
   `writes`-vs-`strategyId` unit test cross-checks the strategy surface; (3) a
   manifest lint asserts each question's `inputs` are produced by some upstream
   step's `writes` (no orphan inputs).
-- **Rollback:** `inputs`/`writes` are optional fields; revert leaves modules
-  valid. `IRPath` is type-only — removing it reverts to looser typing.
+- **Rollback:** `inputs`/`writes` are optional fields at the type level, so a
+  revert leaves modules structurally valid and `IRPath` (type-only) reverts to
+  looser typing — but note this is a rollback *within* the major-version line, not
+  evidence that the addition is a freely-absorbable minor change: the contract
+  addition itself is the **major bump** (§18, 2026-06-26) and consumers must adopt
+  the new major version.
 - **Test strategy:** the three ACs above are CI gates; per-module fixtures assert
   declared paths parse under `IRPath`.
 - *Relation to #410:* net-new beyond #410 (folder-per-question + `IRPath` are not
@@ -886,8 +962,12 @@ dashboard without it.
   extension; folder-per-question (`<id>/index.ts`) must be imported as
   `…/<id>/index.ts`. Automated codemods must preserve extensions.
 - **The `mutate` seam gates on #5b / #232.** `inputs`/`writes` are declared data
-  and ship in P2 regardless, but no IR is actually written until the engine seam
-  exists. Risk: declaring `writes` paths that later don't match the real
+  whose *execution* (actual IR writes) waits for the engine seam — no IR is
+  written until #5b/#232 lands. But declaring them is **not** a free additive-minor
+  change: the contract addition is a **MAJOR version bump to `packages/contracts`**
+  ratified at the §18 joint engine+content session (2026-06-26), so P2 lands as/with
+  that major bump, not as something shippable independently of it. Risk: declaring
+  `writes` paths that later don't match the real
   `keyboard-ir.ts` shape — mitigate by the **net-new `IRPath`** type (designed in
   P2, §3.3) deriving a typed path **over** the nested `KeyboardIR` union so an
   out-of-shape path is a compile error. `IRPath` is **not** an existing import; it
