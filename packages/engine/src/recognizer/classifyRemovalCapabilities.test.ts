@@ -23,18 +23,13 @@ import type {
   KeyboardIR,
   IRGroup,
   IRRule,
-  IRStore,
   RawKmnFragment,
 } from "@keyboard-studio/contracts";
-import { makeTestIR, charItems } from "@keyboard-studio/contracts/fixtures";
+import { makeTestIR, makeCharStore } from "@keyboard-studio/contracts/fixtures";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function store(nodeId: string, name: string, chars: string): IRStore {
-  return { nodeId, name, items: charItems(chars), isSystem: false };
-}
 
 function simpleRule(nodeId: string, vkey: string, char: string): IRRule {
   return {
@@ -146,8 +141,8 @@ describe("classifyRemovalCapabilities — per branch", () => {
   });
 
   it("A4: S-02 body rule → removable:slot-fill + output-store alias", () => {
-    const inputStore = store("store#in", "dkf0060", " aAeE");
-    const outputStore = store("store#out", "dkt0060", "`àÀèÈ");
+    const inputStore = makeCharStore("store#in", "dkf0060", " aAeE");
+    const outputStore = makeCharStore("store#out", "dkt0060", "`àÀèÈ");
     const body = bodyRule("rule#body", 0x0060, "dkf0060", "dkt0060");
 
     const group: IRGroup = {
@@ -233,8 +228,8 @@ describe("classifyRemovalCapabilities — decision-order precedence", () => {
   it("B2: slot-fill (isBody) fires before context-sensitive check: true S-02 body → slot-fill, NOT context-sensitive", () => {
     // A rule with context.length === 2 that matches isBody() must be slot-fill,
     // NOT context-sensitive, even though context.length > 1.
-    const inputStore = store("store#in", "dkf0060", "ae");
-    const outputStore = store("store#out", "dkt0060", "àè");
+    const inputStore = makeCharStore("store#in", "dkf0060", "ae");
+    const outputStore = makeCharStore("store#out", "dkt0060", "àè");
     const body = bodyRule("rule#body2", 0x0060, "dkf0060", "dkt0060");
     const group: IRGroup = {
       nodeId: "group#deadkeys",
@@ -260,8 +255,8 @@ describe("classifyRemovalCapabilities — decision-order precedence", () => {
       ],
       output: [{ kind: "index", storeRef: "dkt0060", offset: 2 }],
     };
-    const inputStore = store("store#in", "dkf0060", "ae");
-    const outputStore = store("store#out", "dkt0060", "àè");
+    const inputStore = makeCharStore("store#in", "dkf0060", "ae");
+    const outputStore = makeCharStore("store#out", "dkt0060", "àè");
     const group: IRGroup = {
       nodeId: "group#deadkeys",
       name: "deadkeys",
@@ -275,8 +270,8 @@ describe("classifyRemovalCapabilities — decision-order precedence", () => {
   });
 
   it("B3: slot-fill fires before simple (S-02 body is not labelled removable:simple)", () => {
-    const inputStore = store("store#in", "dkf0060", "ae");
-    const outputStore = store("store#out", "dkt0060", "àè");
+    const inputStore = makeCharStore("store#in", "dkf0060", "ae");
+    const outputStore = makeCharStore("store#out", "dkt0060", "àè");
     const body = bodyRule("rule#body", 0x0060, "dkf0060", "dkt0060");
     const group: IRGroup = {
       nodeId: "group#deadkeys",
@@ -296,8 +291,8 @@ describe("classifyRemovalCapabilities — decision-order precedence", () => {
     // The fallback rule has context.length===2 (dk + char), which would trigger the
     // context-sensitive branch — BUT ownership (decision 2) must fire FIRST so the
     // fallback inherits the cluster's removable:slot-fill label instead.
-    const inputStore = store("store#in", "dkf0060", " aAeEiIoO");
-    const outputStore = store("store#out", "dkt0060", "`àÀèÈìÌòÒ");
+    const inputStore = makeCharStore("store#in", "dkf0060", " aAeEiIoO");
+    const outputStore = makeCharStore("store#out", "dkt0060", "`àÀèÈìÌòÒ");
 
     const trigger = triggerRule("rule#trigger", "K_7", 0x0060);
     const mainGroup: IRGroup = {

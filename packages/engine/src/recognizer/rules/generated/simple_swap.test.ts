@@ -34,9 +34,6 @@ function s01Rule(
   };
 }
 
-function makeIR(groups: IRGroup[]) {
-  return makeTestIR(groups);
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -63,7 +60,7 @@ describe("generated/simple_swap round-trip vs s01Recognizer", () => {
         s01Rule("rule#2", "K_C", [], "ɔ"),
       ],
     };
-    const ir = makeIR([group]);
+    const ir = makeTestIR([group]);
 
     const refMatches = s01Recognizer.match(ir);
     const genMatches = generatedSimpleSwap.match(ir);
@@ -104,7 +101,7 @@ describe("generated/simple_swap round-trip vs s01Recognizer", () => {
         },
       ],
     };
-    const ir = makeIR([group]);
+    const ir = makeTestIR([group]);
 
     const refMatches = s01Recognizer.match(ir);
     const genMatches = generatedSimpleSwap.match(ir);
@@ -140,7 +137,7 @@ describe("generated/simple_swap round-trip vs s01Recognizer", () => {
       readonly: false,
       rules: [s01Rule("rule#1", "K_Q", ["SHIFT"], "Ɛ")],
     };
-    const ir = makeIR([groupA, groupB]);
+    const ir = makeTestIR([groupA, groupB]);
 
     const refMatches = s01Recognizer.match(ir);
     const genMatches = generatedSimpleSwap.match(ir);
@@ -164,7 +161,7 @@ describe("generated/simple_swap round-trip vs s01Recognizer", () => {
       readonly: false,
       rules: [s01Rule("rule#0", "K_E", ["RALT"], "€")],
     };
-    const ir = makeIR([group]);
+    const ir = makeTestIR([group]);
 
     const refMatches = s01Recognizer.match(ir);
     const genMatches = generatedSimpleSwap.match(ir);
@@ -190,7 +187,7 @@ describe("generated/simple_swap round-trip vs s01Recognizer", () => {
       readonly: false,
       rules: [s01Rule("rule#0", "K_Q", [], "ɛ")],
     };
-    const ir = makeIR([group]);
+    const ir = makeTestIR([group]);
 
     expect(s01Recognizer.match(ir)).toHaveLength(0);
     expect(generatedSimpleSwap.match(ir)).toHaveLength(0);
@@ -211,14 +208,14 @@ describe("generated/simple_swap round-trip vs s01Recognizer", () => {
         s01Rule("rule#5", "K_Y", [], "ɓ"), // 6th distinct key — over limit
       ],
     };
-    const ir = makeIR([group]);
+    const ir = makeTestIR([group]);
 
     expect(s01Recognizer.match(ir)).toHaveLength(0);
     expect(generatedSimpleSwap.match(ir)).toHaveLength(0);
   });
 
   it("empty groups array: both rules return zero matches", () => {
-    const ir = makeIR([]);
+    const ir = makeTestIR([]);
     expect(s01Recognizer.match(ir)).toHaveLength(0);
     expect(generatedSimpleSwap.match(ir)).toHaveLength(0);
   });
