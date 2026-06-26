@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./pb_sea_stacked_consonants.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/b/pb_sea_stacked_consonants.ts";
 
 describe("pb_sea_stacked_consonants — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

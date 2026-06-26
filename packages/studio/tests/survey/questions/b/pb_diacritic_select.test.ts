@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./pb_diacritic_select.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/b/pb_diacritic_select.ts";
 
 describe("pb_diacritic_select — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

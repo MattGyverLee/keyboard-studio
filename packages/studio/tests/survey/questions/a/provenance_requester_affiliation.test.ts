@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_requester_affiliation.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_requester_affiliation.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_requester_affiliation.ts";
 
 describe("provenance_requester_affiliation — definition", () => {
   it("is optional (required: false)", () => {

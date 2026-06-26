@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_language_status.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_language_status.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_language_status.ts";
 
 describe("provenance_language_status — definition", () => {
   it("is optional (required: false)", () => {

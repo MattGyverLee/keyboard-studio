@@ -1,7 +1,7 @@
 // Colocated vitest spec for script_family.
 
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./script_family.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/a/script_family.ts";
 
 describe("script_family — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

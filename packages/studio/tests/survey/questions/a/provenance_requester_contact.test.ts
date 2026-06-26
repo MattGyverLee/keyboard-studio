@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_requester_contact.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_requester_contact.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_requester_contact.ts";
 
 describe("provenance_requester_contact — definition", () => {
   it("is optional (required: false)", () => {

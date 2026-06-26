@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_community_involvement.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_community_involvement.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_community_involvement.ts";
 
 describe("provenance_community_involvement — definition", () => {
   it("is optional (required: false)", () => {

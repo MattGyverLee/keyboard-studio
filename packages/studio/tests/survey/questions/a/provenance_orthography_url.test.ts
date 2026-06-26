@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_orthography_url.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_orthography_url.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_orthography_url.ts";
 
 describe("provenance_orthography_url — definition", () => {
   it("is optional (required: false)", () => {

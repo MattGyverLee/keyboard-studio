@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./pb_indic_vowels_onset.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/b/pb_indic_vowels_onset.ts";
 
 describe("pb_indic_vowels_onset — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

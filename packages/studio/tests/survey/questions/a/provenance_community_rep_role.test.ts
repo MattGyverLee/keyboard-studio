@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_community_rep_role.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_community_rep_role.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_community_rep_role.ts";
 
 describe("provenance_community_rep_role — definition", () => {
   it("is optional (required: false)", () => {

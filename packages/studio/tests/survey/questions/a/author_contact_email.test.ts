@@ -1,7 +1,7 @@
 // Colocated vitest spec for author_contact_email.
 
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./author_contact_email.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/a/author_contact_email.ts";
 
 describe("author_contact_email — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

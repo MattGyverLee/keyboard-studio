@@ -1,7 +1,7 @@
 // Colocated vitest spec for layout_family.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./layout_family.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/layout_family.ts";
 
 describe("layout_family — definition", () => {
   it("is optional (required: false)", () => {

@@ -1,7 +1,7 @@
 // Colocated vitest spec for region.
 
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./region.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/a/region.ts";
 
 describe("region — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

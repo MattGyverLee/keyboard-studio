@@ -1,7 +1,7 @@
 // Colocated vitest spec for language_name_english.
 
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./language_name_english.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/a/language_name_english.ts";
 
 describe("language_name_english — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

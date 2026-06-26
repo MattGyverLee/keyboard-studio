@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_additional_notes.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_additional_notes.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_additional_notes.ts";
 
 describe("provenance_additional_notes — definition", () => {
   it("is optional (required: false)", () => {

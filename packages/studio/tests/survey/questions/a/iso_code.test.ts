@@ -1,7 +1,7 @@
 // Colocated vitest spec for iso_code.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./iso_code.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/iso_code.ts";
 
 describe("iso_code — definition", () => {
   it("is optional (required: false)", () => {

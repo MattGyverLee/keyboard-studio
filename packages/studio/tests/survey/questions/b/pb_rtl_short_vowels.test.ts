@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./pb_rtl_short_vowels.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/b/pb_rtl_short_vowels.ts";
 
 describe("pb_rtl_short_vowels — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

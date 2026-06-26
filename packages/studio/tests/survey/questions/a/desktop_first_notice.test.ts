@@ -1,7 +1,7 @@
 // Colocated vitest spec for desktop_first_notice.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./desktop_first_notice.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/desktop_first_notice.ts";
 
 describe("desktop_first_notice — definition", () => {
   it("has type notice", () => {

@@ -1,7 +1,7 @@
 // Colocated vitest spec for writing_direction.
 
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./writing_direction.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/a/writing_direction.ts";
 
 describe("writing_direction — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

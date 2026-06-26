@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_requester_relation.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_requester_relation.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_requester_relation.ts";
 
 describe("provenance_requester_relation — definition", () => {
   it("is optional (required: false)", () => {

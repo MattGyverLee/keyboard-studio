@@ -1,7 +1,7 @@
 // Colocated vitest spec for author_display_name.
 
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./author_display_name.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/a/author_display_name.ts";
 
 describe("author_display_name — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

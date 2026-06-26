@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_casing_notes.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_casing_notes.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_casing_notes.ts";
 
 describe("provenance_casing_notes — definition", () => {
   it("is optional (required: false)", () => {

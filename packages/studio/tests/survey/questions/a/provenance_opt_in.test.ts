@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_opt_in.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_opt_in.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_opt_in.ts";
 
 describe("provenance_opt_in — definition", () => {
   it("is optional (required: false)", () => {

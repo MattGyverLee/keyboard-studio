@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_existing_tools.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_existing_tools.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_existing_tools.ts";
 
 describe("provenance_existing_tools — definition", () => {
   it("is optional (required: false)", () => {

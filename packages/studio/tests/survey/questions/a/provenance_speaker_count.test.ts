@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_speaker_count.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_speaker_count.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_speaker_count.ts";
 
 describe("provenance_speaker_count — definition", () => {
   it("is optional (required: false)", () => {

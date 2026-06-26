@@ -1,7 +1,7 @@
 // Colocated vitest spec for pa_copyright_holder.
 
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./pa_copyright_holder.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/a/pa_copyright_holder.ts";
 
 describe("pa_copyright_holder — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

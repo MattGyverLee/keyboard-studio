@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./pb_latin_digraphs_gate.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/b/pb_latin_digraphs_gate.ts";
 
 describe("pb_latin_digraphs_gate — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

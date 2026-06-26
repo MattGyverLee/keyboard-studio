@@ -1,7 +1,7 @@
 // Colocated vitest spec for provenance_regions.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./provenance_regions.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/provenance_regions.ts";
 
 describe("provenance_regions — definition", () => {
   it("is optional (required: false)", () => {

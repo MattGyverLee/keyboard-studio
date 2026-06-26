@@ -1,7 +1,7 @@
 // Colocated vitest spec for pa_primary_target.
 
 import { describe, it, expect } from "vitest";
-import { fixtures, definition } from "./pa_primary_target.ts";
+import { fixtures, definition } from "../../../../src/survey/questions/a/pa_primary_target.ts";
 
 describe("pa_primary_target — definition", () => {
   it("is optional (required: false)", () => {

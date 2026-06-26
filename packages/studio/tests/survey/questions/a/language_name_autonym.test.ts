@@ -2,7 +2,7 @@
 // Exercises validate() against the exported fixtures.
 
 import { describe, it, expect } from "vitest";
-import { validate, fixtures } from "./language_name_autonym.ts";
+import { validate, fixtures } from "../../../../src/survey/questions/a/language_name_autonym.ts";
 
 describe("language_name_autonym — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {
