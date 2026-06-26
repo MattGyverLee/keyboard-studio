@@ -6,7 +6,7 @@
  * @see applyTouchAssignmentsToRawJson.ts — raw-JSON applier (Case B)
  */
 
-import { charToUnicodeKeyId } from "../codec/touch-ids.js";
+import { charToUnicodeKeyId } from "../shared/touch-ids.js";
 
 /**
  * Return `true` when an existing sub-key (sk[] or multitap[] entry) already
