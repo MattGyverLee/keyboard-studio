@@ -472,6 +472,41 @@ Procedure:
    DIFF_PATH=.escalations/diffs/<NUM>-<CURRENT_HEAD_SHORT_SHA>.diff
    FILES_PATH=.escalations/diffs/<NUM>-<CURRENT_HEAD_SHORT_SHA>.files.json
 
+   # compute_exclusions <refspec>
+   # Runs git diff --numstat on <refspec>, classifies each file as binary,
+   # generated (KNOWN_GENERATED), or oversized (OVERSIZED_THRESHOLD), and
+   # populates EXCLUDE_PATHSPECS and EXCLUDED_LOG. Logs any exclusions to
+   # stdout (required — no silent caps).
+   # Regression intent: on a PR like #350 (large committed generated file),
+   # findings must cite real file line numbers because the generated file body
+   # is no longer in the cached diff.
+   compute_exclusions() {
+     local refspec="$1"
+     EXCLUDE_PATHSPECS=()
+     EXCLUDED_LOG=()
+     while IFS=$'\t' read -r added deleted path; do
+       local reason=""
+       # Binary files: git diff --numstat emits "-\t-\t<path>"; arithmetic on "-" is 0,
+       # which silently passes OVERSIZED_THRESHOLD. Catch them first.
+       if [ "$added" = "-" ] || [ "$deleted" = "-" ]; then
+         reason="binary"
+       else
+         local total=$(( added + deleted ))
+         for gen in "${KNOWN_GENERATED[@]}"; do
+           [ "$path" = "$gen" ] && reason="generated" && break
+         done
+         [ -z "$reason" ] && [ "$total" -gt "$OVERSIZED_THRESHOLD" ] && reason="oversized: $total lines"
+       fi
+       if [ -n "$reason" ]; then
+         EXCLUDE_PATHSPECS+=(":(exclude)$path")
+         EXCLUDED_LOG+=("$path ($reason)")
+       fi
+     done < <(git diff --numstat "$refspec" 2>/dev/null)
+     if [ "${#EXCLUDED_LOG[@]}" -gt 0 ]; then
+       echo "[km-triage] Pre-filter A excluded ${#EXCLUDED_LOG[@]} file(s) from cached diff: $(IFS=', '; echo "${EXCLUDED_LOG[*]}"). Files remain in <FILES_PATH>; spot-check via git show."
+     fi
+   }
+
    if [ "<RANGE>" = "full" ]; then
      # Resolve base/head OIDs for the PR so we can use git pathspecs.
      # gh pr diff does not accept pathspec exclusions; git diff does.
@@ -479,69 +514,13 @@ Procedure:
      HEAD_OID=$(gh pr view <NUM> --json headRefOid --jq '.headRefOid')
      git fetch --quiet origin "$BASE_OID" "$HEAD_OID" 2>/dev/null || true
 
-     # Compute oversized files from the full PR range.
-     EXCLUDE_PATHSPECS=()
-     EXCLUDED_LOG=()
-     while IFS=$'\t' read -r added deleted path; do
-       reason=""
-       # Binary files: git diff --numstat emits "-\t-\t<path>"; arithmetic on "-" is 0,
-       # which silently passes OVERSIZED_THRESHOLD. Catch them first.
-       if [ "$added" = "-" ] || [ "$deleted" = "-" ]; then
-         reason="binary"
-       else
-         total=$(( added + deleted ))
-         for gen in "${KNOWN_GENERATED[@]}"; do
-           [ "$path" = "$gen" ] && reason="generated" && break
-         done
-         [ -z "$reason" ] && [ "$total" -gt "$OVERSIZED_THRESHOLD" ] && reason="oversized: $total lines"
-       fi
-       if [ -n "$reason" ]; then
-         EXCLUDE_PATHSPECS+=(":(exclude)$path")
-         EXCLUDED_LOG+=("$path ($reason)")
-       fi
-     done < <(git diff --numstat "$BASE_OID"..."$HEAD_OID" 2>/dev/null)
-
-     # Log exclusions (required — no silent caps).
-     if [ "${#EXCLUDED_LOG[@]}" -gt 0 ]; then
-       echo "[km-triage] Pre-filter A excluded ${#EXCLUDED_LOG[@]} file(s) from cached diff: $(IFS=', '; echo "${EXCLUDED_LOG[*]}"). Files remain in <FILES_PATH>; spot-check via git show."
-       # Regression intent: on a PR like #350 (large committed generated file), findings must
-       # cite real file line numbers because the generated file body is no longer in the cached diff.
-     fi
-
+     compute_exclusions "$BASE_OID...$HEAD_OID"
      git diff "$BASE_OID"..."$HEAD_OID" -- . "${EXCLUDE_PATHSPECS[@]}" > "$DIFF_PATH"
      # Keep the FULL file list (do not exclude here — specialists must still see the file changed).
      gh pr view <NUM> --json files > "$FILES_PATH"
 
    else
-     # Incremental: compute oversized files over the incremental range.
-     EXCLUDE_PATHSPECS=()
-     EXCLUDED_LOG=()
-     while IFS=$'\t' read -r added deleted path; do
-       reason=""
-       # Binary files: git diff --numstat emits "-\t-\t<path>"; arithmetic on "-" is 0,
-       # which silently passes OVERSIZED_THRESHOLD. Catch them first.
-       if [ "$added" = "-" ] || [ "$deleted" = "-" ]; then
-         reason="binary"
-       else
-         total=$(( added + deleted ))
-         for gen in "${KNOWN_GENERATED[@]}"; do
-           [ "$path" = "$gen" ] && reason="generated" && break
-         done
-         [ -z "$reason" ] && [ "$total" -gt "$OVERSIZED_THRESHOLD" ] && reason="oversized: $total lines"
-       fi
-       if [ -n "$reason" ]; then
-         EXCLUDE_PATHSPECS+=(":(exclude)$path")
-         EXCLUDED_LOG+=("$path ($reason)")
-       fi
-     done < <(git diff --numstat <LAST_AUDITED_SHA>..<CURRENT_HEAD_SHA>)
-
-     # Log exclusions (required — no silent caps).
-     if [ "${#EXCLUDED_LOG[@]}" -gt 0 ]; then
-       echo "[km-triage] Pre-filter A excluded ${#EXCLUDED_LOG[@]} file(s) from cached diff: $(IFS=', '; echo "${EXCLUDED_LOG[*]}"). Files remain in <FILES_PATH>; spot-check via git show."
-       # Regression intent: on a PR like #350 (large committed generated file), findings must
-       # cite real file line numbers because the generated file body is no longer in the cached diff.
-     fi
-
+     compute_exclusions "<LAST_AUDITED_SHA>..<CURRENT_HEAD_SHA>"
      git diff <LAST_AUDITED_SHA>..<CURRENT_HEAD_SHA> -- . "${EXCLUDE_PATHSPECS[@]}" > "$DIFF_PATH"
      # Keep the FULL file list (do not exclude here — specialists must still see the file changed).
      git diff --name-status <LAST_AUDITED_SHA>..<CURRENT_HEAD_SHA> > "$FILES_PATH"
