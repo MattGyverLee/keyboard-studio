@@ -2,21 +2,28 @@
 // questions, their branching, and the strategy decision tree.
 //
 // Three sections, all derived from source (no hand-maintained diagram):
-//   • Survey flow   — one graph per content/flows/*.yaml (loaded via ?raw, the
-//                     same source the survey runner uses).
+//   • Survey flow   — one graph per phase, loaded through the same loaders the
+//                     survey runner uses (parseFlow for identity_lite full YAML;
+//                     loadModularFlow for the .modular.yaml thin descriptors that
+//                     pull question definitions — including routing — from .ts modules).
 //   • Script routing — §9 target-script → qwerty-qwertz / non-roman / azerty.
 //   • Strategy tree  — §7.2 decision tree, from the engine's exported rule tables.
 //
-// Rebuilding the studio after editing a flow or a selector rule updates this map.
+// Rebuilding the studio after editing a question module or a selector rule
+// updates this map automatically.
 
 import { useMemo, useState, type ReactNode } from "react";
 
-// Same `?raw` flow sources the survey loads — keeps the map in lock-step.
+// identity_lite is a full YAML flow — loaded with parseFlow.
 import identityLiteRaw from "../../../../content/flows/identity_lite.yaml?raw";
-import phaseARaw from "../../../../content/flows/phase_a_identity.yaml?raw";
-import phaseBRaw from "../../../../content/flows/phase_b_characters.yaml?raw";
-import phaseFRaw from "../../../../content/flows/phase_f_helpdocs.yaml?raw";
+// A/B/F are modular — thin YAML + .ts question modules via loadModularFlow.
+import phaseAModularRaw from "../../../../content/flows/phase_a_identity.modular.yaml?raw";
+import phaseBModularRaw from "../../../../content/flows/phase_b_characters.modular.yaml?raw";
+import phaseFModularRaw from "../../../../content/flows/phase_f_helpdocs.modular.yaml?raw";
 
+import { parseFlow } from "../survey/loadFlow.ts";
+import { loadModularFlow } from "../survey/loadModularFlow.ts";
+import type { FlowDef } from "../survey/types.ts";
 import { buildFlowGraph } from "./buildFlowGraph.ts";
 import { FlowGraphView } from "./FlowGraphView.tsx";
 import { StrategyTreeView } from "./StrategyTreeView.tsx";
@@ -25,16 +32,16 @@ import { MONO, SANS } from "./tokens.ts";
 
 type Section = "flow" | "routing" | "strategy";
 
-const FLOW_SOURCES: ReadonlyArray<{ raw: string; title: string }> = [
-  { raw: identityLiteRaw, title: "Identity-lite (Phase A head)" },
-  { raw: phaseARaw, title: "Phase A — identity" },
-  { raw: phaseBRaw, title: "Phase B — character discovery" },
-  { raw: phaseFRaw, title: "Phase F — help docs" },
+const FLOW_SOURCES: ReadonlyArray<{ raw: string; loader: (r: string) => FlowDef; title: string }> = [
+  { raw: identityLiteRaw,   loader: parseFlow,        title: "Identity-lite (Phase A head)" },
+  { raw: phaseAModularRaw,  loader: loadModularFlow,  title: "Phase A — posture notice" },
+  { raw: phaseBModularRaw,  loader: loadModularFlow,  title: "Phase B — character discovery" },
+  { raw: phaseFModularRaw,  loader: loadModularFlow,  title: "Phase F — help docs" },
 ];
 
-function safeBuild(raw: string, title: string) {
+function safeBuild(raw: string, loader: (r: string) => FlowDef, title: string) {
   try {
-    return { graph: buildFlowGraph(raw, title), error: null as string | null };
+    return { graph: buildFlowGraph(loader(raw), title), error: null as string | null };
   } catch (err) {
     return { graph: null, error: err instanceof Error ? err.message : String(err) };
   }
@@ -119,13 +126,14 @@ function SectionTab({ active, onClick, children }: { active: boolean; onClick: (
 
 export function FlowMapView() {
   const [section, setSection] = useState<Section>("flow");
-  const flows = useMemo(() => FLOW_SOURCES.map((f) => ({ ...safeBuild(f.raw, f.title), title: f.title })), []);
+  const flows = useMemo(() => FLOW_SOURCES.map((f) => ({ ...safeBuild(f.raw, f.loader, f.title), title: f.title })), []);
 
   return (
     <div
       style={{
         height: "100%",
-        overflow: "auto",
+        overflowY: "auto",
+        overflowX: "auto",
         padding: 24,
         boxSizing: "border-box",
         background: "#0d1117",
@@ -136,7 +144,7 @@ export function FlowMapView() {
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
         <h1 style={{ margin: 0, fontSize: 20, color: "#e6edf3" }}>Flow Map</h1>
         <span style={{ fontSize: 12.5, color: "#6e7681" }}>
-          developer view · auto-generated from <code style={{ fontFamily: MONO }}>content/flows/*.yaml</code> +{" "}
+          developer view · auto-generated from <code style={{ fontFamily: MONO }}>survey/questions/**/*.ts</code> +{" "}
           <code style={{ fontFamily: MONO }}>strategy-selector</code>
         </span>
       </div>

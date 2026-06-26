@@ -1,14 +1,14 @@
-// Derive a FlowGraph from a raw flow YAML string.
+// Derive a FlowGraph from a FlowDef.
 //
-// Reuses the survey's own parseFlow() so the map sees exactly what the runner
-// sees. Edge extraction mirrors SurveyRunner.resolveNext(): a `next` of a plain
+// Callers pre-load the FlowDef via parseFlow() (full YAML) or loadModularFlow()
+// (thin YAML + .ts question modules) — this function only builds the graph.
+// Edge extraction mirrors SurveyRunner.resolveNext(): a `next` of a plain
 // string is one linear edge; null/absent is terminal; a FlowGotoRule[] yields
 // one edge per rule (conditional rules carry their condition text, the
 // `default` rule is labelled "(else)"). A goto of `null` is a terminal branch
 // and produces no edge.
 
-import { parseFlow } from "../survey/loadFlow.ts";
-import type { FlowQuestion } from "../survey/types.ts";
+import type { FlowDef, FlowQuestion } from "../survey/types.ts";
 import type { FlowGraph, GraphEdge, GraphNode } from "./model.ts";
 import { ruleTarget } from "./flowUtils.ts";
 
@@ -35,15 +35,17 @@ function optionCount(q: FlowQuestion): number {
 }
 
 /**
- * Build a normalized FlowGraph from a `?raw` flow YAML string.
+ * Build a normalized FlowGraph from a pre-loaded FlowDef.
  *
- * @param raw   the YAML source (Vite `?raw` import)
+ * Load the FlowDef first with parseFlow() (full YAML) or loadModularFlow()
+ * (thin YAML + .ts modules) — see FlowMapView for the per-phase choice.
+ *
+ * @param flow  pre-parsed FlowDef
  * @param title friendly section title for the map
  */
-export function buildFlowGraph(raw: string, title: string): FlowGraph {
-  const flow = parseFlow(raw);
-  // Phase A keeps a supplemental `provenance_questions` list that the main
-  // questions branch into; include it so those goto targets resolve.
+export function buildFlowGraph(flow: FlowDef, title: string): FlowGraph {
+  // Some flows carry a supplemental `provenance_questions` list; include it
+  // so those goto targets resolve correctly in the graph.
   const questions: FlowQuestion[] = [...flow.questions, ...(flow.provenance_questions ?? [])];
   const knownIds = new Set(questions.map((q) => q.id));
 

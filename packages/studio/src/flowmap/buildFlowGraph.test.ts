@@ -1,22 +1,29 @@
 import { describe, it, expect } from "vitest";
 
 import identityLiteRaw from "../../../../content/flows/identity_lite.yaml?raw";
-import phaseARaw from "../../../../content/flows/phase_a_identity.yaml?raw";
-import phaseBRaw from "../../../../content/flows/phase_b_characters.yaml?raw";
-import phaseFRaw from "../../../../content/flows/phase_f_helpdocs.yaml?raw";
+import phaseAModularRaw from "../../../../content/flows/phase_a_identity.modular.yaml?raw";
+import phaseBModularRaw from "../../../../content/flows/phase_b_characters.modular.yaml?raw";
+import phaseFModularRaw from "../../../../content/flows/phase_f_helpdocs.modular.yaml?raw";
 
+import { parseFlow } from "../survey/loadFlow.ts";
+import { loadModularFlow } from "../survey/loadModularFlow.ts";
 import { buildFlowGraph } from "./buildFlowGraph.ts";
 import { buildScriptRouting } from "./buildScriptRouting.ts";
 
+const identityLiteFlow = parseFlow(identityLiteRaw);
+const phaseAFlow = loadModularFlow(phaseAModularRaw);
+const phaseBFlow = loadModularFlow(phaseBModularRaw);
+const phaseFFlow = loadModularFlow(phaseFModularRaw);
+
 const ALL_FLOWS = [
-  { raw: identityLiteRaw, title: "Identity-lite" },
-  { raw: phaseARaw, title: "Phase A" },
-  { raw: phaseBRaw, title: "Phase B" },
-  { raw: phaseFRaw, title: "Phase F" },
+  { flow: identityLiteFlow, title: "Identity-lite" },
+  { flow: phaseAFlow, title: "Phase A" },
+  { flow: phaseBFlow, title: "Phase B" },
+  { flow: phaseFFlow, title: "Phase F" },
 ];
 
 describe("buildFlowGraph — identity_lite (fully specified)", () => {
-  const g = buildFlowGraph(identityLiteRaw, "Identity-lite");
+  const g = buildFlowGraph(identityLiteFlow, "Identity-lite");
 
   it("uses the first question as the entry", () => {
     expect(g.entryId).toBe("il_language_autonym");
@@ -38,9 +45,9 @@ describe("buildFlowGraph — identity_lite (fully specified)", () => {
 });
 
 describe("buildFlowGraph — every shipped flow", () => {
-  for (const { raw, title } of ALL_FLOWS) {
+  for (const { flow, title } of ALL_FLOWS) {
     it(`${title}: builds with a defined entry and no dangling goto targets`, () => {
-      const g = buildFlowGraph(raw, title);
+      const g = buildFlowGraph(flow, title);
       expect(g.nodes.length).toBeGreaterThan(0);
       expect(g.entryId).not.toBeNull();
       // Every goto must resolve to a real question — a dangling target is an
@@ -50,7 +57,7 @@ describe("buildFlowGraph — every shipped flow", () => {
   }
 
   it("Phase B exposes the engine-resolved routing gate", () => {
-    const g = buildFlowGraph(phaseBRaw, "Phase B");
+    const g = buildFlowGraph(phaseBFlow, "Phase B");
     const routing = g.nodes.find((n) => n.id === "pb_routing_branch");
     expect(routing).toBeDefined();
     expect(routing?.isGate).toBe(true);

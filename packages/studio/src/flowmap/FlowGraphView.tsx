@@ -54,8 +54,13 @@ export function FlowGraphView({ graph }: FlowGraphViewProps) {
   const pos = new Map<string, PositionedNode>(laid.nodes.map((n) => [n.id, n]));
 
   return (
-    <div style={{ overflow: "auto", border: "1px solid #21262d", borderRadius: 8, background: "#0b0f14" }}>
-      <div style={{ position: "relative", width: laid.width, height: laid.height }}>
+    // The outer div has no explicit height. Instead, an in-flow spacer child
+    // establishes the height through content flow, which scroll containers
+    // (FlowMapView's overflow:auto) count reliably. A position:relative div
+    // whose only children are position:absolute has no in-flow content, so
+    // some browsers won't include its explicit height in scroll height.
+    <div style={{ position: "relative", width: laid.width, border: "1px solid #21262d", borderRadius: 8, background: "#0b0f14" }}>
+      <div style={{ height: laid.height, width: 0 }} aria-hidden="true" />
         {/* Edge canvas */}
         <svg
           width={laid.width}
@@ -204,7 +209,6 @@ export function FlowGraphView({ graph }: FlowGraphViewProps) {
             </div>
           );
         })}
-      </div>
     </div>
   );
 }

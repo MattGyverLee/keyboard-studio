@@ -7,40 +7,34 @@
 # Do NOT delete phase_a_identity.yaml — it remains the source of truth for
 # legacy loadFlow.ts during the fan-out period. This file is consumed by
 # loadModularFlow.ts once all per-phase sub-registries are merged.
+#
+# Removed question IDs and their new homes:
+#
+#   -> identity_lite.yaml (already present as il_* equivalents):
+#      language_name_autonym, language_name_english, iso_code,
+#      primary_script, writing_direction, script_not_supported_stub
+#
+#   -> engine-resolved at base-derived prefill (not survey questions):
+#      layout_family, script_family
+#
+#   -> documentation stage YAML (to be created):
+#      region, author_display_name, author_contact_email,
+#      pa_copyright_holder, provenance_opt_in,
+#      provenance_requester_name, provenance_requester_contact,
+#      provenance_requester_affiliation, provenance_requester_relation,
+#      provenance_community_rep_name, provenance_community_rep_role,
+#      provenance_community_rep_email, provenance_speaker_count,
+#      provenance_regions, provenance_language_status,
+#      provenance_existing_tools, provenance_orthography_url,
+#      provenance_community_involvement, provenance_casing_notes,
+#      provenance_additional_notes
+#
+# The corresponding .ts files in packages/studio/src/survey/questions/a/
+# still exist and need to be migrated to their new phase directories.
 
 flow_id: phase_a_identity
 phase: "A"
 
 questions:
   - desktop_first_notice
-  - language_name_autonym
-  - language_name_english
-  - iso_code
-  - region
-  - primary_script
-  - writing_direction
-  - script_not_supported_stub
-  - layout_family
-  - script_family
   - pa_primary_target
-  - author_display_name
-  - author_contact_email
-  - pa_copyright_holder
-  - provenance_opt_in
-
-provenance_questions:
-  - provenance_requester_name
-  - provenance_requester_contact
-  - provenance_requester_affiliation
-  - provenance_requester_relation
-  - provenance_community_rep_name
-  - provenance_community_rep_role
-  - provenance_community_rep_email
-  - provenance_speaker_count
-  - provenance_regions
-  - provenance_language_status
-  - provenance_existing_tools
-  - provenance_orthography_url
-  - provenance_community_involvement
-  - provenance_casing_notes
-  - provenance_additional_notes

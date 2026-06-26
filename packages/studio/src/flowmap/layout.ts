@@ -72,22 +72,28 @@ export function layoutFlowGraph(graph: FlowGraph): LaidOutGraph {
   const maxRowLen = Math.max(1, ...[...rows.values()].map((r) => r.length));
   const contentW = maxRowLen * NODE_W + (maxRowLen - 1) * H_GAP;
 
+  // Sort ranks and use their index (0, 1, 2 ...) for y, not the raw rank value.
+  // Raw ranks can have large gaps when branching paths skip ranks (e.g. a terminal
+  // node at rank 30 while ranks 3–29 are empty), which creates blank vertical space.
+  const sortedRanks = [...rows.keys()].sort((a, b) => a - b);
+
   const positioned: PositionedNode[] = [];
-  for (const [r, row] of rows) {
+  sortedRanks.forEach((r, rowIndex) => {
+    const row = rows.get(r)!;
     const rowW = row.length * NODE_W + (row.length - 1) * H_GAP;
     const startX = PAD + (contentW - rowW) / 2;
     row.forEach((n, i) => {
       positioned.push({
         ...n,
         x: startX + i * (NODE_W + H_GAP),
-        y: PAD + r * (NODE_H + V_GAP),
+        y: PAD + rowIndex * (NODE_H + V_GAP),
       });
     });
-  }
+  });
 
-  const maxRank = Math.max(0, ...[...rows.keys()]);
+  const rowCount = sortedRanks.length;
   const width = contentW + PAD * 2;
-  const height = (maxRank + 1) * NODE_H + maxRank * V_GAP + PAD * 2;
+  const height = rowCount * NODE_H + (rowCount - 1) * V_GAP + PAD * 2;
 
   return {
     flowId: graph.flowId,
