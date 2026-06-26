@@ -90,7 +90,7 @@ survey/questions/
        provenance_requester_affiliation.ts, provenance_requester_contact.ts,
        provenance_requester_name.ts, provenance_requester_relation.ts,
        provenance_speaker_count.ts, region.ts, script_family.ts,
-       script_not_supported_stub.ts, writing_direction.ts   (+ colocated *.test.ts)
+       script_not_supported_stub.ts, writing_direction.ts   (tests live in a mirrored tree — see §4)
   b/   (Phase B characters — RUNTIME TRUTH today; 55 modules)
        pb_accent_marks_gate.ts, pb_additional_methods.ts, pb_azerty_qz_swap.ts,
        pb_capitals_marks.ts, pb_char_count.ts, pb_co_installed_keyboards.ts,
@@ -112,10 +112,10 @@ survey/questions/
        pb_stacking_marks.ts, pb_standard_letters.ts, pb_syllabic_finals_detail.ts,
        pb_syllabic_finals_gate.ts, pb_syllabic_grid.ts, pb_syllabic_note.ts,
        pb_text_sample.ts, pb_text_sample_review.ts, pb_typing_approach.ts,
-       pb_use_case.ts   (+ colocated *.test.ts)
+       pb_use_case.ts   (tests live in a mirrored tree — see §4)
   f/   (Phase F help docs — modules EXIST but are NOT runtime truth yet)
        pf_contact_info.ts, pf_credits.ts, pf_usage_tip_1.ts … pf_usage_tip_5.ts,
-       pf_welcome_paragraph.ts   (+ colocated *.test.ts)
+       pf_welcome_paragraph.ts   (tests live in a mirrored tree — see §4)
   registry.a.ts, registry.b.ts, registry.f.ts, registry.ts, registry.test.ts
 ```
 
@@ -283,7 +283,7 @@ ui/
 `survey/QuestionField.tsx` and the five wizard-step components (Form 3) refactor
 onto these primitives. Gallery chrome currently in `lib/galleryTheme.ts` folds
 into `ui/theme.ts`. Boundary note: `ui/` must remain dependency-free of `survey/`,
-`steps/`, and `stores/` so dependency-cruiser can enforce it as a leaf (see §7).
+`steps/`, and `stores/` so dependency-cruiser can enforce it as a leaf (see §8).
 
 ### 3.3 Question contract: declared `inputs` / `writes`
 
@@ -338,7 +338,7 @@ its own acceptance criteria:
   in P2.)
 - **Drift AC.** A `writes` path that does not correspond to a real location in
   `keyboard-ir.ts` fails typecheck (this is what guards against declaring paths
-  that won't match the real IR shape — see §7).
+  that won't match the real IR shape — see §8).
 - **Write-surface AC.** A **unit test** asserts that every strategy-bearing
   question's declared `writes` match its `Pattern.strategyId` write surface
   (the IR locations that strategy actually populates), so declared `writes` and
@@ -640,6 +640,8 @@ packages/studio/src/
       b/  <id>.ts | <id>/index.ts (+ extras/)
       f/  <id>.ts | <id>/index.ts (+ extras/)
       # each module gains declared inputs/writes (§3.3)
+      # per-question tests are NOT colocated here — they live in the mirrored
+      #   tree under packages/studio/tests/survey/questions/ (see below + §7)
 
   editors/                     # (NEW) editor-step components (former galleries + panels)
     assignLoop/                # shared assignment-loop SHELL (§3.6 piece 1)
@@ -684,6 +686,16 @@ packages/studio/src/
   stores/   hooks/   lib/   lint/        # lib/galleryTheme.ts folds into ui/theme.ts;
                                           #   stores/workingCopyStore.ts gains a NET-NEW
                                           #   `staleness` slice (§3.5)
+
+# Per-question tests live in a MIRRORED tree (sibling of src/, NOT colocated):
+packages/studio/tests/                   # mirror root for per-question tests
+  survey/questions/                      # mirrors src/survey/questions/ one-for-one
+    a/  <id>.test.ts                      # mirrors src/survey/questions/a/<id>.ts
+    b/  <id>.test.ts                      # mirrors src/survey/questions/b/<id>.ts
+    f/  <id>.test.ts                      # mirrors src/survey/questions/f/<id>.ts
+    # mirror path is DERIVED from the source path; a question can graduate to the
+    #   <id>/index.ts + extras/ form (§3.3) without dragging its test into src/.
+    #   "every question has a test" becomes a single directory-diff CI check (§7).
 ```
 
 > The `editors/` and `dashboard/` names are proposals; the key decisions are the
@@ -695,8 +707,11 @@ packages/studio/src/
 ## 5. File-by-file migration listing
 
 Actions: **stays**, **move**, **rename**, **split**, **new**. Verified current
-paths; destinations are proposals. (Colocated `*.test.*` files move with their
-subject unless noted.)
+paths; destinations are proposals. (Colocated `*.test.*` files for non-question
+components move with their subject unless noted. **Per-question** `*.test.ts`
+files are the exception: they move OUT of the source tree into the mirrored test
+tree under `packages/studio/tests/survey/questions/` — see the reshape table
+below and §4 / §7.)
 
 ### components → `ui/` (extraction)
 
@@ -733,7 +748,7 @@ remove-mode component**, sharing only `ui/`.
 | `components/carve/*` (DepBanner, GlyphCell, InfoView(+test), Inspector, KeyCap, KeySeq, KindBadge, Rail, StatusBar, ToggleBox, carveShared) | **move** | `editors/assignLoop/parts/*` (shared chrome, used by shell + carve) |
 | `components/GalleryIntroSplash.tsx` (+`.test.tsx`) | **move/rename** | `editors/assignLoop/IntroSplash.tsx` |
 | `components/GalleryPreviewPane.tsx` | **move/rename** | `editors/assignLoop/PreviewPane.tsx` |
-| `lib/irToCarveNodes.ts` (+tests) | **stays** | shared helper bound by the gallery/shell; remains in `lib/` (the `editors/ → lib/` edge must be **explicitly allowed** — see §7) |
+| `lib/irToCarveNodes.ts` (+tests) | **stays** | shared helper bound by the gallery/shell; remains in `lib/` (the `editors/ → lib/` edge must be **explicitly allowed** — see §8) |
 | (touch surface IR) | **new** | `editors/assignLoop/provenance.ts` — per-key provenance (`base-derived` / `physical-suggested` / `hand-set`), reserved (§3.6) |
 | (physical→touch mapper) | **new** | `editors/touchSuggest/touchSuggest.ts` + `defaults.ts` — net-new generator + defaults-as-data (§3.6) |
 
@@ -749,6 +764,7 @@ adds a `spine: false` step at the touch-phase entry that rejoins via `joinTarget
 | `survey/questions/<phase>/<id>.ts` (flat) | **stays** | unchanged for questions with no companion artifacts |
 | any `<id>.ts` needing images/sample text/custom component | **split** | graduates to `survey/questions/<phase>/<id>/index.ts` + `extras/`; registry resolves by `definition.id` so both forms are identical to callers |
 | all 93 modules | **edit** | gain declared `inputs`/`writes` (§3.3) |
+| per-question `survey/questions/<phase>/<id>.test.ts` (currently colocated) | **move** | `packages/studio/tests/survey/questions/<phase>/<id>.test.ts` — mirrored tree, NOT colocated; mirror path derived from the source path (§4 / §7) |
 | `survey/questions/registry.{a,b,f}.ts`, `registry.ts`, `registry.test.ts` | **stays** | merge pattern unchanged; resolution stays keyed on `definition.id` |
 | `survey/types.ts` | **edit** | add `inputs`/`writes` to `QuestionModule`; `mutate` stays the documented stub |
 
@@ -822,7 +838,7 @@ independent ship.
 Create `ui/`, migrate `QuestionField.tsx` and the five wizard-step components onto
 it, fold `lib/galleryTheme.ts` into `ui/theme.ts`. Pure refactor; no behavior
 change. Add the **net-new** dependency-cruiser leaf rule for `ui/` (none exists
-today — see §7).
+today — see §8).
 - **AC:** no visual/behavioral diff in existing components; `ui/` imports nothing
   from `survey/`/`steps/`/`stores/` (depcruise green).
 - **Rollback:** revert the extraction commit; primitives are additive until
@@ -943,7 +959,70 @@ dashboard without it.
 
 ---
 
-## 7. Open decisions / risks
+## 7. Testing strategy
+
+Goal: decouple test cost from the structural churn this refactor causes. Per-question
+tests own the correctness of one question in isolation; flow-level tests own that the
+assembled survey produces clean output. Restructuring questions (P1–P4) should break
+per-question tests at most, and only mechanically — the flow/E2E tier stays green
+because it asserts behavior and output, not module layout.
+
+### 7.1 Two tiers
+
+1. **Per-question unit tests** — one per `QuestionModule`, asserting that module's own
+   contract in isolation:
+   - **Input validation:** `validate` accepts every entry in `fixtures` and rejects
+     malformed / out-of-range answers; declared `inputs` (`IRPath[]`) are present and
+     well-typed; defaults and the `touchSuggest` / `touch_seed_source` policy resolve
+     as declared.
+   - **Output / mutation validation:** once the `mutate` seam lands (P5), applying
+     `mutate` to a known IR fixture writes **exactly** the declared `writes` paths and
+     nothing else, is idempotent on re-apply, and respects per-key provenance
+     no-clobber. This pulls P2's aggregate write-surface AC down to the per-question
+     level.
+   - Until `mutate` is unstubbed, the output half asserts that the declared `writes` /
+     `inputs` parse under `IRPath` and match the question's `Pattern.strategyId` write
+     surface.
+2. **Flow integration + E2E — structure-agnostic.** Drive the assembled flow through
+   the manifest + registry (resolved by `definition.id`, never by file path) and assert
+   on the **output**: golden-compare modular-vs-legacy IR per phase (P3), spine-prefix
+   shippability, completeness / staleness transitions, and the two Playwright E2E lanes
+   (#410 AC#3). These tests must not import individual question modules or assert on the
+   file tree, so moving or splitting a question leaves them untouched.
+
+### 7.2 Test layout — mirrored tree, not colocated
+
+Tests live in a test tree that **mirrors** the questions tree, rather than colocated
+beside each `<id>.ts`:
+
+```
+packages/studio/src/survey/questions/<phase>/<id>.ts
+packages/studio/tests/survey/questions/<phase>/<id>.test.ts   # mirror — same relative path
+```
+
+(`packages/studio/tests/` is the mirror root — a sibling of `src/`; the package has no
+pre-existing `tests/` or `__tests__/` root, so this is the established convention going
+forward.) Rationale: keeps the source tree and the per-phase registries / manifests free
+of test files, makes "every question has a test" a single directory-diff CI check, and
+lets a question graduate to the `<id>/index.ts` + `extras/` folder form (§3.3) without
+dragging its test into the source folder. The mirror path is derived from the source
+path, so the same CI assertion that maps modules → map-nodes can map modules → test
+files.
+
+### 7.3 What this changes in the phase stubs
+
+- The per-phase **Test strategy** stubs keep their flow-level gates (snapshot,
+  depcruise, golden-compare, Playwright E2E) but hand per-question expectations to the
+  two-tier model above.
+- **P2** gains a CI gate: a module without a mirrored test file fails CI, same shape as
+  the P0 map-node snapshot. The write-surface assertion moves from one aggregate test to
+  per-question output tests.
+- Integration / E2E lanes drop any remaining structural assertions and gate only on flow
+  correctness and clean IR output.
+
+---
+
+## 8. Open decisions / risks
 
 - **dependency-cruiser boundaries (all NET-NEW).** There is **no intra-`studio/src`
   layering in `.dependency-cruiser.cjs` today** — the existing rules are all
