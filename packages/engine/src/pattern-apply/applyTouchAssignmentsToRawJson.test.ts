@@ -22,7 +22,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { applyTouchAssignmentsToRawJson } from "./applyTouchAssignmentsToRawJson.js";
 import { isTouchSubKeyDuplicate } from "./touch-mechanism-shared.js";
-import { charToUnicodeKeyId } from "../codec/touch-ids.js";
+import { charToUnicodeKeyId } from "../shared/touch-ids.js";
 import type { TouchAssignment } from "@keyboard-studio/contracts";
 
 // ---------------------------------------------------------------------------

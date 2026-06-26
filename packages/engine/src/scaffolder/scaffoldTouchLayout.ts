@@ -37,7 +37,7 @@ import type {
   IRRule,
 } from "@keyboard-studio/contracts";
 import { NodeIdMinter } from "../shared/node-ids.js";
-import { charToUnicodeKeyId } from "../codec/touch-ids.js";
+import { charToUnicodeKeyId } from "../shared/touch-ids.js";
 
 // ---------------------------------------------------------------------------
 // US fallback keycaps for unmapped keys

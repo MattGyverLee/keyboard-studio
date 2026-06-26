@@ -38,7 +38,7 @@
  */
 
 import type { TouchAssignment } from "@keyboard-studio/contracts";
-import { charToUnicodeKeyId } from "../codec/touch-ids.js";
+import { charToUnicodeKeyId } from "../shared/touch-ids.js";
 import { isTouchSubKeyDuplicate } from "./touch-mechanism-shared.js";
 
 // ---------------------------------------------------------------------------
