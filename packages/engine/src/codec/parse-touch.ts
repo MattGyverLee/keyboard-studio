@@ -11,7 +11,7 @@
  */
 
 import type { TouchLayoutIR, TouchKeyIR, IRNodeRef } from "@keyboard-studio/contracts";
-import { NodeIdMinter } from "./node-ids.js";
+import { NodeIdMinter } from "../shared/node-ids.js";
 
 // ---------------------------------------------------------------------------
 // Raw JSON shapes (non-exhaustive — only the fields we care about)
