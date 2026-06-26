@@ -31,6 +31,19 @@ import type { KeyboardIR, VirtualFS } from "@keyboard-studio/contracts";
 import { emit } from "../codec/emit.js";
 
 /**
+ * Options bag for {@link applyCarveToVfs}.
+ *
+ * - `forceEmit` — when `true`, the function proceeds to re-emit even when
+ *   `deletedNodeIds` is empty. Use this when a preceding transform (e.g.
+ *   `applyStoreSlotRemovals`) has already modified `baseIr` and the updated IR
+ *   must be written into the VFS regardless of whether any whole-node deletions
+ *   are present. Both safety gates (raw-fragment, entry-group) still apply.
+ */
+export interface ApplyCarveToVfsOpts {
+  forceEmit?: boolean;
+}
+
+/**
  * Project carve deletions onto the VFS without mutating `baseIr`.
  *
  * Reads the .kmn path (`source/<keyboardId>.kmn`) from the VFS, replaces it
@@ -45,10 +58,11 @@ import { emit } from "../codec/emit.js";
  * - The deletion set would remove the entry group (the first non-readonly
  *   group), which would silently retarget `begin Unicode > use(...)`.
  *
- * @param vfs           In-memory virtual filesystem. Written in-place.
- * @param keyboardId    Keyboard identifier (determines the .kmn VFS path).
- * @param baseIr        Source-of-truth IR (never mutated).
+ * @param vfs            In-memory virtual filesystem. Written in-place.
+ * @param keyboardId     Keyboard identifier (determines the .kmn VFS path).
+ * @param baseIr         Source-of-truth IR (never mutated).
  * @param deletedNodeIds Set of nodeIds the author has marked for deletion.
+ * @param opts           Optional settings; see {@link ApplyCarveToVfsOpts}.
  * @returns Warnings produced during projection (empty when all is well).
  */
 export function applyCarveToVfs(
@@ -56,10 +70,12 @@ export function applyCarveToVfs(
   keyboardId: string,
   baseIr: KeyboardIR,
   deletedNodeIds: ReadonlySet<string>,
+  opts?: ApplyCarveToVfsOpts,
 ): { warnings: string[] } {
   const warnings: string[] = [];
+  const forceEmit = opts?.forceEmit === true;
 
-  if (deletedNodeIds.size === 0) {
+  if (deletedNodeIds.size === 0 && !forceEmit) {
     // Nothing to filter — skip the re-emit. The VFS already holds the base .kmn
     // from the fetch step. This is the common path in the early-survey stages.
     return { warnings };

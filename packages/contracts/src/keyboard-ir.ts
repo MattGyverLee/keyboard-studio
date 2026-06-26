@@ -3,6 +3,7 @@
 // Field renames, type changes, and removals require a joint session + major version bump per spec §18.
 
 import type { Pattern } from "./pattern";
+import type { RemovalCapability } from "./removalCapability";
 
 // ---------------------------------------------------------------------------
 // Origin and node references
@@ -253,6 +254,8 @@ export interface KvksIR {
   kvksVersion?: string;
   /** Optional keyboard display name from the <kbdname> header element. */
   kbdname?: string;
+  /** Optional OSK font family from the `<encoding fontname="...">` attribute. */
+  fontFamily?: string;
   layers: Array<{
     shift: string;
     keys: Array<{
@@ -318,4 +321,12 @@ export interface ImportReport {
   recognizedRatio: number;
   /** Populated when status is RoundTripDivergence (check I2 failure). */
   roundTripDiff?: RoundTripDiff;
+  /**
+   * Per-node removal capability classifications produced by
+   * `classifyRemovalCapabilities` at import time.
+   * Entry-array form (mirroring `TouchLayoutIR.nodeIds`) for JSON round-trip
+   * compatibility.  Keys are rule/fragment nodeIds plus output-store nodeId
+   * aliases for S-02 slot tiles.
+   */
+  removalCapabilities?: Array<[string, RemovalCapability]>;
 }

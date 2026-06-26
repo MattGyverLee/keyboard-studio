@@ -20,7 +20,7 @@ import { useWorkingCopyStore } from "./workingCopyStore.ts";
 import { makeTestIR } from "@keyboard-studio/contracts/fixtures";
 import { basicKbdus } from "@keyboard-studio/contracts/fixtures";
 import { createVirtualFS } from "@keyboard-studio/contracts";
-import type { SurveyPhaseResult } from "@keyboard-studio/contracts";
+import type { RemovalCapability, SurveyPhaseResult } from "@keyboard-studio/contracts";
 
 // ---------------------------------------------------------------------------
 // Reset helpers — clear all state between tests.
@@ -505,6 +505,104 @@ describe("workingCopyStore — survey state consistency", () => {
 
 // touchAssignments store slot removed — output uses touchLayoutJson (serializeWorkingCopy.ts).
 // The recordTouchAssignments action was removed in the gallery-dedup refactor.
+
+// ---------------------------------------------------------------------------
+// removalCapabilities — computed once at instantiate, preserved across carve edits
+// ---------------------------------------------------------------------------
+
+describe("workingCopyStore — removalCapabilities slot", () => {
+  it("starts as an empty Map", () => {
+    expect(useWorkingCopyStore.getState().removalCapabilities.size).toBe(0);
+  });
+
+  it("instantiateFromBase sets removalCapabilities from opts", () => {
+    const vfs = createVirtualFS();
+    const ir = makeTestIR([]);
+    const caps = new Map<string, RemovalCapability>([
+      ["rule#1", "removable:simple"],
+      ["store#dkt", "removable:slot-fill"],
+    ]);
+    useWorkingCopyStore.getState().instantiateFromBase(basicKbdus, { vfs, ir, removalCapabilities: caps });
+    const s = useWorkingCopyStore.getState();
+    expect(s.removalCapabilities).toBe(caps);
+    expect(s.removalCapabilities.get("rule#1")).toBe("removable:simple");
+  });
+
+  it("instantiateFromBase defaults to empty Map when removalCapabilities not provided", () => {
+    const vfs = createVirtualFS();
+    const ir = makeTestIR([]);
+    useWorkingCopyStore.getState().instantiateFromBase(basicKbdus, { vfs, ir });
+    expect(useWorkingCopyStore.getState().removalCapabilities.size).toBe(0);
+  });
+
+  it("instantiateFromExisting sets removalCapabilities from opts", () => {
+    const vfs = createVirtualFS();
+    const ir = makeTestIR([]);
+    const caps = new Map<string, RemovalCapability>([
+      ["rule#2", "not-removable:context-sensitive"],
+    ]);
+    useWorkingCopyStore.getState().instantiateFromExisting(basicKbdus, { vfs, ir, removalCapabilities: caps });
+    expect(useWorkingCopyStore.getState().removalCapabilities.get("rule#2")).toBe("not-removable:context-sensitive");
+  });
+
+  it("instantiateFromExisting defaults to empty Map when removalCapabilities not provided (Track 2)", () => {
+    // Mirror of the Track 1 (instantiateFromBase) default-empty test.
+    // When the import path can't classify (e.g. parse failure), the working copy
+    // must still initialise cleanly with an empty map rather than crashing.
+    const vfs = createVirtualFS();
+    const ir = makeTestIR([]);
+    useWorkingCopyStore.getState().instantiateFromExisting(basicKbdus, { vfs, ir });
+    expect(useWorkingCopyStore.getState().removalCapabilities.size).toBe(0);
+  });
+
+  it("setIR does NOT clear removalCapabilities", () => {
+    const vfs = createVirtualFS();
+    const ir = makeTestIR([]);
+    const caps = new Map<string, RemovalCapability>([["rule#1", "removable:simple"]]);
+    useWorkingCopyStore.getState().instantiateFromBase(basicKbdus, { vfs, ir, removalCapabilities: caps });
+
+    // Simulate a carve edit that calls setIR with a mutated IR.
+    const newIr = makeTestIR([]);
+    useWorkingCopyStore.getState().setIR(newIr);
+
+    // removalCapabilities must survive — it derives from baseIr, not carve IR.
+    expect(useWorkingCopyStore.getState().removalCapabilities.get("rule#1")).toBe("removable:simple");
+  });
+
+  it("deleteItem (carve deletion) preserves removalCapabilities", () => {
+    const vfs = createVirtualFS();
+    const ir = makeTestIR([]);
+    const caps = new Map<string, RemovalCapability>([["rule#1", "removable:simple"]]);
+    useWorkingCopyStore.getState().instantiateFromBase(basicKbdus, { vfs, ir, removalCapabilities: caps });
+
+    useWorkingCopyStore.getState().deleteItem("rule#1");
+
+    expect(useWorkingCopyStore.getState().removalCapabilities.get("rule#1")).toBe("removable:simple");
+  });
+
+  it("reset clears removalCapabilities", () => {
+    const vfs = createVirtualFS();
+    const ir = makeTestIR([]);
+    const caps = new Map<string, RemovalCapability>([["rule#1", "removable:simple"]]);
+    useWorkingCopyStore.getState().instantiateFromBase(basicKbdus, { vfs, ir, removalCapabilities: caps });
+    expect(useWorkingCopyStore.getState().removalCapabilities.size).toBe(1);
+
+    useWorkingCopyStore.getState().reset();
+    expect(useWorkingCopyStore.getState().removalCapabilities.size).toBe(0);
+  });
+
+  it("idempotent instantiateFromBase (same base id) preserves removalCapabilities", () => {
+    const vfs = createVirtualFS();
+    const ir = makeTestIR([]);
+    const caps = new Map<string, RemovalCapability>([["rule#1", "removable:simple"]]);
+    useWorkingCopyStore.getState().instantiateFromBase(basicKbdus, { vfs, ir, removalCapabilities: caps });
+
+    // Second call with same base id — idempotence guard fires, no overwrite.
+    useWorkingCopyStore.getState().instantiateFromBase(basicKbdus, { vfs, ir });
+    // Capabilities from the first call must still be intact.
+    expect(useWorkingCopyStore.getState().removalCapabilities.get("rule#1")).toBe("removable:simple");
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Cross-adapter isolation — IR actions don't bleed into survey state

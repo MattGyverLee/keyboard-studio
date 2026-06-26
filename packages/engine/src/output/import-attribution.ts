@@ -61,6 +61,19 @@ export function buildImportAttributionBlock(
 ): string {
   const { sourcePath, sourceSha, report, deletedOpaque } = input;
 
+  // CleanWithOpaque is contractually defined as "clean import that retained at
+  // least one opaque feature". An empty inventory under that status would render
+  // a misleading "(0 opaque features)" / "Opaque features: none" block, so fail
+  // loudly rather than silently misattribute (refs #239).
+  if (
+    report.status === ImportStatus.CleanWithOpaque &&
+    report.opaqueFeatureInventory.length === 0
+  ) {
+    throw new Error(
+      "CleanWithOpaque requires at least one entry in opaqueFeatureInventory",
+    );
+  }
+
   // --- source line ---
   const commitRef =
     sourceSha !== undefined && sourceSha.length > 0

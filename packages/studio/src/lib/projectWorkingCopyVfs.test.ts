@@ -104,7 +104,7 @@ describe("projectWorkingCopyVfs — always calls applyCarveToVfs (step 1)", () =
       getPattern: () => undefined,
       identity: null,
     });
-    expect(applyCarveToVfsSpy).toHaveBeenCalledWith(vfs, "test_kb", ir, new Set());
+    expect(applyCarveToVfsSpy).toHaveBeenCalledWith(vfs, "test_kb", ir, new Set(), { forceEmit: false });
   });
 
   it("forwards deletedNodeIds to applyCarveToVfs", async () => {
@@ -121,7 +121,55 @@ describe("projectWorkingCopyVfs — always calls applyCarveToVfs (step 1)", () =
       getPattern: () => undefined,
       identity: null,
     });
-    expect(applyCarveToVfsSpy).toHaveBeenCalledWith(vfs, "test_kb", ir, deleted);
+    expect(applyCarveToVfsSpy).toHaveBeenCalledWith(vfs, "test_kb", ir, deleted, { forceEmit: false });
+  });
+
+  // AC#2 regression: deletedItemIds-only path must merge into the applyCarveToVfs call.
+  it("merges deletedItemIds (only) into the set passed to applyCarveToVfs", async () => {
+    const { projectWorkingCopyVfs } = await import("./projectWorkingCopyVfs.ts");
+    const vfs = makeVfs();
+    const ir = makeTestIR([]);
+    projectWorkingCopyVfs({
+      vfs,
+      keyboardId: "test_kb",
+      baseIr: ir,
+      deletedNodeIds: new Set(),
+      deletedItemIds: new Set(["rule#0", "rule#1"]),
+      assignments: [],
+      getPattern: () => undefined,
+      identity: null,
+    });
+    expect(applyCarveToVfsSpy).toHaveBeenCalledWith(
+      vfs,
+      "test_kb",
+      ir,
+      new Set(["rule#0", "rule#1"]),
+      { forceEmit: false },
+    );
+  });
+
+  // AC#2 regression: when both non-empty, the merged union must be passed.
+  it("merges deletedNodeIds + deletedItemIds into a union set for applyCarveToVfs", async () => {
+    const { projectWorkingCopyVfs } = await import("./projectWorkingCopyVfs.ts");
+    const vfs = makeVfs();
+    const ir = makeTestIR([]);
+    projectWorkingCopyVfs({
+      vfs,
+      keyboardId: "test_kb",
+      baseIr: ir,
+      deletedNodeIds: new Set(["group#A"]),
+      deletedItemIds: new Set(["rule#0"]),
+      assignments: [],
+      getPattern: () => undefined,
+      identity: null,
+    });
+    expect(applyCarveToVfsSpy).toHaveBeenCalledWith(
+      vfs,
+      "test_kb",
+      ir,
+      new Set(["group#A", "rule#0"]),
+      { forceEmit: false },
+    );
   });
 });
 

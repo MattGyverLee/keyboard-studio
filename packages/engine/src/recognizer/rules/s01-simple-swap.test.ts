@@ -3,8 +3,6 @@ import { s01Recognizer } from "./s01-simple-swap.js";
 import type { IRGroup, IRRule } from "@keyboard-studio/contracts";
 import { makeTestIR } from "@keyboard-studio/contracts/fixtures";
 
-const makeIR = (groups: IRGroup[]) => makeTestIR(groups);
-
 function s01Rule(nodeId: string, vkey: string, modifiers: string[], charOut: string): IRRule {
   return {
     nodeId,
@@ -26,7 +24,7 @@ describe("s01Recognizer", () => {
         s01Rule("rule#2", "K_C", [], "ɔ"),
       ],
     };
-    const ir = makeIR([group]);
+    const ir = makeTestIR([group]);
     const matches = s01Recognizer.match(ir);
 
     expect(matches).toHaveLength(1);
@@ -55,7 +53,7 @@ describe("s01Recognizer", () => {
         },
       ],
     };
-    const ir = makeIR([group]);
+    const ir = makeTestIR([group]);
     const matches = s01Recognizer.match(ir);
 
     expect(matches).toHaveLength(1);
@@ -75,7 +73,7 @@ describe("s01Recognizer", () => {
         s01Rule("rule#0", "K_Q", [], "ɛ"),
       ],
     };
-    const ir = makeIR([group]);
+    const ir = makeTestIR([group]);
     const matches = s01Recognizer.match(ir);
     expect(matches).toHaveLength(0);
   });
@@ -108,7 +106,7 @@ describe("s01Recognizer", () => {
       readonly: false,
       rules: [s01Rule("rule#1", "K_Q", ["SHIFT"], "Ɛ")],
     };
-    const ir = makeIR([groupA, groupB]);
+    const ir = makeTestIR([groupA, groupB]);
     const matches = s01Recognizer.match(ir);
 
     expect(matches).toHaveLength(2);

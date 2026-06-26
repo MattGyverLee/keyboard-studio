@@ -4,13 +4,7 @@ import type {
   IRGroup,
   IRStore,
 } from "@keyboard-studio/contracts";
-import { makeTestIR, charItems } from "@keyboard-studio/contracts/fixtures";
-
-const makeIR = (groups: IRGroup[], stores: IRStore[]) => makeTestIR(groups, stores);
-
-function store(nodeId: string, name: string, chars: string): IRStore {
-  return { nodeId, name, items: charItems(chars), isSystem: false };
-}
+import { makeTestIR, makeCharStore } from "@keyboard-studio/contracts/fixtures";
 
 // basic_kbdfr grave-family: 1 trigger, 1 body
 function buildFrGraveIR(): { ir: KeyboardIR; triggerNodeId: string; bodyNodeId: string } {
@@ -49,11 +43,11 @@ function buildFrGraveIR(): { ir: KeyboardIR; triggerNodeId: string; bodyNodeId: 
   };
 
   const stores: IRStore[] = [
-    store("store#dkf0060", "dkf0060", " aAeEiIoOuU"),
-    store("store#dkt0060", "dkt0060", "`àÀèÈìÌòÒùÙ"),
+    makeCharStore("store#dkf0060", "dkf0060", " aAeEiIoOuU"),
+    makeCharStore("store#dkt0060", "dkt0060", "`àÀèÈìÌòÒùÙ"),
   ];
 
-  const ir = makeIR([mainGroup, deadkeysGroup], stores);
+  const ir = makeTestIR([mainGroup, deadkeysGroup], stores);
   return { ir, triggerNodeId, bodyNodeId };
 }
 
@@ -120,11 +114,11 @@ describe("s02Recognizer", () => {
     };
 
     const stores: IRStore[] = [
-      store("store#dkf0060", "dkf0060", " aAeEiIoOuU"),
-      store("store#dkt0060", "dkt0060", "`àÀèÈìÌòÒùÙ"),
+      makeCharStore("store#dkf0060", "dkf0060", " aAeEiIoOuU"),
+      makeCharStore("store#dkt0060", "dkt0060", "`àÀèÈìÌòÒùÙ"),
     ];
 
-    const ir = makeIR([mainGroup, deadkeysGroup], stores);
+    const ir = makeTestIR([mainGroup, deadkeysGroup], stores);
     const matches = s02Recognizer.match(ir);
 
     expect(matches).toHaveLength(1);
@@ -158,11 +152,11 @@ describe("s02Recognizer", () => {
       ],
     };
     const stores: IRStore[] = [
-      store("store#dkf0060", "dkf0060", " aA"),
-      store("store#dkt0060", "dkt0060", "`àÀ"),
+      makeCharStore("store#dkf0060", "dkf0060", " aA"),
+      makeCharStore("store#dkt0060", "dkt0060", "`àÀ"),
     ];
     // No main group with a trigger
-    const ir = makeIR([deadkeysGroup], stores);
+    const ir = makeTestIR([deadkeysGroup], stores);
     const matches = s02Recognizer.match(ir);
     expect(matches).toHaveLength(0);
   });
@@ -189,7 +183,7 @@ describe("s02Recognizer", () => {
       readonly: false,
       rules: [],
     };
-    const ir = makeIR([mainGroup, deadkeysGroup], []);
+    const ir = makeTestIR([mainGroup, deadkeysGroup], []);
     const matches = s02Recognizer.match(ir);
     expect(matches).toHaveLength(0);
   });
@@ -226,10 +220,10 @@ describe("s02Recognizer", () => {
       ],
     };
     const stores: IRStore[] = [
-      store("store#dkf0060", "dkf0060", " aA"),
-      store("store#dkt0060", "dkt0060", "`àÀ"),
+      makeCharStore("store#dkf0060", "dkf0060", " aA"),
+      makeCharStore("store#dkt0060", "dkt0060", "`àÀ"),
     ];
-    const ir = makeIR([mainGroup, deadkeysGroup], stores);
+    const ir = makeTestIR([mainGroup, deadkeysGroup], stores);
     const matches = s02Recognizer.match(ir);
     expect(matches).toHaveLength(0);
   });
@@ -266,10 +260,10 @@ describe("s02Recognizer", () => {
     };
     // Non-parallel: base has 3 items, out has 2
     const stores: IRStore[] = [
-      store("store#dkf0060", "dkf0060", " aA"),
-      store("store#dkt0060", "dkt0060", "`à"),
+      makeCharStore("store#dkf0060", "dkf0060", " aA"),
+      makeCharStore("store#dkt0060", "dkt0060", "`à"),
     ];
-    const ir = makeIR([mainGroup, deadkeysGroup], stores);
+    const ir = makeTestIR([mainGroup, deadkeysGroup], stores);
     expect(() => s02Recognizer.match(ir)).not.toThrow();
     const matches = s02Recognizer.match(ir);
     expect(matches).toHaveLength(0);

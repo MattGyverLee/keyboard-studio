@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { CarveNode } from '../../lib/irToCarveNodes.ts';
-import { nodeState, displayChar } from '../../lib/irToCarveNodes.ts';
+import { nodeState, displayChar, MOD_GROUP_DEFS, glyphsTriState } from '../../lib/irToCarveNodes.ts';
 import { ToggleBox } from './ToggleBox.tsx';
 import { GlyphCell } from './GlyphCell.tsx';
 import { KindBadge, KIND_COLOR } from './KindBadge.tsx';
@@ -30,6 +30,23 @@ function LoadBearing() {
   );
 }
 
+const blurbStyle: React.CSSProperties = {
+  margin: '10px 0 0', fontSize: 12, color: 'var(--app-text-subtle)', lineHeight: 1.55,
+};
+
+function storeBlurb(node: CarveNode): string {
+  if (node.referencedByNodeId !== undefined)
+    return "Stores are named character lists. This one belongs to the pattern above — its removal is managed through the pattern.";
+  const u = node.storeUsage;
+  if (!u)
+    return "Stores are named character lists. This one isn't referenced by any active rules, so it's likely safe to remove on its own.";
+  if (u.asSource && u.asOutput)
+    return "Stores are named character lists. This one appears on both sides of rules: the keyboard watches for these characters AND inserts from them.";
+  if (u.asSource)
+    return "Stores are named character lists. The keyboard scans what you type against this list — when a character matches, a rule fires.";
+  return "Stores are named character lists. When a rule fires, it picks the corresponding character from this list to insert into your text.";
+}
+
 // ---------------------------------------------------------------------------
 // RawDetail
 // ---------------------------------------------------------------------------
@@ -42,6 +59,9 @@ function RawDetail({ node, isDeleted, onToggleNode }: RawDetailProps) {
   const off = isDeleted(node.nodeId);
   return (
     <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '20px 24px' }}>
+      <p style={{ ...blurbStyle, margin: '0 0 14px' }}>
+        Advanced rules use syntax the tool can't model automatically — deadkey chains, context-sensitive substitutions, or platform-specific behaviour. They're kept exactly as written from the original keyboard.
+      </p>
       <div style={{
         display: 'flex', gap: 13, padding: '16px 18px', borderRadius: 12, opacity: off ? 0.6 : 1,
         background: off ? 'var(--app-surface)' : 'color-mix(in srgb, var(--sil-orange) 9%, var(--app-surface))',
@@ -96,22 +116,6 @@ function storeRoleChip(node: CarveNode): React.ReactNode {
   return null;
 }
 
-function storeDesc(node: CarveNode): string {
-  const u = node.storeUsage;
-  if (!u) {
-    return node.referencedByLabel !== undefined
-      ? 'Owned by a recognized pattern — removal is managed through the pattern.'
-      : 'Defined but not directly referenced in any rules.';
-  }
-  const { ruleCount, asSource, asOutput, groupNames } = u;
-  const n = ruleCount;
-  const rs = n === 1 ? 'rule' : 'rules';
-  const inG = groupNames.length > 0 ? ` in ${groupNames.join(', ')}` : '';
-  if (asSource && asOutput) return `Used as both any() input and index() output in ${n} ${rs}${inG}.`;
-  if (asSource) return `Matched by any() as input in ${n} ${rs}${inG} — these characters are context to match.`;
-  if (asOutput) return `Output target for index() in ${n} ${rs}${inG} — these are the characters that get inserted.`;
-  return `Referenced in ${n} ${rs}${inG}.`;
-}
 
 function StoreDetail({ node, nodes, isDeleted, isItemDeleted, onToggleNode }: StoreDetailProps) {
   const off = isDeleted(node.nodeId);
@@ -125,15 +129,15 @@ function StoreDetail({ node, nodes, isDeleted, isItemDeleted, onToggleNode }: St
     <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '20px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
         <ToggleBox glyph="⊷" state={off ? 'off' : 'on'} size={40} onClick={() => onToggleNode(node.nodeId, !off)} />
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, fontFamily: 'var(--app-font-mono)', color: 'var(--app-text)' }}>{node.name}</h2>
             <KindBadge kind="store" />
             {storeRoleChip(node)}
             {node.loadBearing === true && <LoadBearing />}
           </div>
-          <p style={{ margin: '6px 0 0', fontSize: 13.5, color: 'var(--app-text-muted)', lineHeight: 1.55 }}>
-            {storeDesc(node)}
+          <p style={{ ...blurbStyle, margin: 0 }}>
+            {storeBlurb(node)}
           </p>
         </div>
       </div>
@@ -190,7 +194,8 @@ interface InspectorProps {
 
 export function Inspector({ node, nodes, isItemDeleted, onToggleGlyph, onSetManyGlyphs, isDeleted, onToggleNode }: InspectorProps) {
   const [q, setQ] = useState('');
-  useEffect(() => { setQ(''); }, [node?.nodeId]);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  useEffect(() => { setQ(''); setCollapsed(new Set()); }, [node?.nodeId]);
   const setInfo = useHoverInfoStore((s) => s.setInfo);
   const clearInfo = useHoverInfoStore((s) => s.clearInfo);
 
@@ -212,22 +217,39 @@ export function Inspector({ node, nodes, isItemDeleted, onToggleGlyph, onSetMany
     ? glyphs.filter((x) => x.ch.toLowerCase().includes(q.toLowerCase()) || x.keys.join('').toLowerCase().includes(q.toLowerCase()))
     : glyphs;
 
-  // Uniform cell height: size every row to fit the cell with the most keys.
-  // Use ceil(N/2) estimated key rows at ~72px column width, with a generous
-  // 26px per row to accommodate non-Latin key names that wrap more readily.
+  // Uniform cell height computed over all shown glyphs (uniform height across groups).
   const maxKeys = shown.length > 0 ? Math.max(...shown.map((x) => x.keys.length)) : 1;
   const rowHeight = Math.max(88, 60 + Math.ceil(maxKeys / 2) * 26);
+
+  // Build modifier groups from shown glyphs using the shared MOD_GROUP_DEFS
+  const groupedGlyphs = MOD_GROUP_DEFS.map((grp) => ({
+    ...grp,
+    glyphs: shown.filter((g) => grp.layers.includes(g.modifierLayer)),
+  })).filter((grp) => grp.glyphs.length > 0);
+
+  const toggleCollapsed = (id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '20px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
         <ToggleBox glyph={node.trigger} state={st} size={40} onClick={() => onSetManyGlyphs(glyphs.map((x) => x.gid), st !== 'off')} />
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--app-text)' }}>{node.name}</h2>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: 'var(--app-text)', lineHeight: 1 }}>{node.name}</h2>
             <KindBadge kind={node.kind} />
             {node.strategy !== undefined && <StrategyChip id={node.strategy} />}
           </div>
+          <p style={{ ...blurbStyle, margin: 0 }}>
+            {node.kind === 'pattern'
+              ? 'A recognized pattern groups related key rules by purpose — for example, "vowels with diacritics" or "base alphabet". Removing it removes all rules that produce those characters.'
+              : 'A group is a block of key rules from the original keyboard that hasn\'t been recognized as a named pattern. Removing it removes every rule inside it.'}
+          </p>
         </div>
         <button
           onClick={() => onSetManyGlyphs(glyphs.map((x) => x.gid), st !== 'off')}
@@ -254,19 +276,65 @@ export function Inspector({ node, nodes, isItemDeleted, onToggleGlyph, onSetMany
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gridAutoRows: rowHeight + 'px', gap: 8, marginTop: big ? 12 : 18 }}>
-        {shown.map((x) => (
-          <GlyphCell
-            key={x.gid}
-            gid={x.gid}
-            ch={x.ch}
-            keys={x.keys}
-            off={isItemDeleted(x.gid)}
-            color={KIND_COLOR[node.kind]}
-            onToggle={onToggleGlyph}
-          />
-        ))}
-      </div>
+      {groupedGlyphs.map((grp) => {
+        const isCollapsed = collapsed.has(grp.id);
+        const grpState = glyphsTriState(grp.glyphs, isItemDeleted);
+        return (
+          <div key={grp.id} style={{ marginTop: 18 }}>
+            {/* Group header row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <button
+                onClick={() => toggleCollapsed(grp.id)}
+                aria-expanded={!isCollapsed}
+                style={{
+                  flex: 1, display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer',
+                  background: 'var(--app-surface)', border: '1px solid var(--app-border)',
+                  borderRadius: 7, padding: '5px 10px', textAlign: 'left',
+                }}
+              >
+                <span style={{ font: '600 11.5px var(--app-font)', color: grpState === 'off' ? 'var(--app-text-subtle)' : 'var(--app-text)', textDecoration: grpState === 'off' ? 'line-through' : 'none', letterSpacing: '.04em' }}>
+                  {grp.label}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--app-text-subtle)' }}>
+                  · {grp.glyphs.length} rules
+                </span>
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--app-text-subtle)' }}>
+                  {isCollapsed ? '▶' : '▼'}
+                </span>
+              </button>
+              {/* Per-group bulk button */}
+              <button
+                onClick={() => onSetManyGlyphs(grp.glyphs.map((g) => g.gid), grpState !== 'off')}
+                onMouseEnter={() => setInfo({ kind: 'text', title: grpState === 'off' ? 'Keep all' : 'Remove all', body: grpState === 'off' ? `Restore every ${grp.label} key in this group.` : `Remove every ${grp.label} key in this group — you can restore them later.` })}
+                onFocus={() => setInfo({ kind: 'text', title: grpState === 'off' ? 'Keep all' : 'Remove all', body: grpState === 'off' ? `Restore every ${grp.label} key in this group.` : `Remove every ${grp.label} key in this group — you can restore them later.` })}
+                onMouseLeave={clearInfo}
+                onBlur={clearInfo}
+                style={{ ...btnGhost, fontSize: 11, padding: '5px 10px' }}
+              >
+                {grpState === 'off' ? 'Keep all' : 'Remove all'}
+              </button>
+            </div>
+            {/* Per-group glyph subgrid */}
+            {!isCollapsed && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gridAutoRows: rowHeight + 'px', gap: 8 }}>
+                {grp.glyphs.map((x) => (
+                  <GlyphCell
+                    key={x.gid}
+                    gid={x.gid}
+                    ch={x.ch}
+                    keys={x.keys}
+                    off={isItemDeleted(x.gid)}
+                    color={KIND_COLOR[node.kind]}
+                    onToggle={onToggleGlyph}
+                    modifierLabel={x.modifierLabel}
+                    capability={x.capability}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -262,6 +262,30 @@ function parseStoreItems(rawValue: string): { items: StoreItem[]; opaqueReason: 
       items.push({ kind: "vkey", name: vk.name });
       continue;
     }
+    // outs(store) — inline expansion of another store's content. The typed
+    // store-item model can't represent it, so (like parseOutputElements, which
+    // classifies the same token as OPAQUE_REASONS.OUTS_EXPANSION) mark the whole
+    // store opaque. Checked before the raw fallback so "outs(...)" is preserved
+    // verbatim as a RawKmnFragment rather than emitted as literal store content
+    // — which would produce broken .kmn once the store is referenced via
+    // any()/notany().
+    if (parseOuts(tok) !== null) {
+      return { items, opaqueReason: OPAQUE_REASONS.OUTS_EXPANSION };
+    }
+    // if(...) / save|set|reset(...) / call(...) / return — option-store and
+    // flow directives. These are not valid store-body content, but a malformed
+    // source must not let them fall to a raw item (which would re-emit as broken
+    // .kmn). Classify opaque, mirroring parseContextElements / parseOutputElements
+    // so the whole token-classification-miss class is closed across all three.
+    if (/^if\s*\(/i.test(tok)) {
+      return { items, opaqueReason: OPAQUE_REASONS.IF_OPTION_STORE };
+    }
+    if (/^(?:save|set|reset)\s*\(/i.test(tok)) {
+      return { items, opaqueReason: OPAQUE_REASONS.OPTION_STORE_DIRECTIVE };
+    }
+    if (/^call\s*\(/i.test(tok) || /^return$/i.test(tok)) {
+      return { items, opaqueReason: OPAQUE_REASONS.CALL_RETURN };
+    }
     // bare identifier (treated as raw if unrecognized)
     items.push({ kind: "raw", text: tok });
   }
@@ -354,6 +378,13 @@ function parseContextElements(
     if (baselayoutValue !== null) {
       elements.push({ kind: "baselayout", value: baselayoutValue });
       continue;
+    }
+    // outs(store) — store-expansion reference in context position: opaque.
+    // Mirrors parseOutputElements / parseStoreItems; without this a context
+    // outs() would fall to a raw item and emit broken .kmn.
+    if (parseOuts(tok) !== null) {
+      opaqueOut.reason = OPAQUE_REASONS.OUTS_EXPANSION;
+      return null;
     }
     // if(...) — opaque
     if (/^if\s*\(/i.test(tok)) {

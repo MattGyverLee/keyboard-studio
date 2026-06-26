@@ -34,7 +34,8 @@ import { useValidator } from "./hooks/useValidator.ts";
 import { usePlacementPriors } from "./hooks/usePlacementPriors.ts";
 import { findKmnPath } from "./lib/findKmnPath.ts";
 import { resolveBaseTouchJson } from "./lib/resolveBaseTouchJson.ts";
-import { buildFindingsByQuestionId } from "./lint/lintToQuestion.ts";
+import { buildFindingsByQuestionId, selectUnmappedFindings } from "./lint/lintToQuestion.ts";
+import { LintSummary } from "./lint/index.ts";
 import { getPatternLibraryService } from "./lib/services.ts";
 import { physicalAssignmentsOf } from "./lib/physicalAssignments.ts";
 import { FlowMapView } from "./flowmap/FlowMapView.tsx";
@@ -232,7 +233,7 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
     selectedTrackRef.current = selectedTrack;
   }, [selectedTrack]);
 
-  const onInstantiate = useCallback<OnInstantiateCallback>((base, { vfs, ir }) => {
+  const onInstantiate = useCallback<OnInstantiateCallback>((base, { vfs, ir, removalCapabilities }) => {
     const track = selectedTrackRef.current;
     if (track === "adapt") {
       // Track 2: preserve existing keyboard identity.
@@ -240,10 +241,10 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
         console.warn("[studio] Track 2 instantiate skipped: no parsed IR (mock engine?)");
         return;
       }
-      useWorkingCopyStore.getState().instantiateFromExisting(base, { vfs, ir });
+      useWorkingCopyStore.getState().instantiateFromExisting(base, { vfs, ir, removalCapabilities });
     } else {
       // Track 1 (or null/default): new keyboard from base, with rebase guard.
-      instantiateFromBaseIfConfirmed(base, { vfs, ir });
+      instantiateFromBaseIfConfirmed(base, { vfs, ir, removalCapabilities });
     }
   }, []);
 
@@ -312,6 +313,7 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
     () => buildFindingsByQuestionId(findings),
     [findings],
   );
+  const globalFindings = useMemo(() => selectUnmappedFindings(findings), [findings]);
 
   // Identity-lite is the hybrid flow's head: it captures the language + the
   // INDEPENDENT target script, deriving the routing/A2 prefill. Gated scripts
@@ -533,6 +535,9 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
     >
       {/* Left pane: survey questions */}
       <section aria-label="Survey questions" style={questionsPaneStyle}>
+        {globalFindings.length > 0 && (
+          <LintSummary findings={globalFindings} />
+        )}
         {stage === "done" && donePaneContent}
         {stage === "identity" && (
           <IdentityLite

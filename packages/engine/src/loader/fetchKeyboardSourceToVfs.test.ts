@@ -8,6 +8,11 @@
 //   3. Optional sibling missing (BITMAP / KMW_HELPFILE): does NOT throw; records
 //      a warning. Locks the required-vs-optional classification so a future
 //      reclassification is a conscious test change.
+//   4. proxyBase pass-through: the .kmn fetch URL is built from proxyBase
+//      (regression guard against dropping the proxy prefix).
+//   5. KMW_EMBEDCSS sibling fetched as text (optional).
+//   6. INCLUDECODES constants file fetched as text (required — missing throws);
+//      includes a .json-sibling case that locks the isText `.json` classification.
 //
 // No network traffic — all fetches use the injected mockFetch.
 
@@ -313,5 +318,147 @@ describe("fetchKeyboardSourceToVfs — proxyBase pass-through", () => {
 
     // The .kmn itself must have been fetched from the correct URL.
     expect(calls).toContain(customSourceUrl("sil_euro_latin.kmn"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 5: KMW_EMBEDCSS sibling is fetched into the VFS as text.
+// The visual-keyboard CSS the KMW compiler embeds — previously absent from the
+// fetched-sibling list, so it never reached the VFS and the compiler's
+// loadFile() returned null; kmc-kmn then ran TextDecoder().decode(null), a
+// confusing TypeError that silently dropped the keyboard's styling from the OSK
+// preview (sil_cameroon_azerty: store(&KMW_EMBEDCSS) 'sil_cameroon_azerty.css').
+// ---------------------------------------------------------------------------
+
+describe("fetchKeyboardSourceToVfs — KMW_EMBEDCSS sibling", () => {
+  const kmnWithEmbedCss = `c kb
+store(&KMW_EMBEDCSS) 'sil_euro_latin.css'
+begin Unicode > use(main)
+group(main) using keys
++ 'a' > 'b'
+`;
+
+  it("fetches the .css sibling into source/<file> as text (not null at compile)", async () => {
+    const cssBody = ".kmw-key-text { font-family: 'Andika Afr'; }\n";
+    const { fetchImpl, calls } = makeMockFetch({
+      [sourceUrl(euroLatinKb, "sil_euro_latin.kmn")]: { ok: true, status: 200, body: kmnWithEmbedCss },
+      [sourceUrl(euroLatinKb, "sil_euro_latin.css")]: { ok: true, status: 200, body: cssBody },
+      [sourceUrl(euroLatinKb, "sil_euro_latin.kps")]: { ok: false, status: 404, body: "" },
+      [`${PROXY}/${euroLatinKb.path}/sil_euro_latin.kpj`]: { ok: false, status: 404, body: "" },
+    });
+
+    const vfs = createVirtualFS();
+    const result = await fetchKeyboardSourceToVfs(euroLatinKb, vfs, { proxyBase: PROXY, fetchImpl });
+
+    // The CSS must land in the VFS as a STRING, so the compiler's loadFile()
+    // returns real bytes for the KMW_EMBEDCSS step rather than null.
+    const entry = vfs.get("source/sil_euro_latin.css");
+    expect(entry).toBeDefined();
+    expect(typeof entry!.content).toBe("string");
+    expect(entry!.content).toBe(cssBody);
+    expect(result.filesLoaded).toContain("source/sil_euro_latin.css");
+    expect(calls).toContain(sourceUrl(euroLatinKb, "sil_euro_latin.css"));
+  });
+
+  it("is optional — a missing .css warns and does not throw", async () => {
+    const { fetchImpl } = makeMockFetch({
+      [sourceUrl(euroLatinKb, "sil_euro_latin.kmn")]: { ok: true, status: 200, body: kmnWithEmbedCss },
+      [sourceUrl(euroLatinKb, "sil_euro_latin.css")]: { ok: false, status: 404, body: "" },
+      [sourceUrl(euroLatinKb, "sil_euro_latin.kps")]: { ok: false, status: 404, body: "" },
+      [`${PROXY}/${euroLatinKb.path}/sil_euro_latin.kpj`]: { ok: false, status: 404, body: "" },
+    });
+
+    const vfs = createVirtualFS();
+    const result = await fetchKeyboardSourceToVfs(euroLatinKb, vfs, { proxyBase: PROXY, fetchImpl });
+    expect(vfs.get("source/sil_euro_latin.css")).toBeUndefined();
+    expect(result.warnings.find((w) => w.includes("KMW_EMBEDCSS"))).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 6: INCLUDECODES sibling is fetched into the VFS as text.
+// The Unicode name-constants file kmcmplib reads via CodeConstants->LoadFile().
+// Same silently-dropped-sibling class as KMW_EMBEDCSS / DISPLAYMAP: before this
+// store joined SYSTEM_STORES the loader never fetched it, so a declaring keyboard
+// failed compile with ERROR_CannotLoadIncludeFile. Required (not stripped for the
+// preview), so a missing one throws a clear error at fetch time.
+// ---------------------------------------------------------------------------
+
+describe("fetchKeyboardSourceToVfs — INCLUDECODES sibling", () => {
+  const kmnWithIncludeCodes = `c kb
+store(&INCLUDECODES) 'codes.txt'
+begin Unicode > use(main)
+group(main) using keys
++ 'a' > 'b'
+`;
+
+  it("fetches the constants file into source/<file> as text", async () => {
+    const codesBody = "U_ALPHA U+0391\nU_BETA U+0392\n";
+    const { fetchImpl, calls } = makeMockFetch({
+      [sourceUrl(euroLatinKb, "sil_euro_latin.kmn")]: { ok: true, status: 200, body: kmnWithIncludeCodes },
+      [sourceUrl(euroLatinKb, "codes.txt")]: { ok: true, status: 200, body: codesBody },
+      [sourceUrl(euroLatinKb, "sil_euro_latin.kps")]: { ok: false, status: 404, body: "" },
+      [`${PROXY}/${euroLatinKb.path}/sil_euro_latin.kpj`]: { ok: false, status: 404, body: "" },
+    });
+
+    const vfs = createVirtualFS();
+    const result = await fetchKeyboardSourceToVfs(euroLatinKb, vfs, { proxyBase: PROXY, fetchImpl });
+
+    const entry = vfs.get("source/codes.txt");
+    expect(entry).toBeDefined();
+    expect(typeof entry!.content).toBe("string");
+    expect(entry!.content).toBe(codesBody);
+    expect(result.filesLoaded).toContain("source/codes.txt");
+    expect(calls).toContain(sourceUrl(euroLatinKb, "codes.txt"));
+  });
+
+  // Locks the `.json` entry in the loader's isText regex: a sibling with a .json
+  // extension must be stored as a string (text), not raw bytes. Non-behavioral
+  // today (entryContentAsBytes re-encodes either way), but this guards against a
+  // future regex edit silently reclassifying .json siblings as binary.
+  it("classifies a .json constants sibling as text (locks isText `.json`)", async () => {
+    const kmnWithJsonCodes = `c kb
+store(&INCLUDECODES) 'codes.json'
+begin Unicode > use(main)
+group(main) using keys
++ 'a' > 'b'
+`;
+    const jsonBody = '{"U_ALPHA":"U+0391"}';
+    const { fetchImpl } = makeMockFetch({
+      [sourceUrl(euroLatinKb, "sil_euro_latin.kmn")]: { ok: true, status: 200, body: kmnWithJsonCodes },
+      [sourceUrl(euroLatinKb, "codes.json")]: { ok: true, status: 200, body: jsonBody },
+      [sourceUrl(euroLatinKb, "sil_euro_latin.kps")]: { ok: false, status: 404, body: "" },
+      [`${PROXY}/${euroLatinKb.path}/sil_euro_latin.kpj`]: { ok: false, status: 404, body: "" },
+    });
+
+    const vfs = createVirtualFS();
+    await fetchKeyboardSourceToVfs(euroLatinKb, vfs, { proxyBase: PROXY, fetchImpl });
+
+    const entry = vfs.get("source/codes.json");
+    expect(entry).toBeDefined();
+    expect(typeof entry!.content).toBe("string");
+    expect(entry!.content).toBe(jsonBody);
+  });
+
+  it("is required — a missing constants file throws naming the store, file, URL, and keyboard id", async () => {
+    const { fetchImpl } = makeMockFetch({
+      [sourceUrl(euroLatinKb, "sil_euro_latin.kmn")]: { ok: true, status: 200, body: kmnWithIncludeCodes },
+      [sourceUrl(euroLatinKb, "codes.txt")]: { ok: false, status: 404, body: "" },
+      [sourceUrl(euroLatinKb, "sil_euro_latin.kps")]: { ok: false, status: 404, body: "" },
+      [`${PROXY}/${euroLatinKb.path}/sil_euro_latin.kpj`]: { ok: false, status: 404, body: "" },
+    });
+
+    const vfs = createVirtualFS();
+    const error = await fetchKeyboardSourceToVfs(euroLatinKb, vfs, { proxyBase: PROXY, fetchImpl }).then(
+      () => {
+        throw new Error("expected fetchKeyboardSourceToVfs to throw on missing INCLUDECODES");
+      },
+      (e: unknown) => e as Error,
+    );
+
+    expect(error.message).toContain("INCLUDECODES");
+    expect(error.message).toContain("codes.txt");
+    expect(error.message).toContain(sourceUrl(euroLatinKb, "codes.txt"));
+    expect(error.message).toContain("sil_euro_latin");
   });
 });

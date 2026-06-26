@@ -81,6 +81,7 @@ beforeAll(async () => {
   app = await buildServer({
     clientId: "ci-client-id",
     clientSecret: "ci-client-secret-SHOULD-NEVER-APPEAR",
+    googleOAuthEnabled: true,
     googleClientId: GOOGLE_CLIENT_ID,
     googleClientSecret: "ci-google-client-secret-SHOULD-NEVER-APPEAR",
     allowedOrigins: [ALLOWED_ORIGIN],
@@ -194,8 +195,7 @@ describe("POST /oauth/exchange — secret leakage", () => {
     const errApp = await buildServer({
       clientId: "ci-client-id",
       clientSecret: "ci-client-secret-SHOULD-NEVER-APPEAR",
-      googleClientId: "ci-google-client",
-      googleClientSecret: "ci-google-secret-SHOULD-NEVER-APPEAR",
+      googleOAuthEnabled: false,
       allowedOrigins: [ALLOWED_ORIGIN],
       fetchFn: errorFetch,
     });
@@ -230,8 +230,7 @@ describe("POST /oauth/exchange — upstream gateway errors", () => {
     const gatewayApp = await buildServer({
       clientId: "ci-client-id",
       clientSecret: "ci-client-secret-SHOULD-NEVER-APPEAR",
-      googleClientId: "ci-google-client",
-      googleClientSecret: "ci-google-secret-SHOULD-NEVER-APPEAR",
+      googleOAuthEnabled: false,
       allowedOrigins: [ALLOWED_ORIGIN],
       fetchFn: rateLimitFetch,
     });
@@ -293,8 +292,7 @@ describe("POST /oauth/refresh — body validation", () => {
     const rotationApp = await buildServer({
       clientId: "ci-client-id",
       clientSecret: "ci-client-secret-SHOULD-NEVER-APPEAR",
-      googleClientId: "ci-google-client",
-      googleClientSecret: "ci-google-secret-SHOULD-NEVER-APPEAR",
+      googleOAuthEnabled: false,
       allowedOrigins: [ALLOWED_ORIGIN],
       fetchFn: rotationFetch,
     });
@@ -363,6 +361,7 @@ describe("POST /oauth/google/exchange — body validation", () => {
     googleApp = await buildServer({
       clientId: "ci-client-id",
       clientSecret: "ci-client-secret-SHOULD-NEVER-APPEAR",
+      googleOAuthEnabled: true,
       googleClientId: GOOGLE_CLIENT_ID,
       googleClientSecret: "ci-google-client-secret-SHOULD-NEVER-APPEAR",
       allowedOrigins: [ALLOWED_ORIGIN],
@@ -476,6 +475,7 @@ describe("POST /oauth/google/exchange — secret leakage", () => {
     const secretApp = await buildServer({
       clientId: "ci-client-id",
       clientSecret: "ci-client-secret",
+      googleOAuthEnabled: true,
       googleClientId: GOOGLE_CLIENT_ID,
       googleClientSecret: "ci-google-secret-SHOULD-NEVER-APPEAR",
       allowedOrigins: [ALLOWED_ORIGIN],
@@ -509,6 +509,7 @@ describe("POST /oauth/google/exchange — secret leakage", () => {
     const secretErrApp = await buildServer({
       clientId: "ci-client-id",
       clientSecret: "ci-client-secret",
+      googleOAuthEnabled: true,
       googleClientId: GOOGLE_CLIENT_ID,
       googleClientSecret: "ci-google-secret-SHOULD-NEVER-APPEAR",
       allowedOrigins: [ALLOWED_ORIGIN],
@@ -543,6 +544,7 @@ describe("POST /oauth/google/exchange — CORS parity", () => {
     corsApp = await buildServer({
       clientId: "ci-client-id",
       clientSecret: "ci-client-secret",
+      googleOAuthEnabled: true,
       googleClientId: GOOGLE_CLIENT_ID,
       googleClientSecret: "ci-google-client-secret",
       allowedOrigins: [ALLOWED_ORIGIN],
@@ -633,8 +635,7 @@ async function buildManagedServer(fetchFn: GitHubPipelineFetchFn = managedPipeli
   const srv = await buildServer({
     clientId: "ci-client-id",
     clientSecret: "ci-client-secret",
-    googleClientId: GOOGLE_CLIENT_ID,
-    googleClientSecret: "ci-google-secret",
+    googleOAuthEnabled: false,
     orgToken: ORG_TOKEN,
     orgLogin: ORG_LOGIN,
     allowedOrigins: [ALLOWED_ORIGIN],
@@ -649,8 +650,7 @@ describe("POST /submit/managed-pr — config gating", () => {
     const unconfigured = await buildServer({
       clientId: "ci-client-id",
       clientSecret: "ci-client-secret",
-      googleClientId: GOOGLE_CLIENT_ID,
-      googleClientSecret: "ci-google-secret",
+      googleOAuthEnabled: false,
       allowedOrigins: [ALLOWED_ORIGIN],
       fetchFn: successFetch,
     });
@@ -835,5 +835,52 @@ describe("POST /submit/managed-pr — CORS", () => {
     const acao = res.headers["access-control-allow-origin"] as string | undefined;
     expect(acao).not.toBe(DISALLOWED_ORIGIN);
     expect(acao).not.toBe("*");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Google identity disabled — GitHub-only deployment
+// ---------------------------------------------------------------------------
+
+describe("Google identity disabled (GitHub-only deployment)", () => {
+  let ghOnlyApp: Awaited<ReturnType<typeof buildServer>>;
+
+  beforeAll(async () => {
+    // No Google credentials supplied — mirrors an existing GitHub-only operator
+    // upgrading without configuring Google. The server must still build.
+    ghOnlyApp = await buildServer({
+      clientId: "ci-client-id",
+      clientSecret: "ci-client-secret",
+      googleOAuthEnabled: false,
+      allowedOrigins: [ALLOWED_ORIGIN],
+      fetchFn: successFetch,
+    });
+    await ghOnlyApp.ready();
+  });
+
+  afterAll(async () => {
+    await ghOnlyApp.close();
+  });
+
+  it("does not register /oauth/google/exchange (returns 404)", async () => {
+    const res = await ghOnlyApp.inject({
+      method: "POST",
+      url: "/oauth/google/exchange",
+      payload: {
+        code: "google-auth-code",
+        code_verifier: "pkce-verifier",
+        redirect_uri: "http://localhost:5173/callback",
+      },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("still serves the GitHub exchange route", async () => {
+    const res = await ghOnlyApp.inject({
+      method: "POST",
+      url: "/oauth/exchange",
+      payload: { code: "github-code-abc" },
+    });
+    expect(res.statusCode).toBe(200);
   });
 });

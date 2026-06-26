@@ -92,8 +92,8 @@ export function usePreviewArtifact(): PreviewArtifact {
   // Delegates to instantiateFromBaseIfConfirmed which reads live store state via
   // getState() so the stale-closure problem cannot arise even though this
   // callback is memoised.
-  const onInstantiate = useCallback<OnInstantiateCallback>((base, { vfs, ir }) => {
-    instantiateFromBaseIfConfirmed(base, { vfs, ir });
+  const onInstantiate = useCallback<OnInstantiateCallback>((base, { vfs, ir, removalCapabilities }) => {
+    instantiateFromBaseIfConfirmed(base, { vfs, ir, removalCapabilities });
   }, []);
 
   // Working-copy transform — projects carve + identity layers into the pick-base

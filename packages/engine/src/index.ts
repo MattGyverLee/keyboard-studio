@@ -73,7 +73,7 @@ export { bumpKeyboardVersion, stageAdaptHistory } from "./output/index.js";
 // browser-targeted SPA from following that import chain.
 
 // Issue #234 — pattern recognizer public surface.
-export { recognizePatterns } from "./recognizer/index.js";
+export { recognizePatterns, classifyRemovalCapabilities } from "./recognizer/index.js";
 export type { RecognizerRule, MatchResult, RecognizeResult } from "./recognizer/index.js";
 
 // Issue #19 — scaffolder (template-cleanup pipeline).
@@ -118,8 +118,8 @@ export type { CldrLoader, ExemplarResult } from "./character-discovery/cldr.js";
 export { createFetchCldrLoader } from "./character-discovery/cldr.js";
 
 // Pattern-apply: slot substitution + MechanismAssignment[] to .kmn injection.
-export { substituteSlots, applyAssignments, applyAssignmentsToVfs, applyCarveToVfs, applyKeycapLabelsToVfs, resolveRenderableMechanisms, applyTouchAssignments, applyTouchAssignmentsToRawJson } from "./pattern-apply/index.js";
-export type { SubstituteResult, ApplyAssignmentsResult, ApplyTouchAssignmentsResult, ApplyTouchAssignmentsToRawJsonResult } from "./pattern-apply/index.js";
+export { substituteSlots, applyAssignments, applyAssignmentsToVfs, applyCarveToVfs, applyKeycapLabelsToVfs, resolveRenderableMechanisms, applyTouchAssignments, applyTouchAssignmentsToRawJson, applyStoreSlotRemovals, parseSlotId } from "./pattern-apply/index.js";
+export type { SubstituteResult, ApplyAssignmentsResult, ApplyTouchAssignmentsResult, ApplyTouchAssignmentsToRawJsonResult, ApplyCarveToVfsOpts, StoreSlotRemovalResult } from "./pattern-apply/index.js";
 
 // Inventory diff (spec §8): static extraction of a keyboard's produced glyph set.
 export { producedGlyphs, collectFromOutput } from "./inventory/producedGlyphs.js";
