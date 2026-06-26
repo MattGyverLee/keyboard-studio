@@ -136,14 +136,9 @@ describe("suggestMissingCharacters — confidence gate (null)", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null for bare macrolanguage 'sw' (no region/script)", async () => {
-    const result = await suggestMissingCharacters({
-      bcp47: "sw",
-      baseIr: emptyIr,
-      loader: wouldFail,
-    });
-    expect(result).toBeNull();
-  });
+  // NOTE: "sw" is deliberately NOT gated — Swahili members share Latin
+  // orthography/inventory, so CLDR "sw" exemplars are representative.
+  // See the "gate passes for sw" test in section 2 below.
 
   it("returns null for bare macrolanguage 'fa' (no region/script)", async () => {
     const result = await suggestMissingCharacters({
@@ -191,6 +186,18 @@ describe("suggestMissingCharacters — gate passes for narrowed macrolanguage", 
       loader,
     });
     expect(result).not.toBeNull();
+  });
+
+  it("bare 'sw' passes the gate and returns non-null (members share Latin orthography)", async () => {
+    // "sw" is not in MACROLANGUAGE_SUBTAGS — CLDR sw exemplars are representative.
+    const loader = makeLoader("[ẹ ọ]"); // non-ASCII letters sw loader might have
+    const result = await suggestMissingCharacters({
+      bcp47: "sw",
+      baseIr: emptyIr,
+      loader,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.main.length).toBeGreaterThan(0);
   });
 });
 
@@ -376,12 +383,99 @@ describe("suggestMissingCharacters — Turkic case-folding exception", () => {
     expect(result!.main).toContain("ı");
   });
 
-  it("kk locale: treated as Turkic — exact NFC match required", async () => {
+  // az-Latn → explicit Latin script, default is also Latin → suppressed (explicit-subtag branch)
+  it("az-Latn: explicit Latin script — case-fold suppressed, dotless-i IS suggested", async () => {
+    // Exercises the explicit-script branch of effectiveScriptIsLatin for a locale
+    // whose default is also Latin (contrast: kk-Latn exercises the same branch for a
+    // Cyrillic-default locale). Both must reach the same suppressed outcome.
+    const loader = makeLoader("[ı]");
+    const baseIr = irProducing(["I", "i"]);
+    const result = await suggestMissingCharacters({ bcp47: "az-Latn", baseIr, loader });
+    expect(result).not.toBeNull();
+    expect(result!.main).toContain("ı");
+  });
+
+  // kk bare → Cyrillic default → case-fold applies (NOT suppressed)
+  it("bare kk locale: Cyrillic default — case-fold applies, Cyrillic case pair IS covered", async () => {
+    // ә (U+04D9, Cyrillic small letter schwa) and Ә (U+04D8, capital).
+    // With case-fold: base produces Ә (uppercase), ә is covered → NOT suggested.
+    const loader = makeLoader("[ә]"); // lowercase ә
+    const baseIr = irProducing(["Ә"]); // uppercase Ә
+    const result = await suggestMissingCharacters({ bcp47: "kk", baseIr, loader });
+    expect(result).not.toBeNull();
+    // ә must NOT be suggested — covered via JS case-fold (Cyrillic, not suppressed)
+    expect(result!.main).not.toContain("ә");
+  });
+
+  it("bare kk locale: Cyrillic default — ı (dotless-i) is covered by I via toUpperCase fold", async () => {
+    // With case-fold enabled (Cyrillic kk), isCovered checks toUpperCase:
+    // "ı".toUpperCase() === "I" (JS standard), and the base has "I" → ı IS covered.
+    // This is correct: the dotted-I hazard only matters for suppression
+    // (where we fear fold in the wrong direction). Here we fold correctly.
     const loader = makeLoader("[ı]");
     const baseIr = irProducing(["I", "i"]);
     const result = await suggestMissingCharacters({ bcp47: "kk", baseIr, loader });
     expect(result).not.toBeNull();
+    // ı is NOT suggested — covered via toUpperCase() fold ("ı" → "I" present in base)
+    expect(result!.main).not.toContain("ı");
+  });
+
+  // kk-Latn → explicit Latin script → suppressed
+  it("kk-Latn: Latin script — case-fold suppressed, dotless-i IS suggested", async () => {
+    const loader = makeLoader("[ı]");
+    const baseIr = irProducing(["I", "i"]);
+    const result = await suggestMissingCharacters({ bcp47: "kk-Latn", baseIr, loader });
+    expect(result).not.toBeNull();
     expect(result!.main).toContain("ı");
+  });
+
+  // kk-Latn-KZ → explicit Latin script + region → suppressed
+  it("kk-Latn-KZ: Latin script + region — case-fold suppressed, dotless-i IS suggested", async () => {
+    const loader = makeLoader("[ı]");
+    const baseIr = irProducing(["I", "i"]);
+    const result = await suggestMissingCharacters({ bcp47: "kk-Latn-KZ", baseIr, loader });
+    expect(result).not.toBeNull();
+    expect(result!.main).toContain("ı");
+  });
+
+  // kk-Cyrl → explicit Cyrillic script → NOT suppressed, Cyrillic case pair covered
+  it("kk-Cyrl: explicit Cyrillic script — case-fold applies, Cyrillic case pair covered", async () => {
+    const loader = makeLoader("[ә]"); // lowercase ә
+    const baseIr = irProducing(["Ә"]); // uppercase Ә
+    const result = await suggestMissingCharacters({ bcp47: "kk-Cyrl", baseIr, loader });
+    expect(result).not.toBeNull();
+    expect(result!.main).not.toContain("ә");
+  });
+
+  // kk-KZ → region only, no explicit script → Cyrillic default → NOT suppressed
+  it("kk-KZ: region suffix, no explicit script — Cyrillic default, case-fold applies", async () => {
+    const loader = makeLoader("[ә]"); // lowercase ә
+    const baseIr = irProducing(["Ә"]); // uppercase Ә
+    const result = await suggestMissingCharacters({ bcp47: "kk-KZ", baseIr, loader });
+    expect(result).not.toBeNull();
+    expect(result!.main).not.toContain("ә");
+  });
+
+  // az-Cyrl → explicit Cyrillic → NOT suppressed (contrast with bare az which stays suppressed)
+  it("az-Cyrl: explicit Cyrillic — NOT suppressed; ı covered by I via toUpperCase fold", async () => {
+    // With case-fold enabled (az-Cyrl), "ı".toUpperCase() === "I" → base covers ı.
+    // Contrast with bare "az" (Latin default, suppressed) where I/i do NOT cover ı.
+    const loader = makeLoader("[ı]");
+    const baseIr = irProducing(["I", "i"]);
+    const result = await suggestMissingCharacters({ bcp47: "az-Cyrl", baseIr, loader });
+    expect(result).not.toBeNull();
+    // ı NOT suggested — case-fold enabled, "ı".toUpperCase()="I" is in base
+    expect(result!.main).not.toContain("ı");
+  });
+
+  it("az-Cyrl: Cyrillic case pair IS covered via case-fold (not suppressed)", async () => {
+    // Azerbaijani Cyrillic letter ə (U+0259) and Ə (U+018F).
+    // With case-fold enabled: Ə covers ə → ə NOT suggested.
+    const loader = makeLoader("[ə]"); // U+0259 lowercase schwa
+    const baseIr = irProducing(["Ə"]); // U+018F uppercase schwa
+    const result = await suggestMissingCharacters({ bcp47: "az-Cyrl", baseIr, loader });
+    expect(result).not.toBeNull();
+    expect(result!.main).not.toContain("ə");
   });
 
   it("non-Turkic (yo) locale: I covers i via case-fold — i not suggested", async () => {

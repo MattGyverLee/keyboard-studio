@@ -16,19 +16,24 @@
  *   1. The BCP47 language subtag is "und" or the tag is script-only (no lang).
  *   2. The primary language subtag is in the ISO 639-3 private-use range
  *      (qaa-qtz), matched by /^q[a-t][a-z]$/.
- *   3. The tag is an un-narrowed macrolanguage (bare "ms", "zh", "ar", "sw",
- *      "fa" with no region or script suffix). A macrolanguage + region/script
- *      passes the gate.
+ *   3. The tag is an un-narrowed macrolanguage (bare "ms", "zh", "ar", "fa"
+ *      with no region or script suffix). A macrolanguage + region/script
+ *      passes the gate. Note: "sw" (Swahili) is NOT gated — its members share
+ *      the same Latin orthography/inventory, so CLDR "sw" exemplars are
+ *      representative across member languages.
  *   4. loadExemplarsFromFull returns null (no CLDR locale match). We never fall
  *      back to SCRIPT_BLOCKS — that broad fallback is for the picker, not here.
  *   5. After letter-filtering, the main exemplar set is empty.
  *
  * Turkic case-folding caveat
  * ---------------------------
- * JS toUpperCase/toLowerCase mishandles the Turkic dotted-I system (i/I/i/I).
- * For locales "tr", "az", and "kk" (when using Latin script), case-fold
- * comparisons are skipped: a candidate is covered only if its exact NFC form
- * is in the keyboard's produced set.
+ * JS toUpperCase/toLowerCase mishandles the Turkic dotted-I system (i/I/ı/İ).
+ * Case-fold suppression (exact-NFC-only matching) applies ONLY when the
+ * effective script is Latin. Effective script = the explicit script subtag if
+ * the tag carries one, otherwise the locale's default script. Default scripts:
+ *   tr → Latn (suppressed), az → Latn (suppressed), kk → Cyrl (NOT suppressed).
+ * For example, bare "kk" defaults to Cyrillic and uses normal JS case-fold;
+ * "kk-Latn" is Latin-script Kazakh and suppresses case-fold.
  */
 
 import type { KeyboardIR } from "@keyboard-studio/contracts";
@@ -58,16 +63,30 @@ export interface MissingCharSuggestions {
  * character suggestions when used without a region or script narrower.
  * Add entries here only for tags that have substantially different orthographies
  * across their member languages (i.e. where a single exemplar set would mislead).
+ *
+ * Note: "sw" (Swahili) is deliberately excluded from this set. Its member
+ * languages (swh, swc, etc.) share the same Latin orthography and inventory,
+ * so CLDR "sw" exemplars are representative — gating bare "sw" provides no
+ * benefit and blocks valid character suggestions.
  */
-const MACROLANGUAGE_SUBTAGS = new Set(["ms", "zh", "ar", "sw", "fa"]);
+const MACROLANGUAGE_SUBTAGS = new Set(["ms", "zh", "ar", "fa"]);
 
 /**
- * Turkic locales for which JS case folding is incorrect and must be skipped.
- * "kk" (Kazakh) only applies when the script is Latin; we conservatively
- * include it regardless because most kk-Latin keyboards will match via exact
- * NFC anyway (Cyrillic kk characters are unaffected by i/I confusion).
+ * Turkic locales for which JS case folding may be incorrect (dotted-I hazard).
+ * The suppression only applies when the effective script is Latin — see
+ * `effectiveScriptIsLatin()`. Default scripts: tr → Latn, az → Latn, kk → Cyrl.
  */
 const TURKIC_LOCALES = new Set(["tr", "az", "kk"]);
+
+/**
+ * Default scripts for primaries in TURKIC_LOCALES.
+ * Only consulted when the BCP47 tag carries no explicit script subtag.
+ */
+const TURKIC_DEFAULT_SCRIPT: Record<string, string> = {
+  tr: "Latn",
+  az: "Latn",
+  kk: "Cyrl",
+};
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -150,14 +169,55 @@ function letterFilter(chars: string[]): string[] {
 }
 
 /**
+ * Returns true when the BCP47 tag's effective script is Latin.
+ *
+ * Intended to be called only for primaries already in TURKIC_LOCALES — the
+ * default-script fallback (step 2) only covers those primaries.
+ *
+ * Detection order:
+ *   1. Look for an explicit 4-letter alpha script subtag in any position after
+ *      the primary subtag (BCP47: variant subtags are >=5 chars or digit-led;
+ *      a 4-alpha subtag here is a script code). Compare case-insensitively to
+ *      "latn".
+ *   2. If no explicit script subtag is present, fall back to TURKIC_DEFAULT_SCRIPT
+ *      for the primary. This map is only consulted for primaries already in
+ *      TURKIC_LOCALES, so every entry is covered.
+ *
+ * Pure function; no external state.
+ *
+ * @param bcp47   Full BCP47 tag as supplied by the caller.
+ * @param primary Must equal primarySubtag(bcp47); only consulted for the
+ *                default-script fallback — pass it rather than re-deriving.
+ */
+function effectiveScriptIsLatin(bcp47: string, primary: string): boolean {
+  const parts = bcp47.split("-");
+  // Skip the primary subtag (index 0) and look for a 4-letter alpha script subtag.
+  // BCP47: variant subtags are >=5 chars or digit-led; a 4-alpha subtag is a script code.
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i]!;
+    if (/^[A-Za-z]{4}$/.test(part)) {
+      // Found an explicit script subtag.
+      return part.toLowerCase() === "latn";
+    }
+  }
+  // No explicit script subtag — use the locale default.
+  // Unreachable in practice: every TURKIC_LOCALES primary has a TURKIC_DEFAULT_SCRIPT entry;
+  // the ?? "Latn" is a defensive default only.
+  const defaultScript = TURKIC_DEFAULT_SCRIPT[primary] ?? "Latn";
+  return defaultScript.toLowerCase() === "latn";
+}
+
+/**
  * Returns true if the candidate character is considered "covered" by the
  * keyboard's produced set.
  *
  * For most locales: covered if the exact NFC form OR its case-folded counterpart
  * (toUpperCase / toLowerCase) is present in the produced set.
  *
- * For Turkic locales (tr, az, kk): covered ONLY if the exact NFC form is
- * present, because JS case folding mishandles i / I / dotless-i / dotted-I.
+ * For Latin-script Turkic locales (tr, az, kk-Latn, etc.): covered ONLY if the
+ * exact NFC form is present, because JS case folding mishandles i / I /
+ * dotless-i / dotted-I. Cyrillic-script Turkic (bare kk, kk-Cyrl, az-Cyrl)
+ * uses normal case-fold — the dotted-I hazard is Latin-only.
  */
 function isCovered(ch: string, produced: Set<string>, isTurkic: boolean): boolean {
   if (produced.has(ch)) return true;
@@ -217,8 +277,11 @@ export async function suggestMissingCharacters(args: {
   const produced = buildProducedSet(baseIr);
 
   // --- Determine Turkic case-fold suppression ---
+  // Suppression applies ONLY for Latin-script Turkic locales.
+  // Bare "kk" defaults to Cyrillic and must NOT suppress case-fold.
   const primary = primarySubtag(bcp47);
-  const isTurkic = TURKIC_LOCALES.has(primary);
+  const isTurkic =
+    TURKIC_LOCALES.has(primary) && effectiveScriptIsLatin(bcp47, primary);
 
   // --- Compute missing main characters ---
   const missingMain = mainCandidates
