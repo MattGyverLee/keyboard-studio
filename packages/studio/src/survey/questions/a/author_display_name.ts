@@ -3,8 +3,6 @@
 
 import type { QuestionModule, ValidationResult } from "../../types.ts";
 
-import { irPath } from "@keyboard-studio/contracts";
-
 export const definition = {
   id: "author_display_name",
   prompt: "Who should be listed as the author of this keyboard?",
@@ -47,7 +45,8 @@ export const fixtures: QuestionModule["fixtures"] = {
 };
 
 
-export const inputs = [] as const;
-export const writes = [irPath("header", "name")] as const;
-const mod: QuestionModule = { definition, validate, fixtures, inputs, writes };
+// writes: [] — author/publisher name populates KeyboardIdentity/.kps package metadata,
+// which is outside KeyboardIR; it is not the keyboard's &NAME display name
+// (that is language_name_english, which writes header.name).
+const mod: QuestionModule = { definition, validate, fixtures, inputs: [], writes: [] };
 export default mod;

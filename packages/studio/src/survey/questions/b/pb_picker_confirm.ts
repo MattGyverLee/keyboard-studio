@@ -34,7 +34,5 @@ export const fixtures: QuestionModule["fixtures"] = {
 };
 
 
-export const inputs: readonly import("@keyboard-studio/contracts").IRPath[] = [];
-export const writes: readonly import("@keyboard-studio/contracts").IRPath[] = [];
-const mod: QuestionModule = { definition, fixtures, inputs, writes };
+const mod: QuestionModule = { definition, fixtures, inputs: [], writes: [] };
 export default mod;

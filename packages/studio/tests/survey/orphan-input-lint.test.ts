@@ -18,8 +18,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import path from "node:path";
-import { parse } from "yaml";
-import { formatIRPath } from "@keyboard-studio/contracts";
+import { formatIRPath, irPath, ARRAY_INDEX } from "@keyboard-studio/contracts";
+import { parseThinYaml } from "../../src/survey/loadModularFlow.ts";
 import { questionRegistry } from "../../src/survey/questions/registry.ts";
 
 // ---------------------------------------------------------------------------
@@ -33,22 +33,12 @@ const flowsDir = path.join(repoRoot, "content", "flows");
 
 // ---------------------------------------------------------------------------
 // Load the three modular manifests in phase order A -> B -> F
+// using the canonical validated parser from loadModularFlow.ts.
 // ---------------------------------------------------------------------------
 
-interface ThinManifest {
-  phase: string;
-  questions: string[];
-  provenance_questions?: string[];
-}
-
-function loadManifest(filename: string): ThinManifest {
+function loadManifest(filename: string) {
   const raw = readFileSync(path.join(flowsDir, filename), "utf-8");
-  const parsed = parse(raw) as {
-    phase: string;
-    questions: string[];
-    provenance_questions?: string[];
-  };
-  return parsed;
+  return parseThinYaml(raw);
 }
 
 const manifestA = loadManifest("phase_a_identity.modular.yaml");
@@ -57,7 +47,7 @@ const manifestF = loadManifest("phase_f_helpdocs.modular.yaml");
 
 // All question IDs referenced by any manifest, in phase order.
 // provenance_questions are part of phase A flow and run after main questions.
-function allIds(manifest: ThinManifest): string[] {
+function allIds(manifest: ReturnType<typeof parseThinYaml>): string[] {
   const ids = [...manifest.questions];
   if (manifest.provenance_questions) {
     ids.push(...manifest.provenance_questions);
@@ -78,6 +68,11 @@ const manifestedIds = new Set<string>(
 
 // ---------------------------------------------------------------------------
 // Orphan-input analysis
+//
+// Optional `overrideInputs` map: { [questionId]: readonly IRPath[] }
+// When provided, the given question's inputs are replaced with the override
+// value. Used by the negative probe to inject a bogus input without
+// re-implementing the full producer-set walk.
 // ---------------------------------------------------------------------------
 
 interface OrphanReport {
@@ -86,7 +81,9 @@ interface OrphanReport {
   orphanPaths: string[];
 }
 
-function analyzeOrphans(): OrphanReport[] {
+function analyzeOrphans(
+  overrideInputs?: Readonly<Record<string, readonly import("@keyboard-studio/contracts").IRPath[]>>,
+): OrphanReport[] {
   const reports: OrphanReport[] = [];
   // Accumulated producer set (as formatted path strings) — grows as we walk
   // questions in flow order.
@@ -96,11 +93,20 @@ function analyzeOrphans(): OrphanReport[] {
     for (const id of ids) {
       const mod = questionRegistry[id];
       if (mod === undefined) {
-        // Registry miss — mirror-coverage gate handles this; skip here.
-        continue;
+        // Registry miss: this is a broken manifest, not an exempt question.
+        // The separate sanity test catches it, but we must not silently skip
+        // here or the orphan gate becomes dependent on that sanity test.
+        expect.fail(
+          `Manifested question '${id}' (phase ${phase}) is absent from ` +
+            `questionRegistry. Add it to the registry before running the orphan-lint.`,
+        );
       }
 
-      const inputs = mod.inputs ?? [];
+      // Use override inputs if provided for this id; otherwise use declared inputs.
+      const inputs =
+        overrideInputs !== undefined && Object.prototype.hasOwnProperty.call(overrideInputs, id)
+          ? overrideInputs[id]!
+          : (mod.inputs ?? []);
       const writes = mod.writes ?? [];
 
       // Check inputs against the accumulated producer set (excludes self).
@@ -168,74 +174,44 @@ describe("orphan-input lint — every manifested input has a prior producer", ()
     expect(reports).toHaveLength(0);
   });
 
-  it("exempts questions not referenced by any manifest (library/reserve)", () => {
-    // This test confirms the exemption is coded correctly: any registry entry
-    // not in manifestedIds would be skipped. Currently there are none, but the
-    // logic path is tested by verifying manifestedIds covers the full registry.
+  it("all registry modules are referenced by a manifest (no non-manifested modules today)", () => {
+    // Documents the current state: every registry entry appears in a manifest.
+    // If a library/reserve module is intentionally added without a manifest
+    // entry, move it to an explicit allowlist and update this assertion.
     const registryIds = Object.keys(questionRegistry);
     const nonManifested = registryIds.filter((id) => !manifestedIds.has(id));
-    // Expected to be empty today; if it grows, those modules are exempt from
-    // orphan-input lint per the spec (library/reserve modules).
-    // This assertion documents the current state; update if reserve modules land.
     expect(
       nonManifested,
-      `Non-manifested (exempt) modules: ${nonManifested.join(", ")}. ` +
-        `This is fine — they are skipped by orphan-input lint.`,
+      `Registry modules not referenced by any manifest: [${nonManifested.join(", ")}]. ` +
+        `Add them to a manifest, or move to an explicit exempt allowlist if intentionally library/reserve.`,
     ).toHaveLength(0);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Negative probe — inject a bogus input and confirm the lint catches it.
-// This runs at test-collection time using a modified in-memory registry copy.
+// Negative probe — inject a bogus input via analyzeOrphans() overrideInputs
+// and confirm the lint catches it. Uses irPath/ARRAY_INDEX from contracts
+// to build a type-safe IRPath; never mutates the real registry.
 // ---------------------------------------------------------------------------
 
 describe("orphan-input lint — negative probe (catches real orphans)", () => {
   it("detects an injected bogus input that has no producer", () => {
-    // Clone the analyzer with a modified registry to inject a fake orphan.
-    // We pick a question that normally has inputs: [] and temporarily give it
-    // a path that nobody writes — 'groups[].rules[]' is a deep IR path with
+    // Pick a question that normally has inputs: [] and temporarily give it
+    // a path that nobody writes — groups[].rules[] is a deep IR path with
     // no producer in any manifest question.
     const PROBE_ID = "pf_credits"; // phase F, safe to probe
-    const BOGUS_PATH_KEY = "groups[].rules[]"; // no manifest question writes this
+    // irPath() produces a type-safe IRPath; formatIRPath renders it as "groups[].rules[]".
+    const BOGUS_PATH = irPath("groups", ARRAY_INDEX, "rules", ARRAY_INDEX);
+    const BOGUS_PATH_KEY = formatIRPath(BOGUS_PATH); // "groups[].rules[]"
 
-    // Run a modified analysis with the bogus input injected.
-    const producerSet = new Set<string>();
-    const reports: OrphanReport[] = [];
+    // Run the standard analysis with the bogus path injected into PROBE_ID's inputs.
+    // analyzeOrphans() reuses the same producer-set walk — no duplicated logic.
+    const pf_credits_orig = questionRegistry[PROBE_ID]!;
+    const overrideInputs: Record<string, readonly import("@keyboard-studio/contracts").IRPath[]> = {
+      [PROBE_ID]: [...(pf_credits_orig.inputs ?? []), BOGUS_PATH],
+    };
 
-    for (const { phase, ids } of phaseOrder) {
-      for (const id of ids) {
-        const mod = questionRegistry[id];
-        if (mod === undefined) continue;
-
-        // Inject the bogus input into the probe question.
-        const rawInputs =
-          id === PROBE_ID
-            ? [
-                ...(mod.inputs ?? []),
-                // A synthetic IRPath tuple that formatIRPath renders as BOGUS_PATH_KEY.
-                // We pass the raw string tuple; formatIRPath will render it.
-                ["groups", { kind: "[]" as const }, "rules", { kind: "[]" as const }] as unknown as import("@keyboard-studio/contracts").IRPath,
-              ]
-            : (mod.inputs ?? []);
-
-        const writes = mod.writes ?? [];
-
-        const orphanPaths: string[] = [];
-        for (const inputPath of rawInputs) {
-          const key = formatIRPath(inputPath);
-          if (!producerSet.has(key)) {
-            orphanPaths.push(key);
-          }
-        }
-        if (orphanPaths.length > 0) {
-          reports.push({ questionId: id, phase, orphanPaths });
-        }
-        for (const writePath of writes) {
-          producerSet.add(formatIRPath(writePath));
-        }
-      }
-    }
+    const reports = analyzeOrphans(overrideInputs);
 
     // The probe question should appear in the reports with the bogus path.
     const probeReport = reports.find((r) => r.questionId === PROBE_ID);

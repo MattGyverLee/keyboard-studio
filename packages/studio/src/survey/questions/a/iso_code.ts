@@ -36,7 +36,10 @@ export const fixtures: QuestionModule["fixtures"] = {
 };
 
 
-export const inputs = [] as const;
-export const writes = [irPath("header", "bcp47")] as const;
-const mod: QuestionModule = { definition, fixtures, inputs, writes };
+const mod: QuestionModule = {
+  definition,
+  fixtures,
+  inputs: [],
+  writes: [irPath("header", "bcp47")],
+};
 export default mod;

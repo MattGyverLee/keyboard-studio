@@ -62,9 +62,5 @@ export const fixtures: QuestionModule["fixtures"] = {
   ],
 };
 
-/** Convenience re-export of the full module shape so registry can import one symbol. */
-
-export const inputs: readonly import("@keyboard-studio/contracts").IRPath[] = [];
-export const writes: readonly import("@keyboard-studio/contracts").IRPath[] = [];
-const mod: QuestionModule = { definition, validate, fixtures, inputs, writes };
+const mod: QuestionModule = { definition, validate, fixtures, inputs: [], writes: [] };
 export default mod;

@@ -87,13 +87,11 @@ export const fixtures: QuestionModule["fixtures"] = {
 // the script-group discriminator store lands at scaffold time.
 // Do NOT clone these declarations blindly into other question modules; each module
 // must declare its own actual IR dependencies (or explicit empty arrays).
-export const inputs = [
-  irPath("header", "bcp47"),
-] as const;
-
-export const writes = [
-  irPath("stores", ARRAY_INDEX),
-] as const;
-
-const mod: QuestionModule = { definition, validate, fixtures, inputs, writes };
+const mod: QuestionModule = {
+  definition,
+  validate,
+  fixtures,
+  inputs: [irPath("header", "bcp47")],
+  writes: [irPath("stores", ARRAY_INDEX)],
+};
 export default mod;
