@@ -167,7 +167,7 @@ type RuleGroup = {
 function groupRuleDetails(rules: StoreRuleDetail[]): RuleGroup[] {
   const map = new Map<string, RuleGroup>();
   for (const r of rules) {
-    const key = `${r.isKeystroke}-${r.isContextSensitive}-${r.precedingLabel}-${r.producesOutput}-${r.platformGuard ?? ''}`;
+    const key = `${r.isKeystroke}\x00${r.isContextSensitive}\x00${r.precedingLabel}\x00${r.producesOutput}\x00${r.platformGuard ?? ''}`;
     if (!map.has(key)) map.set(key, { key, isKeystroke: r.isKeystroke, isContextSensitive: r.isContextSensitive, precedingLabel: r.precedingLabel, producesOutput: r.producesOutput, platformGuard: r.platformGuard, rules: [] });
     map.get(key)!.rules.push(r);
   }
@@ -405,7 +405,7 @@ export function Inspector({ node, nodes, isItemDeleted, onToggleGlyph, onSetMany
   }
 
   if (node.kind === 'raw') return <RawDetail node={node} isDeleted={isDeleted} onToggleNode={onToggleNode} />;
-  if (node.kind === 'store') return <StoreDetail node={node} nodes={nodes} isDeleted={isDeleted} isItemDeleted={isItemDeleted} onToggleNode={onToggleNode} />;
+  if (node.kind === 'store') return <StoreDetail key={node.nodeId} node={node} nodes={nodes} isDeleted={isDeleted} isItemDeleted={isItemDeleted} onToggleNode={onToggleNode} />;
 
   const glyphs = node.glyphs ?? [];
   const st = nodeState(node, isItemDeleted, isDeleted);
