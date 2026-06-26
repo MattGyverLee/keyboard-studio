@@ -27,7 +27,7 @@ import type {
 } from "@keyboard-studio/contracts";
 
 import { tokenize } from "./tokenize.js";
-import { NodeIdMinter } from "./node-ids.js";
+import { NodeIdMinter } from "../shared/node-ids.js";
 import { OPAQUE_REASONS, type OpaqueReason } from "./opaque-reasons.js";
 
 // System stores whose canonical spelling is NOT all-uppercase. The lookup key
