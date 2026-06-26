@@ -16,15 +16,7 @@ import { describe, it, expect } from "vitest";
 import { rule as generatedDeadkeySingleTap } from "./deadkey_single_tap.js";
 import { s02Recognizer } from "../s02-deadkey-single-tap.js";
 import type { IRGroup, IRRule, IRStore } from "@keyboard-studio/contracts";
-import { makeTestIR, charItems } from "@keyboard-studio/contracts/fixtures";
-
-function makeIR(groups: IRGroup[], stores: IRStore[]) {
-  return makeTestIR(groups, stores);
-}
-
-function store(nodeId: string, name: string, chars: string): IRStore {
-  return { nodeId, name, items: charItems(chars), isSystem: false };
-}
+import { makeTestIR, makeCharStore } from "@keyboard-studio/contracts/fixtures";
 
 function suffixId(patternId: string): string {
   return patternId.split("#")[1]?.split(":")[0] ?? "";
@@ -82,11 +74,11 @@ function buildCompleteGraveIR() {
   };
 
   const stores: IRStore[] = [
-    store("store#dkf0060", "dkf0060", " aAeEiIoOuU"),
-    store("store#dkt0060", "dkt0060", "`àÀèÈìÌòÒùÙ"),
+    makeCharStore("store#dkf0060", "dkf0060", " aAeEiIoOuU"),
+    makeCharStore("store#dkt0060", "dkt0060", "`àÀèÈìÌòÒùÙ"),
   ];
 
-  const ir = makeIR([mainGroup, deadkeysGroup], stores);
+  const ir = makeTestIR([mainGroup, deadkeysGroup], stores);
   return { ir, triggerNodeId, bodyNodeId, escapeNodeId };
 }
 
@@ -142,11 +134,11 @@ function buildTwoTriggerGraveIR() {
   };
 
   const stores: IRStore[] = [
-    store("store#dkf0060", "dkf0060", " aAeEiIoOuU"),
-    store("store#dkt0060", "dkt0060", "`àÀèÈìÌòÒùÙ"),
+    makeCharStore("store#dkf0060", "dkf0060", " aAeEiIoOuU"),
+    makeCharStore("store#dkt0060", "dkt0060", "`àÀèÈìÌòÒùÙ"),
   ];
 
-  return { ir: makeIR([mainGroup, deadkeysGroup], stores), trigger1, trigger2, bodyNodeId, escapeNodeId };
+  return { ir: makeTestIR([mainGroup, deadkeysGroup], stores), trigger1, trigger2, bodyNodeId, escapeNodeId };
 }
 
 // ---------------------------------------------------------------------------
@@ -260,10 +252,10 @@ describe("generated/deadkey_single_tap round-trip vs s02Recognizer", () => {
       ],
     };
     const stores = [
-      store("store#dkf0060", "dkf0060", " aA"),
-      store("store#dkt0060", "dkt0060", "`àÀ"),
+      makeCharStore("store#dkf0060", "dkf0060", " aA"),
+      makeCharStore("store#dkt0060", "dkt0060", "`àÀ"),
     ];
-    const ir = makeIR([deadkeysGroup], stores);
+    const ir = makeTestIR([deadkeysGroup], stores);
 
     expect(s02Recognizer.match(ir)).toHaveLength(0);
     expect(generatedDeadkeySingleTap.match(ir)).toHaveLength(0);
@@ -290,7 +282,7 @@ describe("generated/deadkey_single_tap round-trip vs s02Recognizer", () => {
       readonly: false,
       rules: [],
     };
-    const ir = makeIR([mainGroup, deadkeysGroup], []);
+    const ir = makeTestIR([mainGroup, deadkeysGroup], []);
 
     expect(s02Recognizer.match(ir)).toHaveLength(0);
     expect(generatedDeadkeySingleTap.match(ir)).toHaveLength(0);
@@ -336,10 +328,10 @@ describe("generated/deadkey_single_tap round-trip vs s02Recognizer", () => {
     };
     // Non-parallel: base 3 items, out 2 items
     const stores = [
-      store("store#dkf0060", "dkf0060", " aA"),
-      store("store#dkt0060", "dkt0060", "`à"),
+      makeCharStore("store#dkf0060", "dkf0060", " aA"),
+      makeCharStore("store#dkt0060", "dkt0060", "`à"),
     ];
-    const ir = makeIR([mainGroup, deadkeysGroup], stores);
+    const ir = makeTestIR([mainGroup, deadkeysGroup], stores);
 
     expect(s02Recognizer.match(ir)).toHaveLength(0);
     expect(generatedDeadkeySingleTap.match(ir)).toHaveLength(0);
@@ -376,10 +368,10 @@ describe("generated/deadkey_single_tap round-trip vs s02Recognizer", () => {
       ],
     };
     const stores = [
-      store("store#dkf0060", "dkf0060", " aA"),
-      store("store#dkt0060", "dkt0060", "`àÀ"),
+      makeCharStore("store#dkf0060", "dkf0060", " aA"),
+      makeCharStore("store#dkt0060", "dkt0060", "`àÀ"),
     ];
-    const ir = makeIR([mainGroup, deadkeysGroup], stores);
+    const ir = makeTestIR([mainGroup, deadkeysGroup], stores);
 
     expect(s02Recognizer.match(ir)).toHaveLength(0);
     expect(generatedDeadkeySingleTap.match(ir)).toHaveLength(0);
@@ -421,10 +413,10 @@ describe("generated/deadkey_single_tap round-trip vs s02Recognizer", () => {
       ],
     };
     const stores = [
-      store("store#dkf0060", "dkf0060", " aAeEiIoOuU"),
-      store("store#dkt0060", "dkt0060", "`àÀèÈìÌòÒùÙ"),
+      makeCharStore("store#dkf0060", "dkf0060", " aAeEiIoOuU"),
+      makeCharStore("store#dkt0060", "dkt0060", "`àÀèÈìÌòÒùÙ"),
     ];
-    const ir = makeIR([mainGroup, deadkeysGroup], stores);
+    const ir = makeTestIR([mainGroup, deadkeysGroup], stores);
 
     // Hand-written rule lifts without escape
     expect(s02Recognizer.match(ir)).toHaveLength(1);
