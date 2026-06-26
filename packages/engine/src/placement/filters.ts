@@ -76,7 +76,9 @@ export function hasNonUSBase(ir: KeyboardIR, threshold = 3): boolean {
   for (const group of ir.groups) {
     if (!group.usingKeys) continue;
     for (const rule of group.rules) {
-      // Only look at unshifted (no modifier) vkey rules.
+      // Only look at the unshifted base row. Real keyboards encode it with the
+      // NCAPS (caps-lock-off) modifier, so accept NCAPS-only alongside bare
+      // rules; reject SHIFT/CAPS/AltGr layers. Mirrors detectBaseLayoutFamily.
       if (rule.context.length !== 1) continue;
       const ctx = rule.context[0];
       if (!ctx || ctx.kind !== "vkey") continue;

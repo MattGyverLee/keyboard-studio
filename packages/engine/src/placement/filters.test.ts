@@ -132,6 +132,22 @@ describe("hasNonUSBase", () => {
     expect(hasNonUSBase(ir, 5)).toBe(false);
     expect(hasNonUSBase(ir, 4)).toBe(true);
   });
+
+  it("counts deviations on an NCAPS-encoded base row (regression: #384 sibling)", () => {
+    // Real keyboards write the unshifted base row as [NCAPS K_x]. Before the
+    // NCAPS-tolerant guard, hasNonUSBase skipped these rows entirely and a
+    // non-US (AZERTY) base would have been misreported as US (0 deviations).
+    const kmn = makeUnicodeKmn(
+      [
+        "+ [NCAPS K_A] > 'q'",
+        "+ [NCAPS K_B] > 'w'",
+        "+ [NCAPS K_C] > 'e'",
+        "+ [NCAPS K_D] > 'r'",
+      ].join("\n"),
+    );
+    const { ir } = parse(kmn, "kb-ncaps-azerty");
+    expect(hasNonUSBase(ir)).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
