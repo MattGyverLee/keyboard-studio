@@ -50,7 +50,7 @@ describe("buildFindingsByQuestionId", () => {
 });
 
 // ---------------------------------------------------------------------------
-// selectUnmappedFindings — AC#3 coverage (issue #590)
+// selectUnmappedFindings — unmapped-findings coverage (swallowed-catch bugfix AC#3)
 // ---------------------------------------------------------------------------
 
 describe("selectUnmappedFindings", () => {

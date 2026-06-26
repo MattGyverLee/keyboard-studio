@@ -1,4 +1,4 @@
-// Tests for useValidator — issue #590 error-surface fix.
+// Tests for useValidator — sync-exception surface fix (swallowed-catch bugfix).
 //
 // Coverage:
 //   1. runAllChecks THROWS → findings is exactly [VALIDATOR_ERROR_FINDING], not [].

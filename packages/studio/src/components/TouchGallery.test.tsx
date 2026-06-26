@@ -703,7 +703,7 @@ describe("TouchGallery — no suggestion goes straight to chooser", () => {
 });
 
 // ---------------------------------------------------------------------------
-// useTouchLint error surface — AC#3 (issue #590)
+// useTouchLint error surface — AC#3 (swallowed-catch bugfix)
 // ---------------------------------------------------------------------------
 
 describe("TouchGallery — lint error finding surfaces in LintSummary (AC#3)", () => {

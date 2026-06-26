@@ -1,4 +1,4 @@
-// Tests for useTouchLint — issue #590 error-surface fix.
+// Tests for useTouchLint — async-exception surface fix (swallowed-catch bugfix).
 //
 // Coverage:
 //   1. engine.lint REJECTS → touchFindings is [LINT_ERROR_FINDING], touchLintRunning=false.
