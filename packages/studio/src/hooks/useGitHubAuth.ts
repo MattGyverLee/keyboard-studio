@@ -92,8 +92,12 @@ export interface UseGitHubAuthResult {
   missingScopes: readonly string[];
   /** Human-readable error from the verify step, or null. */
   error: string | null;
-  /** Begin the OAuth PKCE flow — redirects the tab to GitHub. */
-  connect: () => Promise<void>;
+  /**
+   * Begin the OAuth PKCE flow — redirects the tab to GitHub. Defaults to the
+   * identity (sign-up) scope; pass {@link REQUIRED_SCOPE} only for the explicit
+   * self-fork submit opt-in (docs/github-integration.md §1a).
+   */
+  connect: (scope?: string) => Promise<void>;
   /** Clear the token + any OAuth scratch state. */
   disconnect: () => void;
 }
@@ -156,10 +160,10 @@ export function useGitHubAuth(): UseGitHubAuthResult {
     };
   }, [token]);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (scope?: string) => {
     setError(null);
     try {
-      const url = await beginAuthorize();
+      const url = await beginAuthorize(scope);
       window.location.assign(url);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to start GitHub sign-in.");

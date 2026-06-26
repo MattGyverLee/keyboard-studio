@@ -76,7 +76,7 @@ const COMPILED_EXT = new Set([".kmx", ".kvk", ".js"]);
  *     must not land in the keymanapp/keyboards PR commit. The discriminator
  *     is the .imported suffix; see sidecar.ts isSidecarPath().
  */
-function isSourceFile(path: string): boolean {
+export function isSourceFile(path: string): boolean {
   if (isSidecarPath(path)) return false;
   const dot = path.lastIndexOf(".");
   return dot === -1 || !COMPILED_EXT.has(path.slice(dot));

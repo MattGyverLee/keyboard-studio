@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { buildServer } from "./server.js";
-import type { OAuthFetchFn } from "./handlers.js";
+import type { GitHubPipelineFetchFn } from "./github-pipeline.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -17,11 +17,14 @@ import type { OAuthFetchFn } from "./handlers.js";
 const ALLOWED_ORIGIN = "http://localhost:5173";
 const DISALLOWED_ORIGIN = "https://evil.example.com";
 
-function stubFetch(response: object, ok = true): OAuthFetchFn {
+function stubFetch(response: object, ok = true): GitHubPipelineFetchFn {
   return async () => ({
     ok,
     status: ok ? 200 : 400,
+    statusText: ok ? "OK" : "Bad Request",
+    headers: { get: () => null },
     json: async () => response,
+    text: async () => JSON.stringify(response),
   });
 }
 
@@ -187,7 +190,8 @@ describe("POST /oauth/exchange — secret leakage", () => {
   });
 
   it("does not include client secret in error response body", async () => {
-    // Build a separate server wired with the error fetch
+    // Build a separate server wired with the error fetch; errorFetch already
+    // satisfies GitHubPipelineFetchFn via the updated stubFetch() helper.
     const errApp = await buildServer({
       clientId: "ci-client-id",
       clientSecret: "ci-client-secret-SHOULD-NEVER-APPEAR",
@@ -215,10 +219,13 @@ describe("POST /oauth/exchange — secret leakage", () => {
 
 describe("POST /oauth/exchange — upstream gateway errors", () => {
   it("returns 502 upstream_error when GitHub responds non-ok without error field", async () => {
-    const rateLimitFetch: OAuthFetchFn = async () => ({
+    const rateLimitFetch: GitHubPipelineFetchFn = async () => ({
       ok: false,
       status: 429,
+      statusText: "Too Many Requests",
+      headers: { get: () => null },
       json: async () => ({ message: "rate limited" }),
+      text: async () => '{"message":"rate limited"}',
     });
     const gatewayApp = await buildServer({
       clientId: "ci-client-id",
@@ -269,15 +276,18 @@ describe("POST /oauth/refresh — body validation", () => {
   });
 
   it("forwards a rotated refresh_token when GitHub returns one", async () => {
-    const rotationFetch: OAuthFetchFn = async () => ({
+    const rotationFetch: GitHubPipelineFetchFn = async () => ({
       ok: true,
       status: 200,
+      statusText: "OK",
+      headers: { get: () => null },
       json: async () => ({
         access_token: "gho_new_access",
         token_type: "bearer",
         scope: "public_repo",
         refresh_token: "ghr_new_rotated",
       }),
+      text: async () => "{}",
     });
     const rotationApp = await buildServer({
       clientId: "ci-client-id",
@@ -488,10 +498,13 @@ describe("POST /oauth/google/exchange — secret leakage", () => {
   });
 
   it("does not include Google client secret in error response", async () => {
-    const errFetch: OAuthFetchFn = async () => ({
+    const errFetch: GitHubPipelineFetchFn = async () => ({
       ok: false,
       status: 400,
+      statusText: "Bad Request",
+      headers: { get: () => null },
       json: async () => ({ error: "invalid_grant" }),
+      text: async () => '{"error":"invalid_grant"}',
     });
     const secretErrApp = await buildServer({
       clientId: "ci-client-id",
@@ -570,6 +583,258 @@ describe("POST /oauth/google/exchange — CORS parity", () => {
     const acaoHeader = res.headers["access-control-allow-origin"] as string | undefined;
     expect(acaoHeader).not.toBe(DISALLOWED_ORIGIN);
     expect(acaoHeader).not.toBe("*");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /submit/managed-pr — Option B org-mediated submission
+// ---------------------------------------------------------------------------
+
+const ORG_TOKEN = "gho_ORG_TOKEN_SHOULD_NEVER_APPEAR";
+const ORG_LOGIN = "keyboard-studio-bot";
+
+/** Build a minimal pipeline-compatible ok response. */
+function pipelineOk(body: object, status = 200): Awaited<ReturnType<GitHubPipelineFetchFn>> {
+  return {
+    ok: true,
+    status,
+    statusText: "OK",
+    headers: { get: () => null },
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  };
+}
+
+/** Multi-call fetch stub that walks the managed-PR pipeline happy path. */
+const managedPipelineFetch: GitHubPipelineFetchFn = async (url, init) => {
+  const method = init?.method ?? "GET";
+  if (url.endsWith("/forks") && method === "POST") return pipelineOk({}, 202);
+  if (url.includes("/git/ref/heads/master")) return pipelineOk({ object: { sha: "masterSha" } });
+  if (url.includes("/git/commits/masterSha")) return pipelineOk({ tree: { sha: "treeSha" } });
+  if (url.endsWith("/git/trees") && method === "POST") return pipelineOk({ sha: "newTree" });
+  if (url.endsWith("/git/commits") && method === "POST")
+    return pipelineOk({ sha: "abc1234000000000000000000000000000000000" });
+  if (url.endsWith("/git/refs") && method === "POST") return pipelineOk({ ref: "ok" }, 201);
+  if (url.endsWith("/pulls") && method === "POST")
+    return pipelineOk({ html_url: "https://github.com/keymanapp/keyboards/pull/77" }, 201);
+  return pipelineOk({ full_name: `${ORG_LOGIN}/keyboards` }); // fork-exists GET
+};
+
+function validManagedBody(overrides: Record<string, unknown> = {}) {
+  return {
+    attribution: { displayName: "Ada Lovelace", email: "ada@example.com" },
+    keyboardId: "my_keyboard",
+    prTitle: "[my_keyboard] Add it",
+    prBody: "## Checklist\n- green",
+    sourceFiles: [{ path: "release/m/my_keyboard/my_keyboard.kmn", content: "store(&VERSION) '14.0'" }],
+    ...overrides,
+  };
+}
+
+async function buildManagedServer(fetchFn: GitHubPipelineFetchFn = managedPipelineFetch) {
+  const srv = await buildServer({
+    clientId: "ci-client-id",
+    clientSecret: "ci-client-secret",
+    googleOAuthEnabled: false,
+    orgToken: ORG_TOKEN,
+    orgLogin: ORG_LOGIN,
+    allowedOrigins: [ALLOWED_ORIGIN],
+    fetchFn,
+  });
+  await srv.ready();
+  return srv;
+}
+
+describe("POST /submit/managed-pr — config gating", () => {
+  it("returns 503 submission_not_configured when org credentials are absent", async () => {
+    const unconfigured = await buildServer({
+      clientId: "ci-client-id",
+      clientSecret: "ci-client-secret",
+      googleOAuthEnabled: false,
+      allowedOrigins: [ALLOWED_ORIGIN],
+      fetchFn: successFetch,
+    });
+    await unconfigured.ready();
+    const res = await unconfigured.inject({
+      method: "POST",
+      url: "/submit/managed-pr",
+      payload: validManagedBody(),
+    });
+    expect(res.statusCode).toBe(503);
+    expect((JSON.parse(res.body) as { error: string }).error).toBe("submission_not_configured");
+    await unconfigured.close();
+  });
+});
+
+describe("POST /submit/managed-pr — body validation", () => {
+  let mApp: Awaited<ReturnType<typeof buildServer>>;
+  beforeAll(async () => {
+    mApp = await buildManagedServer();
+  });
+  afterAll(async () => {
+    await mApp.close();
+  });
+
+  it("returns 400 when attribution email is malformed", async () => {
+    const res = await mApp.inject({
+      method: "POST",
+      url: "/submit/managed-pr",
+      payload: validManagedBody({
+        attribution: { displayName: "Ada", email: "not-an-email" },
+      }),
+    });
+    expect(res.statusCode).toBe(400);
+    expect((JSON.parse(res.body) as { error: string }).error).toBe("invalid_request");
+  });
+
+  it("returns 400 when sourceFiles exceeds the 50-file cap", async () => {
+    const tooMany = Array.from({ length: 51 }, (_, i) => ({
+      path: `release/m/my_keyboard/f${i}.txt`,
+      content: "x",
+    }));
+    const res = await mApp.inject({
+      method: "POST",
+      url: "/submit/managed-pr",
+      payload: validManagedBody({ sourceFiles: tooMany }),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("returns 400 when a source file exceeds the 1 MiB content cap", async () => {
+    const oversized = "a".repeat(1_048_577); // 1 MiB + 1 byte
+    const res = await mApp.inject({
+      method: "POST",
+      url: "/submit/managed-pr",
+      payload: validManagedBody({
+        sourceFiles: [{ path: "release/m/my_keyboard/big.kmn", content: oversized }],
+      }),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("returns 400 when keyboardId violates the [a-z0-9_] pattern", async () => {
+    const res = await mApp.inject({
+      method: "POST",
+      url: "/submit/managed-pr",
+      payload: validManagedBody({ keyboardId: "My-Keyboard" }),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("400 details never echo the submitted value", async () => {
+    const res = await mApp.inject({
+      method: "POST",
+      url: "/submit/managed-pr",
+      payload: validManagedBody({
+        attribution: { displayName: "Ada", email: "LEAKED_VALUE@@bad" },
+      }),
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).not.toContain("LEAKED_VALUE");
+  });
+
+  it("returns 200 { prUrl, commitSha } on a valid submission", async () => {
+    const res = await mApp.inject({
+      method: "POST",
+      url: "/submit/managed-pr",
+      payload: validManagedBody(),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { prUrl: string; commitSha: string };
+    expect(body.prUrl).toBe("https://github.com/keymanapp/keyboards/pull/77");
+    expect(body.commitSha).toBe("abc1234000000000000000000000000000000000");
+  });
+});
+
+describe("POST /submit/managed-pr — org token never leaks", () => {
+  it("is absent from a success response body", async () => {
+    const mApp = await buildManagedServer();
+    const res = await mApp.inject({
+      method: "POST",
+      url: "/submit/managed-pr",
+      payload: validManagedBody(),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain(ORG_TOKEN);
+    await mApp.close();
+  });
+
+  it("is absent from an error (502) response body", async () => {
+    const failFetch: GitHubPipelineFetchFn = async () => ({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      headers: { get: () => null },
+      json: async () => ({}),
+      text: async () => "{}",
+    });
+    const mApp = await buildManagedServer(failFetch);
+    const res = await mApp.inject({
+      method: "POST",
+      url: "/submit/managed-pr",
+      payload: validManagedBody(),
+    });
+    expect(res.statusCode).toBe(502);
+    expect(res.body).not.toContain(ORG_TOKEN);
+    expect((JSON.parse(res.body) as { error: string }).error).toBe("submission_unavailable");
+    await mApp.close();
+  });
+
+  it("sets Retry-After header and maps a 429 to rate_limited with retryAfterSeconds from header", async () => {
+    const rateFetch: GitHubPipelineFetchFn = async (url, init) => {
+      if (url.includes("/git/ref/heads/master")) {
+        return {
+          ok: false,
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: { get: (name: string) => (name.toLowerCase() === "retry-after" ? "120" : null) },
+          json: async () => ({}),
+          text: async () => "{}",
+        };
+      }
+      return managedPipelineFetch(url, init);
+    };
+    const mApp = await buildManagedServer(rateFetch);
+    const res = await mApp.inject({
+      method: "POST",
+      url: "/submit/managed-pr",
+      payload: validManagedBody(),
+    });
+    expect(res.statusCode).toBe(429);
+    expect(res.headers["retry-after"]).toBe("120");
+    await mApp.close();
+  });
+});
+
+describe("POST /submit/managed-pr — CORS", () => {
+  let mApp: Awaited<ReturnType<typeof buildServer>>;
+  beforeAll(async () => {
+    mApp = await buildManagedServer();
+  });
+  afterAll(async () => {
+    await mApp.close();
+  });
+
+  it("allows preflight from an allowed origin", async () => {
+    const res = await mApp.inject({
+      method: "OPTIONS",
+      url: "/submit/managed-pr",
+      headers: { Origin: ALLOWED_ORIGIN, "Access-Control-Request-Method": "POST" },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(res.headers["access-control-allow-origin"]).toBe(ALLOWED_ORIGIN);
+  });
+
+  it("rejects preflight from a disallowed origin with no ACAO header", async () => {
+    const res = await mApp.inject({
+      method: "OPTIONS",
+      url: "/submit/managed-pr",
+      headers: { Origin: DISALLOWED_ORIGIN, "Access-Control-Request-Method": "POST" },
+    });
+    expect(res.statusCode).not.toBe(500);
+    const acao = res.headers["access-control-allow-origin"] as string | undefined;
+    expect(acao).not.toBe(DISALLOWED_ORIGIN);
+    expect(acao).not.toBe("*");
   });
 });
 

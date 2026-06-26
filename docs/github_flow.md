@@ -133,7 +133,7 @@ exactly.
 
 > Keep this section up to date as work lands. Update it whenever a delivery
 > option moves from "not started" to "in progress" or "done".
-> Last updated: 2026-06-23
+> Last updated: 2026-06-26
 
 ### Pipeline prerequisites (must exist before any delivery option works)
 
@@ -168,22 +168,25 @@ exactly.
 | `createGitHubOutputService()` factory | **Done** | Injectable `GitHubFetchFn` for testability; default delegates to global fetch |
 | GitHub OAuth App registration | **Deploy-gated** | Issue #550 — runbook in [`utilities/oauth-backend/DEPLOY.md`](../utilities/oauth-backend/DEPLOY.md); needs org-admin to register a prod OAuth App with callback `https://<prod>/oauth/callback` |
 | OAuth token-exchange backend | **Done (code) — co-located on Vercel; deploy pending** | Core in `utilities/oauth-backend/` (Fastify v5 + 30 specs); co-located as Vercel functions in `api/oauth/{exchange,refresh,health}.ts` (issue #550) reusing the tested core — served same-origin via root `vercel.json` rewrites. Remaining: switch Vercel Root Directory → repo root, register OAuth App, set env (see DEPLOY.md) |
-| Studio UI — OAuth authorise flow | **Done** | Issue #148 — `packages/studio/src/lib/githubOAuth.ts` (PKCE + sessionStorage token store), `lib/handleOAuthCallback.ts`, `hooks/useGitHubAuth.ts`; engine `verifyToken` consumed via `services.ts` `getGitHubOutputService()`; copyright-attestation gate per spec §12/Scenario E |
-| Studio UI — "Submit PR" button | **Done** | Issue #148 — `components/GitHubSubmitPanel.tsx`; gates on `verifyToken`, calls `publishPR` on confirm via `services.ts` `getGitHubOutputService()`; full `PublishPRError` message matrix; lint-checklist PR-body composer (green/yellow/red) deferred to follow-up — ships editable default body stub |
+| Studio UI — OAuth authorise flow | **Done** | Issue #148 — `packages/studio/src/lib/githubOAuth.ts` (PKCE + sessionStorage token store), `lib/handleOAuthCallback.ts`, `hooks/useGitHubAuth.ts`; engine `verifyToken` consumed via `services.ts` `getGitHubOutputService()`; copyright-attestation gate per spec §12/Scenario E. Reused by the decoupled sign-up panel |
+| Studio UI — sign-up vs. submit | **Decoupled (§1a)** | The coupled "Connect GitHub + Submit PR" panel (`GitHubSubmitPanel`) was **removed** from the Output screen and replaced by a decoupled sign-up identity panel (`components/SignUpPanel.tsx`, renamed from `GitHubSignUpPanel.tsx`; now surfaces both "Sign up with GitHub" and "Sign up with Google" buttons — identity only, no fork/branch/PR exposed (docs/github-integration.md §1a). Google OAuth (PKCE, S256) ships in `src/lib/googleOAuth.ts` + `hooks/useGoogleAuth.ts`; `IdentitySession` discriminated union (`provider:"github"\|"google"`) in `src/lib/identity.ts` is the routing key. The submit/publish *action* now defaults to **Option B** (org-mediated); `publishPR` engine code is retained for the opt-in self-fork path |
 
 ### Option B — Org-mediated, abstracted
 
 | Step | Status | Notes |
 |---|---|---|
-| Contract extension (`publishManagedPR`) | Not started | New method needed on `OutputService`; current contract only covers Option A |
-| Backend proxy (Cloudflare Worker / Vercel) | Not started | Required before any code can be written; org token must live server-side |
-| Attribution (Co-authored-by) commit format | Not started | |
-| Studio UI — attribution form + submit | Not started | |
+| Contract extension (`publishManagedPR`) | **Done** | `packages/contracts/src/outputService.ts` — `PublishManagedPR*` types + method |
+| Engine client (`createManagedPROutputService`) | **Done** | `packages/engine/src/output/managed-pr.ts` — filters VFS to source files (SS1, reuses `isSourceFile`), POSTs to the proxy, maps HTTP status → `PublishManagedPRError`; 13 vitest specs |
+| Backend pipeline + route (`POST /submit/managed-pr`) | **Done (code) / deploy pending** | `utilities/oauth-backend/` POST /submit/managed-pr + `github-pipeline.ts` (vendored); org token from env `KEYBOARD_STUDIO_ORG_TOKEN`/`GITHUB_ORG_TOKEN`, fork owner from env; 106 vitest specs; real org account + deploy still pending infra |
+| Attribution (Co-authored-by) commit format | **Done** | `Co-authored-by` trailer + `[<keyboardId>]` PR title normalisation + PR-body provenance block naming the human author (name+email) for maintainer reachability — keymanapp upstream parity; `github-pipeline.ts` |
+| Branch-collision suffix (§5 Q1) | **Done** | `buildManagedBranchName()` — `add/<keyboardId>-<short7sha>`; content-unique, no `Date`/random |
+| Org bot identity + deploy (§5 Q3) | Not started | `KEYBOARD_STUDIO_ORG_TOKEN`/`GITHUB_ORG_TOKEN` unset → route returns `503`; org service-account + standing fork still to be provisioned (tracked with #550 deploy) |
+| Studio UI — attribution form + submit | **Done** | `packages/studio/src/components/ManagedPRSubmitPanel.tsx` wired into `OutputScreen` as primary submit action; attribution form (displayName/email) + copyright-attestation gate + result/error states; prefill from `IdentitySession` |
 
 ### Summary
 
 ```
 Option C  [====================]  100%  engine + studio UI done; full end-to-end zip download wired (#32)
-Option A  [===================-]   95%  engine + studio UI done (#148); backend co-located on Vercel (#550); only deploy + OAuth App registration remain (DEPLOY.md)
-Option B  [--------------------]    0%  design done (github_flow.md); nothing built
+Option A  [===================-]   95%  engine + studio sign-up (identity) UI done; backend co-located on Vercel (#550); submit action deferred to Option B (§1a); OAuth App registration + deploy remaining (DEPLOY.md)
+Option B  [=================---]   85%  DEFAULT submit path (§1a); contract + engine client + backend pipeline/route + studio attribution-form UI done & tested; remaining: org bot identity + deploy only (§5 Q3)
 ```
