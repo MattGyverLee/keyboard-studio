@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseKps } from "./kps-parser.js";
+import { parseKps, parseKpsFontRefs } from "./kps-parser.js";
 
 const BASIC_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <Package>
@@ -179,7 +179,7 @@ describe("parseKps", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Font and stylesheet extraction (ported from compiler/parseKpsFonts.test.ts)
+// Font and stylesheet extraction (parseKpsFontRefs)
 // ---------------------------------------------------------------------------
 
 // Representative snippet of the real sil_cameroon_azerty.kps, inlined so the
@@ -199,20 +199,20 @@ const KPS_WITH_FONT = `<?xml version="1.0" encoding="utf-8"?>
   </Files>
 </Package>`;
 
-describe("parseKps — font and stylesheet extraction", () => {
+describe("parseKpsFontRefs", () => {
   describe("real sil_cameroon_azerty.kps", () => {
     it("AndikaAfr-R.ttf appears in oskFonts", () => {
-      const { oskFonts } = parseKps(KPS_WITH_FONT);
+      const { oskFonts } = parseKpsFontRefs(KPS_WITH_FONT);
       expect(oskFonts.some((p) => p.includes("AndikaAfr-R.ttf"))).toBe(true);
     });
 
     it("AndikaAfr-R.ttf appears in fileFonts", () => {
-      const { fileFonts } = parseKps(KPS_WITH_FONT);
+      const { fileFonts } = parseKpsFontRefs(KPS_WITH_FONT);
       expect(fileFonts.some((p) => p.includes("AndikaAfr-R.ttf"))).toBe(true);
     });
 
     it("oskFonts paths are raw (backslashes intact from the .kps)", () => {
-      const { oskFonts } = parseKps(KPS_WITH_FONT);
+      const { oskFonts } = parseKpsFontRefs(KPS_WITH_FONT);
       // The .kps uses Windows-style paths; they must be returned raw so the
       // loader can normalize them with resolveKpsFontPath.
       expect(oskFonts[0]).toMatch(/\\/);
@@ -221,14 +221,14 @@ describe("parseKps — font and stylesheet extraction", () => {
 
   describe("empty input", () => {
     it("returns empty arrays for empty string", () => {
-      const { oskFonts, fileFonts, stylesheets } = parseKps("");
+      const { oskFonts, fileFonts, stylesheets } = parseKpsFontRefs("");
       expect(oskFonts).toEqual([]);
       expect(fileFonts).toEqual([]);
       expect(stylesheets).toEqual([]);
     });
 
     it("returns empty arrays for whitespace-only input", () => {
-      const { oskFonts, fileFonts, stylesheets } = parseKps("   \n  ");
+      const { oskFonts, fileFonts, stylesheets } = parseKpsFontRefs("   \n  ");
       expect(oskFonts).toEqual([]);
       expect(fileFonts).toEqual([]);
       expect(stylesheets).toEqual([]);
@@ -248,7 +248,7 @@ describe("parseKps — font and stylesheet extraction", () => {
             <FileType>.htm</FileType>
           </File>
         </Files>`;
-      const { fileFonts, stylesheets } = parseKps(xml);
+      const { fileFonts, stylesheets } = parseKpsFontRefs(xml);
       expect(fileFonts).toEqual([]);
       expect(stylesheets).toEqual([]);
     });
@@ -261,7 +261,7 @@ describe("parseKps — font and stylesheet extraction", () => {
             <FileType>.ttf</FileType>
           </File>
         </Files>`;
-      const { fileFonts } = parseKps(xml);
+      const { fileFonts } = parseKpsFontRefs(xml);
       expect(fileFonts).toEqual(["MyFont.ttf"]);
     });
 
@@ -273,7 +273,7 @@ describe("parseKps — font and stylesheet extraction", () => {
             <FileType>.otf</FileType>
           </File>
         </Files>`;
-      const { fileFonts } = parseKps(xml);
+      const { fileFonts } = parseKpsFontRefs(xml);
       expect(fileFonts).toEqual(["MyFont.otf"]);
     });
   });
@@ -283,7 +283,7 @@ describe("parseKps — font and stylesheet extraction", () => {
       const xml = `
         <OSKFont>path/to/font.ttf</OSKFont>
         <OSKFont>path/to/font.ttf</OSKFont>`;
-      const { oskFonts } = parseKps(xml);
+      const { oskFonts } = parseKpsFontRefs(xml);
       expect(oskFonts).toEqual(["path/to/font.ttf"]);
     });
   });
@@ -297,7 +297,7 @@ describe("parseKps — font and stylesheet extraction", () => {
             <FileType>.css</FileType>
           </File>
         </Files>`;
-      const { stylesheets } = parseKps(xml);
+      const { stylesheets } = parseKpsFontRefs(xml);
       expect(stylesheets).toEqual(["sil_cameroon_qwerty.css"]);
     });
 
@@ -313,7 +313,7 @@ describe("parseKps — font and stylesheet extraction", () => {
             <FileType>.css</FileType>
           </File>
         </Files>`;
-      const { stylesheets } = parseKps(xml);
+      const { stylesheets } = parseKpsFontRefs(xml);
       expect(stylesheets).toEqual(["kb.css"]);
     });
 
@@ -329,7 +329,7 @@ describe("parseKps — font and stylesheet extraction", () => {
             <FileType>.css</FileType>
           </File>
         </Files>`;
-      const { fileFonts, stylesheets } = parseKps(xml);
+      const { fileFonts, stylesheets } = parseKpsFontRefs(xml);
       expect(fileFonts).toEqual(["MyFont.ttf"]);
       expect(stylesheets).toEqual(["kb.css"]);
     });

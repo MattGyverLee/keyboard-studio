@@ -8,9 +8,18 @@ export interface KpsMetadata {
   targets: KeymanPlatformTarget[];
   script: string;
   languages: string[];
+}
+
+/**
+ * Font and stylesheet references extracted from a .kps XML file.
+ * Returned by {@link parseKpsFontRefs}; kept separate from
+ * {@link KpsMetadata} so the gallery hot path (which calls
+ * {@link parseKps} for ~2000 keyboards) pays no cost for font extraction.
+ */
+export interface KpsFontRefs {
   /**
-   * Raw paths from <OSKFont> and <DisplayFont> elements inside a <Keyboard>
-   * block.  These are the fonts the OSK preview must load for correct glyph
+   * Raw paths from <OSKFont> and <DisplayFont> elements in the .kps.
+   * These are the fonts the OSK preview must load for correct glyph
    * rendering.  Deduped.  Backslashes intact as they appear in the XML.
    */
   oskFonts: string[];
@@ -65,6 +74,10 @@ const VALID_TARGETS = new Set<string>([
  *
  * `script` is derived from the first BCP47 Language ID that contains a
  * four-letter script subtag (e.g. "hi-Deva" → "Deva").  Defaults to "Latn".
+ *
+ * Font and stylesheet references are intentionally excluded — call
+ * {@link parseKpsFontRefs} separately when they are needed (e.g. in the
+ * loader).  This keeps the gallery listing path free of font-regex cost.
  */
 export function parseKps(xml: string): KpsMetadata {
   // Standard .kps schema (Keyman Developer v7+): value attribute on Info children
@@ -109,19 +122,24 @@ export function parseKps(xml: string): KpsMetadata {
     }
   }
 
-  // Extract font and stylesheet references (ported verbatim from parseKpsFonts).
-  const oskFonts = dedup([
-    ...extractTagValues(xml, "OSKFont"),
-    ...extractTagValues(xml, "DisplayFont"),
-  ]);
+  return {
+    displayName,
+    version,
+    targets: targets.length > 0 ? targets : ["windows"],
+    script,
+    languages,
+  };
+}
 
-  // Collect <File> blocks whose <FileType> is .ttf, .otf, or .css.
-  // A <File> block looks like:
-  //   <File>
-  //     <Name>...</Name>
-  //     ...
-  //     <FileType>.ttf</FileType>
-  //   </File>
+/**
+ * Walk the <File> blocks in the .kps XML and collect font and stylesheet
+ * paths into typed buckets.  A <File> block is included when its
+ * <FileType> child is ".ttf", ".otf", or ".css".
+ */
+function extractFileBlocks(xml: string): {
+  fileFonts: string[];
+  stylesheetPaths: string[];
+} {
   const fileBlockRe = /<File\s*>([\s\S]*?)<\/File>/gi;
   const fileFonts: string[] = [];
   const stylesheetPaths: string[] = [];
@@ -141,13 +159,29 @@ export function parseKps(xml: string): KpsMetadata {
       stylesheetPaths.push(name);
     }
   }
+  return { fileFonts, stylesheetPaths };
+}
+
+/**
+ * Parse a Keyman Package Source (.kps) XML string and extract font and
+ * stylesheet references needed by the loader.
+ *
+ * Separated from {@link parseKps} so the gallery hot path (which runs
+ * {@link parseKps} for every keyboard in the release tree) pays no font-regex
+ * cost.  Call this only in the loader after the keyboard is selected.
+ *
+ * OSKFont/DisplayFont elements are matched anywhere in the document —
+ * they are not restricted to any particular ancestor block.
+ */
+export function parseKpsFontRefs(xml: string): KpsFontRefs {
+  const oskFonts = dedup([
+    ...extractTagValues(xml, "OSKFont"),
+    ...extractTagValues(xml, "DisplayFont"),
+  ]);
+
+  const { fileFonts, stylesheetPaths } = extractFileBlocks(xml);
 
   return {
-    displayName,
-    version,
-    targets: targets.length > 0 ? targets : ["windows"],
-    script,
-    languages,
     oskFonts,
     fileFonts: dedup(fileFonts),
     stylesheets: dedup(stylesheetPaths),
