@@ -365,11 +365,13 @@ describe('capabilityHint — not-removable:opaque', () => {
 });
 
 describe('capabilityHint — not-removable:context-sensitive', () => {
-  it('explains the character depends on previously-typed characters', () => {
-    expect(capabilityHint('not-removable:context-sensitive')).toMatch(/already been typed/i);
+  it('explains the character only appears after certain keypresses', () => {
+    expect(capabilityHint('not-removable:context-sensitive')).toMatch(/after certain keys are pressed/i);
   });
   it("explains removing on its own isn't supported yet", () => {
-    expect(capabilityHint('not-removable:context-sensitive')).toMatch(/on its own.*isn't supported|isn't supported/i);
+    const hint = capabilityHint('not-removable:context-sensitive');
+    expect(hint).toMatch(/on its own/i);
+    expect(hint).toMatch(/isn't supported yet/i);
   });
 });
 
