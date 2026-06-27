@@ -1,6 +1,6 @@
 # Survey Modularity + CYOA Refactor — Plan / RFC
 
-> **Status: PLAN / RFC — P2 implemented (branch `claude/survey-modularity-cyoa-plan-pcpg9a`); P3(a) implemented (branch `km/modular-loader-cutover`); P0–P1, P3(b), P4–P5 remain proposals.**
+> **Status: PLAN / RFC — P2 implemented (branch `claude/survey-modularity-cyoa-plan-pcpg9a`); P3(a) implemented (branch `km/modular-loader-cutover`); P4a and P4b implemented (branch `claude/survey-modularity-cyoa-phase-4-q9ey3o`, P4a merged via #778); P0–P1, P3(b), P5 remain proposals.**
 > P2 shipped: `IRPath` typed key-path algebra exported from `@keyboard-studio/contracts`
 > 0.11.0 (breaking bump, §18-ratified); `QuestionModule.inputs`/`writes` declared across
 > all 93 modules (8 non-empty, 85 explicit empty); three CI gates (coverage, orphan-input
@@ -12,9 +12,22 @@
 > 3 phases) added; 5 mirrored module tests added; all TODO(#410) markers removed;
 > `playwright.config.ts` added; E2E lane 1 (copy-edit) un-skipped. Part (b) deletion of
 > `loadFlow.ts` + 4 legacy YAMLs is a separate follow-up PR.
-> All other phases are still proposals; file inventories and target tree below remain
-> unimplemented. File inventories were verified against the live tree on the branch base
-> (`origin/main`); the *target* tree and migration table are proposals.
+> P4a shipped (merged to main via #778): `steps/` types (`Step`, `EditorStep`, `QuestionStep`,
+> `EditorStepProps`); galleries + 5 wizard panels moved into `editors/` tree behind
+> `EditorStep` adapters; `editors/`/`steps/`/`dashboard/` layer boundary rules added to
+> depcruise; reserved touch-suggest seams (`provenance.ts`, `defaults.ts`). The `SurveyStage`
+> union was not yet replaced (P4a is revertible independently of P4b).
+> P4b shipped (branch `claude/survey-modularity-cyoa-phase-4-q9ey3o`): `steps/manifest.ts` (11
+> steps, spine+side-trails); register adapters; manifest-driven `SurveyView` in `StudioShell`
+> (no `SurveyStage` union remains); `applyStepCompletion` reducer routing side effects; flowmap
+> renamed `dashboard/`; `buildManifestStepGraph()` (map == runtime by construction); five
+> completeness checks (C1–C7: staleness fixpoint, cycle detection, rejoin, lock-consistency
+> proxy, orphan inputs, unreachable); staleness slice (`staleSteps`, `markStale`, `clearStale`)
+> in `workingCopyStore`; `CompletenessReport` surfaced in `DashboardView` via props. Deferred:
+> `AssignLoopShell` (#777, separate issue). P5 (mutate seam) remains out of scope.
+> P0–P1, P3(b), P5 are still proposals; file inventories and target tree below remain
+> unimplemented for those phases. File inventories were verified against the live tree on the
+> branch base (`origin/main`); the *target* tree and migration table are proposals.
 
 ---
 
@@ -985,7 +998,16 @@ as library entries per §3.8.**
 - *Relation to #410:* (a) **closes** #410's remaining ACs; (b) is the explicit
   out-of-#410 follow-up.
 
-### P4a — Editor adapters behind the existing `SurveyStage` machine
+### P4a — Editor adapters behind the existing `SurveyStage` machine — IMPLEMENTED
+
+> **IMPLEMENTED** on branch `claude/survey-modularity-cyoa-phase-4-q9ey3o`, merged to main
+> via #778 (2026-06-27). `steps/types.ts` (`Step`, `EditorStep`, `QuestionStep`, `EditorStepProps`);
+> galleries (`CarveGallery`, `MechanismGallery`, `TouchGallery`) + 5 wizard panels
+> (`BaseResolution`, `TrackStep`, `ProjectNameStep`, `HelpStep`, `PackageStep`) moved into
+> `editors/` tree behind typed `EditorStep` adapters; `editors/`/`steps/`/`dashboard/`
+> boundary rules added to `.dependency-cruiser.cjs`; reserved touch-suggest seams
+> (`editors/assignLoop/provenance.ts`, `editors/touchSuggest/defaults.ts`) inert. The
+> `SurveyStage` union was retained (P4a is independently revertible from P4b).
 
 Build `steps/` types + the `editor-step` adapters and `EditorStepProps`. Move the
 galleries (into `editors/assignLoop/` + `editors/carve/`) and the **5 wizard-step
@@ -1001,7 +1023,22 @@ isolated from the ordering change. No union replacement yet.
   components; visual regression on each of the 5 wizard steps.
 - *Relation to #410:* net-new beyond #410.
 
-### P4b — Replace the `SurveyStage` union with manifest-driven ordering
+### P4b — Replace the `SurveyStage` union with manifest-driven ordering — IMPLEMENTED
+
+> **IMPLEMENTED** on branch `claude/survey-modularity-cyoa-phase-4-q9ey3o` (2026-06-27).
+> `steps/manifest.ts` (11 steps: identity, choose_base, track, project_name [spine:false],
+> characters, carve, mechanisms [lock:physical], touch_seed_source [spine:false], touch
+> [lock:touch], help, package); `steps/registerEditorSteps.ts` + `steps/reducer.ts`
+> (`applyStepCompletion` routing `lockDesktop`, `buildTouchLayoutJson`, instantiate);
+> `StudioShell.tsx` rewritten — no `SurveyStage` union remains, ordering from manifest.
+> `flowmap/` renamed `dashboard/`; `buildManifestStepGraph()` added (map == runtime).
+> Five completeness checks in `dashboard/completeness.ts` (C1 fixpoint staleness,
+> C2 iterative-DFS cycle detection on data graph, C3 rejoin, C4 lock-consistency
+> structural proxy [no validator], C5 orphan inputs, C7 unreachable); `CompletenessReport`
+> aggregated by `runCompleteness`. Staleness slice (`staleSteps`, `markStale`/`clearStale`
+> root-set pattern) in `workingCopyStore`. `CompletenessReport` surfaced via props in
+> `DashboardView`. `StepGraphNode` carries `writePaths`/`inputPaths`; `StepGraph` carries
+> `dataEdges`. Deferred: `AssignLoopShell` (#777). P5 (mutate seam) remains out of scope.
 
 Build `steps/manifest.ts` + the register adapters and **replace the hardcoded
 `SurveyStage` union** in `SurveyView` (`StudioShell.tsx`) with manifest reads.
