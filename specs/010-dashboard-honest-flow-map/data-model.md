@@ -11,12 +11,12 @@ A node in the rendered flow map.
 | `id` | `string` | Stable node id. For live/library nodes, the question `definition.id`; for stubs, a synthetic id for the stage. |
 | `label` | `string` | Display text. `prompt ?? label ?? id` for questions (unchanged); stage title for stubs. |
 | `kind` (extended) | `"live" \| "library-not-in-flow" \| "stub"` | **New P0 distinction.** `live` = a step the runtime runs (manifest-referenced for Phase B); `library-not-in-flow` = a registered Phase B module no manifest references (§3.8 reserve, FR-008); `stub` = a gallery/wizard stage with no question metadata (FR-005). Existing edge/branch kinds on `GraphEdge` are unaffected. |
-| `region` | `"flow" \| "not-yet-ordered"` | **New P0 grouping.** `stub` nodes live in `not-yet-ordered` (FR-007); live/library nodes live in `flow`. |
+| `region` | `"flow" \| "not-yet-ordered"` | **New P0 grouping.** `live` nodes live in `flow`; **both** `stub` (FR-007) **and** `library-not-in-flow` (FR-008) nodes live in `not-yet-ordered` — neither has a place in the ordered live spine, so both group out of `flow`. |
 | `phase` | `string` | Which section the node belongs to (Phase B vs A/F/identity-lite), as today. |
 
 **Validation / invariants**:
 - A `live` node MUST correspond to a step the runtime runs (FR-002 — no ghost nodes). For Phase B this means its id is in the modular manifest's resolved set.
-- A `library-not-in-flow` node MUST NOT be counted in the live-equality verification set (Decision 5) and MUST be rendered visibly distinct from `live`.
+- A `library-not-in-flow` node MUST NOT be counted in the live-equality verification set (Decision 5), MUST be rendered visibly distinct from `live`, and carries `region: "not-yet-ordered"` (it is not part of the ordered live spine).
 - A `stub` node MUST carry only `id`/`label`/`kind`/`region` — no `inputs`, `writes`, completeness, or precise ordering (FR-006).
 
 ## Entity: GraphEdge (unchanged shape, modular-sourced for Phase B)
