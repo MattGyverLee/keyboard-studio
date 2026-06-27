@@ -1,0 +1,224 @@
+// reducer — manifest-level step-completion side-effect dispatcher.
+//
+// T026 (P4b foundation). applyStepCompletion() is the SINGLE place that
+// performs survey-level side effects when a step completes. It is keyed by
+// step id and encapsulates the THREE inline side effects currently in SurveyView:
+//
+//   R1 — lock gate: fires lockDesktop() when the "mechanisms" step completes.
+//   R2 — touch-layout build: runs buildTouchLayoutJson + setTouchLayoutJson at
+//          the "touch" step, with the same Case-A/B and graceful degradation.
+//   R3 — copy/adapt instantiation: routes Track 2 → instantiateFromExisting,
+//          Track 1/default → instantiateFromBaseIfConfirmed at the "choose_base"
+//          step (today: onInstantiate in StudioShell.tsx:240-253).
+//   R5 — unknown step id is a no-op (no side effect for most question-steps).
+//
+// BOUNDARY COMPLIANCE: steps/ may NOT import from stores/, lib/, or components/
+// (steps-layer depcruise rule). All store actions and lib helpers are therefore
+// INJECTED via the ReducerDeps parameter rather than statically imported.
+// The caller (SurveyView, T028) provides the deps when it calls applyStepCompletion.
+//
+// The ReducerDeps interface is defined locally here (not imported from stores/)
+// so this file remains boundary-clean. It captures exactly the store actions
+// and lib helpers the reducer needs — nothing more.
+
+import type { KeyboardIR, TouchAssignment, VirtualFS } from "@keyboard-studio/contracts";
+import type { BaseKeyboard, RemovalCapability } from "@keyboard-studio/contracts";
+
+// ---------------------------------------------------------------------------
+// Step ids that carry side effects (keyed constants — never inline strings)
+// ---------------------------------------------------------------------------
+
+/** Step id for the Mechanisms (physical assignment) step — fires lockDesktop() on complete. */
+export const MECHANISMS_STEP_ID = "mechanisms" as const;
+
+/** Step id for the Touch (Phase E) step — fires buildTouchLayoutJson on complete. */
+export const TOUCH_STEP_ID = "touch" as const;
+
+/**
+ * Step id for the choose-base step — fires the copy/adapt instantiation on complete.
+ * (Corresponds to today's "base" SurveyStage and the onInstantiate callback.)
+ */
+export const CHOOSE_BASE_STEP_ID = "choose_base" as const;
+
+// ---------------------------------------------------------------------------
+// Instantiation result — passed to the reducer when choose_base completes.
+// Mirrors the shape the compile pipeline delivers via OnInstantiateCallback.
+// ---------------------------------------------------------------------------
+
+export interface InstantiateResult {
+  base: BaseKeyboard;
+  vfs: VirtualFS | null;
+  ir: KeyboardIR | null;
+  removalCapabilities?: Map<string, RemovalCapability>;
+  /** Which authoring track the user chose. "adapt" = Track 2; anything else = Track 1. */
+  track: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Touch-completion result — passed to the reducer when the touch step completes.
+// ---------------------------------------------------------------------------
+
+export interface TouchCompleteResult {
+  /** Non-inherited touch assignments from Phase E (pre-filtered by TouchGallery). */
+  assignments: TouchAssignment[];
+  /** The base IR at lock time (post-lockDesktop snapshot). */
+  baseIr: KeyboardIR | null;
+  /** The base VFS (for resolving the shipped .keyman-touch-layout, if any). */
+  baseVfs: VirtualFS | null;
+}
+
+// ---------------------------------------------------------------------------
+// Injected dependencies (replacing direct lib/stores imports)
+//
+// All deps are functions — the caller injects concrete implementations.
+// Tests inject mocks; SurveyView (T028) injects the real store actions + helpers.
+// ---------------------------------------------------------------------------
+
+export interface ReducerDeps {
+  // --- Store actions (from workingCopyStore) ---
+  /** Lock the desktop layout after Mechanisms completion (R1). */
+  lockDesktop: () => void;
+  /** Persist the serialized touch layout JSON at Phase E completion (R2). */
+  setTouchLayoutJson: (json: string | null) => void;
+  /** Track 1 instantiation — copy from base, new identity. */
+  instantiateFromBase: (
+    base: BaseKeyboard,
+    opts: { vfs: VirtualFS; ir: KeyboardIR; removalCapabilities?: Map<string, RemovalCapability> },
+  ) => void;
+  /** Track 2 instantiation — adapt existing keyboard, identity preserved. */
+  instantiateFromExisting: (
+    base: BaseKeyboard,
+    opts: { vfs: VirtualFS; ir: KeyboardIR; removalCapabilities?: Map<string, RemovalCapability> },
+  ) => void;
+
+  // --- Lib helpers (from lib/buildTouchLayoutJson + lib/resolveBaseTouchJson) ---
+  /**
+   * Derive the .keyman-touch-layout JSON string from a base IR + assignments.
+   * Two paths: Case A (generate from scratch) and Case B (faithful edit onto
+   * shipped layout). Returns { json, warnings }; json is null on error.
+   */
+  buildTouchLayoutJson: (
+    baseIr: KeyboardIR,
+    assignments: ReadonlyArray<TouchAssignment>,
+    baseTouchJson?: string,
+  ) => { json: string | null; warnings: string[] };
+
+  /**
+   * Resolve the base keyboard's shipped .keyman-touch-layout JSON string from
+   * a VFS. Returns undefined when vfs is null or the file is absent/binary.
+   */
+  resolveBaseTouchJson: (vfs: VirtualFS | null) => string | undefined;
+
+  /**
+   * Track 1 instantiation helper that guards against rebase without user
+   * confirmation (confirmRebaseIfEdited). Returns true when instantiation
+   * proceeded, false when skipped.
+   */
+  instantiateFromBaseIfConfirmed: (
+    base: BaseKeyboard,
+    opts: { vfs: VirtualFS | null; ir: KeyboardIR | null; removalCapabilities?: Map<string, RemovalCapability> },
+  ) => boolean;
+}
+
+// ---------------------------------------------------------------------------
+// applyStepCompletion — the public API
+//
+// Called by SurveyView (T028) every time a step completes. Keyed by stepId.
+// Unknown step ids are a no-op (R5) — most question-steps pass through harmlessly.
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply the side effects for a completed step.
+ *
+ * @param stepId  The id of the step that just completed (from the manifest).
+ * @param result  The opaque result payload from the step. Its shape is narrowed
+ *                per step id inside the function.
+ * @param deps    Injected store actions and lib helpers (avoids boundary violations).
+ */
+export function applyStepCompletion(
+  stepId: string,
+  result: unknown,
+  deps: ReducerDeps,
+): void {
+  switch (stepId) {
+    // R1 — lock gate: fire lockDesktop() after Mechanisms completes.
+    case MECHANISMS_STEP_ID: {
+      deps.lockDesktop();
+      break;
+    }
+
+    // R2 — touch-layout build: mirrors StudioShell.tsx handlePhaseEComplete (lines 380-410).
+    // Same Case-A/B logic and graceful degradation on error.
+    case TOUCH_STEP_ID: {
+      const payload = result as Partial<TouchCompleteResult>;
+      const assignments = payload.assignments ?? [];
+      const baseIr = payload.baseIr ?? null;
+      const baseVfs = payload.baseVfs ?? null;
+
+      if (assignments.length === 0 || baseIr === null) {
+        // No real assignments — clear the stored touch layout (KMW uses its native default).
+        deps.setTouchLayoutJson(null);
+      } else {
+        try {
+          // Case B: base ships a touch layout → apply faithfully onto raw JSON copy.
+          // Case A: no shipped touch layout → IR-based generate-from-scratch path.
+          const baseTouchJson = deps.resolveBaseTouchJson(baseVfs);
+          const { json, warnings } = deps.buildTouchLayoutJson(baseIr, assignments, baseTouchJson);
+          if (warnings.length > 0) {
+            console.error("[applyStepCompletion:touch] buildTouchLayoutJson warnings:", warnings);
+          }
+          // json is null when the emit pipeline threw — omit rather than injecting null/empty.
+          deps.setTouchLayoutJson(json);
+        } catch (err) {
+          console.error("[applyStepCompletion:touch] buildTouchLayoutJson threw unexpectedly:", err);
+          // Per spec, the transition proceeds regardless of build failure.
+          // Graceful degradation: no touch layout → KMW falls back to shipped file or its default.
+          deps.setTouchLayoutJson(null);
+        }
+      }
+      break;
+    }
+
+    // R3 — copy/adapt instantiation: mirrors StudioShell.tsx onInstantiate (lines 240-253).
+    // Routes Track 2 → instantiateFromExisting, Track 1/default → instantiateFromBaseIfConfirmed.
+    case CHOOSE_BASE_STEP_ID: {
+      const payload = result as Partial<InstantiateResult>;
+      const base = payload.base;
+      if (base === undefined) {
+        // Guard: result must carry a base keyboard. Without it, instantiation cannot proceed.
+        console.warn("[applyStepCompletion:choose_base] no base in result — skipping instantiation");
+        break;
+      }
+
+      const track = payload.track ?? null;
+      const vfs = payload.vfs ?? null;
+      const ir = payload.ir ?? null;
+      const removalCapabilities = payload.removalCapabilities;
+
+      if (track === "adapt") {
+        // Track 2: preserve existing keyboard identity.
+        if (ir === null || vfs === null) {
+          console.warn("[applyStepCompletion:choose_base] Track 2 skipped: no parsed IR (mock engine?)");
+          break;
+        }
+        deps.instantiateFromExisting(base, {
+          vfs,
+          ir,
+          ...(removalCapabilities !== undefined ? { removalCapabilities } : {}),
+        });
+      } else {
+        // Track 1 (or null/default): new keyboard from base, with rebase guard.
+        deps.instantiateFromBaseIfConfirmed(base, {
+          vfs,
+          ir,
+          ...(removalCapabilities !== undefined ? { removalCapabilities } : {}),
+        });
+      }
+      break;
+    }
+
+    // R5 — unknown step id is a no-op (most question-steps have no side effect).
+    default:
+      break;
+  }
+}

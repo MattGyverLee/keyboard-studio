@@ -27,6 +27,43 @@ import {
   type SurveySession,
   type TouchAssignment,
 } from "@keyboard-studio/contracts";
+import { computeStalenessFromManifest } from "../dashboard/completeness.ts";
+import type { Step } from "../steps/types.ts";
+
+// ---------------------------------------------------------------------------
+// Manifest binding — avoids a static import of steps/manifest.ts which would
+// create a circular dependency: stores/ → steps/manifest.ts →
+// steps/registerEditorSteps.ts → editors/ → stores/workingCopyStore.ts.
+//
+// `bindManifest(m)` is called once from StudioShell (which already imports the
+// manifest). depcruise's `no-circular` rule checks static import edges only, so
+// a function call does not create a dependency edge.
+// ---------------------------------------------------------------------------
+
+/** @internal — module-level manifest reference; set by bindManifest before first use. */
+let _manifest: readonly Step[] = [];
+
+/**
+ * @internal — the ROOTS of the re-opened set. Distinct from `staleSteps` (the derived
+ * closure). markStale adds to this set; clearStale removes from it; both then recompute
+ * the closure. This separation prevents ghost-stale: clearing a root correctly removes
+ * its downstream dependents from staleSteps (since the closure is recomputed from the
+ * remaining roots, not from the prior closure).
+ *
+ * Reset on reset() / instantiateFromBase() / instantiateFromExisting().
+ */
+let _reopenedRoots: Set<string> = new Set();
+
+/**
+ * Bind the live manifest to the staleness actions in this store.
+ *
+ * Must be called once before `markStale` or `clearStale` is used.
+ * Designed to be called from StudioShell, which already imports the manifest,
+ * to avoid a circular static import through steps/ → editors/ → stores/.
+ */
+export function bindManifest(m: readonly Step[]): void {
+  _manifest = m;
+}
 
 // ---------------------------------------------------------------------------
 // Undo stack entry — discriminated union so node and item deletions share one stack.
@@ -187,6 +224,14 @@ export interface WorkingCopyState {
    */
   galleryIntrosSeen: { mechanism: boolean; touch: boolean };
 
+  // -- Staleness slice (US3, T040) -----------------------------------------------
+  /**
+   * Currently-stale step ids (transitive closure over the writes→inputs data
+   * graph from the re-opened set). Default: empty ("fresh"). Derived UI state —
+   * not persisted; recomputed on markStale/clearStale. (FR-019, data-model.md)
+   */
+  staleSteps: Set<string>;
+
   // -- Actions (irStore) -------------------------------------------------------
   /** Set the carve working IR, clearing carve deletion state. */
   setIR: (ir: KeyboardIR) => void;
@@ -305,6 +350,35 @@ export interface WorkingCopyState {
    * (base + VFS + IR) should check all three slots directly.
    */
   isInstantiated: () => boolean;
+
+  // -- Staleness actions (US3, T040) -------------------------------------------
+
+  /**
+   * Re-open a step and recompute the transitive staleness closure.
+   *
+   * Adds `reopenedId` to the re-opened set, then computes the fixpoint of all
+   * step ids transitively invalidated by the re-opened set over the manifest's
+   * writes→inputs data graph. Stores the result in `staleSteps`.
+   *
+   * Uses `computeStalenessFromManifest` from `dashboard/completeness.ts` and
+   * the manifest bound via `bindManifest()`. The stores/ → dashboard/ import
+   * direction is NOT forbidden by the depcruise `dashboard-layer` rule (which
+   * forbids the reverse: dashboard/ → stores/). The manifest is accessed via a
+   * module-level reference (not a static import) to avoid a circular dep through
+   * steps/ → editors/ → stores/.
+   */
+  markStale: (reopenedId: string) => void;
+
+  /**
+   * Clear a step from the stale set (on re-answer / completion) and recompute
+   * dependents.
+   *
+   * Removes `stepId` from the current re-opened set, then recomputes the
+   * transitive closure from the remaining re-opened steps. This ensures that
+   * clearing one step does not leave its dependents as ghost-stale if they were
+   * only stale because of the cleared step.
+   */
+  clearStale: (stepId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -337,6 +411,7 @@ const INITIAL_STATE: Omit<
   | "setIrAxes" | "lockDesktop" | "unlockDesktop"
   | "setTouchLayoutJson" | "setTouchDraft" | "markGalleryIntroSeen" | "reset"
   | "instantiateFromBase" | "instantiateFromExisting" | "setIdentity" | "isInstantiated"
+  | "markStale" | "clearStale"
 > = {
   // instantiation mode
   instantiationMode: null,
@@ -357,6 +432,8 @@ const INITIAL_STATE: Omit<
   touchLayoutJson: null,
   touchDraft: null,
   galleryIntrosSeen: { mechanism: false, touch: false },
+  // staleness slice (US3) — default empty ("fresh", FR-019)
+  staleSteps: new Set<string>(),
 };
 
 // ---------------------------------------------------------------------------
@@ -479,7 +556,9 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       galleryIntrosSeen: { ...s.galleryIntrosSeen, [gallery]: true },
     })),
 
-  reset: () =>
+  reset: () => {
+    // Clear the module-level re-opened roots so clearStale after reset is correct.
+    _reopenedRoots = new Set();
     set({
       ...INITIAL_STATE,
       // Re-initialize mutable objects so mutations do not bleed across resets.
@@ -487,9 +566,11 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       deletedItemIds: new Set(),
       removalCapabilities: new Map(),
       galleryIntrosSeen: { mechanism: false, touch: false },
+      staleSteps: new Set<string>(),
       // instantiationMode is null in INITIAL_STATE; explicit for clarity.
       instantiationMode: null,
-    }),
+    });
+  },
 
   // -- Instantiation actions (spec §8 v1.3.0) ----------------------------------
 
@@ -508,6 +589,7 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
     }
 
     // Track 1: new keyboard from base — identity RESET, edit layers cleared.
+    _reopenedRoots = new Set(); // reset staleness roots for the new session
     set({
       instantiationMode: "new-from-base",
       baseKeyboard: base,
@@ -529,10 +611,12 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       touchLayoutJson: null,
       touchDraft: null,
       galleryIntrosSeen: { mechanism: false, touch: false },
+      staleSteps: new Set<string>(),
     });
   },
 
-  instantiateFromExisting: (keyboard, { vfs, ir, removalCapabilities }) =>
+  instantiateFromExisting: (keyboard, { vfs, ir, removalCapabilities }) => {
+    _reopenedRoots = new Set(); // reset staleness roots for the new session
     // Track 2: adapt existing keyboard — identity PRESERVED from loaded keyboard.
     set({
       instantiationMode: "adapt-existing",
@@ -561,10 +645,41 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       touchLayoutJson: null,
       touchDraft: null,
       galleryIntrosSeen: { mechanism: false, touch: false },
-    }),
+      staleSteps: new Set<string>(),
+    });
+  },
 
   setIdentity: (patch) =>
     set({ identity: patch }),
 
   isInstantiated: () => get().baseKeyboard !== null,
+
+  // -- Staleness actions (US3, T040) -------------------------------------------
+
+  markStale: (reopenedId) => {
+    // Guard: fail loud if the manifest has not been bound yet.
+    if (_manifest.length === 0) {
+      throw new Error("[workingCopyStore] bindManifest() must be called before markStale");
+    }
+    // Add the reopened step to the ROOT set (NOT the derived closure).
+    // The root set is the seed; the closure is derived from it.
+    // Using the root set prevents ghost-stale: downstream steps that were
+    // only stale because of a root can be correctly cleared by clearStale.
+    _reopenedRoots = new Set([..._reopenedRoots, reopenedId]);
+    const staleSteps = computeStalenessFromManifest(_manifest, _reopenedRoots);
+    set({ staleSteps });
+  },
+
+  clearStale: (stepId) => {
+    // Guard: fail loud if the manifest has not been bound yet.
+    if (_manifest.length === 0) {
+      throw new Error("[workingCopyStore] bindManifest() must be called before clearStale");
+    }
+    // Remove from the ROOT set, then recompute the closure from remaining roots.
+    // This correctly removes downstream-stale steps that were only stale because
+    // of the cleared root (ghost-stale fix — P0-2).
+    _reopenedRoots = new Set([..._reopenedRoots].filter((id) => id !== stepId));
+    const staleSteps = computeStalenessFromManifest(_manifest, _reopenedRoots);
+    set({ staleSteps });
+  },
 }));
