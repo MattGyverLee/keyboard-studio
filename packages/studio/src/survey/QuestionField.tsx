@@ -5,28 +5,25 @@
 import type { FlowQuestion } from "./types.ts";
 import type { LintFinding } from "@keyboard-studio/contracts";
 import { LintChip } from "../lint/LintChip.tsx";
+import {
+  TextField,
+  Textarea,
+  Dropdown,
+  RadioGroup,
+  Notice,
+  Label,
+} from "../ui/index.ts";
+import type { DropdownOption } from "../ui/Dropdown.tsx";
+import type { RadioOption } from "../ui/RadioGroup.tsx";
 
-const INPUT_STYLE: React.CSSProperties = {
-  width: "100%",
-  padding: "8px 10px",
-  background: "#0d1117",
-  border: "1px solid #30363d",
-  borderRadius: 6,
-  color: "#e6edf3",
-  fontSize: 14,
-  fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
-  boxSizing: "border-box",
-  outline: "none",
-};
+// ---------------------------------------------------------------------------
+// Style constants retained for elements the ui/ primitives cannot cover
+// (documented one-offs below).
+// ---------------------------------------------------------------------------
 
-const LABEL_STYLE: React.CSSProperties = {
-  display: "block",
-  fontSize: 13,
-  color: "#e6edf3",
-  fontWeight: 600,
-  marginBottom: 6,
-};
-
+// one-off: HELP_STYLE — Field.tsx exposes a help slot but restructuring the
+// outer container to use Field would conflict with the grouped-label <span>
+// pattern; kept inline to preserve zero diff.
 const HELP_STYLE: React.CSSProperties = {
   fontSize: 12,
   color: "#8b949e",
@@ -35,6 +32,8 @@ const HELP_STYLE: React.CSSProperties = {
   whiteSpace: "pre-wrap",
 };
 
+// one-off: OPTION_ROW_STYLE / OPTION_LABEL_STYLE — kept for AutocompleteField
+// and MultiSelectField (see prop-gap notes on those functions).
 const OPTION_ROW_STYLE: React.CSSProperties = {
   display: "flex",
   alignItems: "flex-start",
@@ -48,6 +47,20 @@ const OPTION_LABEL_STYLE: React.CSSProperties = {
   color: "#e6edf3",
   lineHeight: 1.5,
   cursor: "pointer",
+};
+
+// one-off: INPUT_STYLE retained only for AutocompleteField (prop-gap below).
+const INPUT_STYLE: React.CSSProperties = {
+  width: "100%",
+  padding: "8px 10px",
+  background: "#0d1117",
+  border: "1px solid #30363d",
+  borderRadius: 6,
+  color: "#e6edf3",
+  fontSize: 14,
+  fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+  boxSizing: "border-box",
+  outline: "none",
 };
 
 interface FieldProps {
@@ -65,38 +78,40 @@ function arrayValue(v: string | string[] | undefined): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Text / short_text
+// Text / short_text  →  ui TextField / Textarea
 // ---------------------------------------------------------------------------
 
-function TextField({ question, value, onChange }: FieldProps) {
+function TextFieldControl({ question, value, onChange }: FieldProps) {
   const isMultiLine = question.type === "text";
   const strVal = stringValue(value);
   if (isMultiLine) {
     return (
-      <textarea
+      <Textarea
         id={question.id}
         aria-required={question.required === true}
         value={strVal}
         onChange={(e) => onChange(e.target.value)}
         rows={4}
-        style={{ ...INPUT_STYLE, resize: "vertical" }}
       />
     );
   }
   return (
-    <input
-      type="text"
+    <TextField
       id={question.id}
       aria-required={question.required === true}
       value={strVal}
       onChange={(e) => onChange(e.target.value)}
-      style={INPUT_STYLE}
     />
   );
 }
 
 // ---------------------------------------------------------------------------
 // Autocomplete (text + datalist)
+// one-off: Autocomplete primitive takes options: string[] (value-only), but
+// AutocompleteField uses FlowOption[] which carries per-option labels displayed
+// in the datalist suggestion list. Switching to the primitive would silently
+// drop datalist labels (visible diff). Kept inline until the primitive grows
+// an {value, label}[] overload.
 // ---------------------------------------------------------------------------
 
 function AutocompleteField({ question, value, onChange }: FieldProps) {
@@ -126,114 +141,77 @@ function AutocompleteField({ question, value, onChange }: FieldProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Select (native <select>)
+// Select (native <select>)  →  ui Dropdown
 // ---------------------------------------------------------------------------
 
 function SelectField({ question, value, onChange }: FieldProps) {
   const strVal = stringValue(value);
+  const dropdownOptions: DropdownOption[] = (question.options ?? []).map(
+    (opt) => ({ value: opt.value, label: opt.label }),
+  );
   return (
-    <select
+    <Dropdown
       id={question.id}
       aria-required={question.required === true}
       value={strVal}
-      onChange={(e) => onChange(e.target.value)}
-      style={{ ...INPUT_STYLE, cursor: "pointer" }}
-    >
-      <option value="">— Select one —</option>
-      {(question.options ?? []).map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
+      options={dropdownOptions}
+      onChange={(v) => onChange(v)}
+    />
   );
 }
 
 // ---------------------------------------------------------------------------
-// Radio group
+// Radio group  →  ui RadioGroup (mode="list")
+// prop-gap: RadioGroup does not expose aria-labelledby on its wrapper <div>.
+// The original renders role="radiogroup" aria-labelledby="label-{id}".
+// RadioGroup renders role="radiogroup" without aria-labelledby.
+// Kept as RadioGroup primitive; aria-labelledby is a known prop gap.
 // ---------------------------------------------------------------------------
 
 function RadioField({ question, value, onChange }: FieldProps) {
   const strVal = stringValue(value);
+  const radioOptions: RadioOption[] = (question.options ?? []).map((opt) => ({
+    value: opt.value,
+    label: opt.label,
+    ...(opt.note !== undefined ? { note: opt.note } : {}),
+  }));
   return (
-    <div role="radiogroup" aria-labelledby={`label-${question.id}`}>
-      {(question.options ?? []).map((opt) => {
-        const inputId = `${question.id}-${opt.value}`;
-        const checked = strVal === opt.value;
-        return (
-          <label key={opt.value} htmlFor={inputId} style={OPTION_ROW_STYLE}>
-            <input
-              type="radio"
-              id={inputId}
-              name={question.id}
-              value={opt.value}
-              checked={checked}
-              onChange={() => onChange(opt.value)}
-              style={{ marginTop: 2, flexShrink: 0, accentColor: "#6ea8fe" }}
-              aria-required={question.required === true}
-            />
-            <span style={OPTION_LABEL_STYLE}>
-              {opt.label}
-              {opt.note !== undefined && (
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: 11,
-                    color: "#8b949e",
-                    marginTop: 2,
-                  }}
-                >
-                  {opt.note}
-                </span>
-              )}
-            </span>
-          </label>
-        );
-      })}
-    </div>
+    <RadioGroup
+      mode="list"
+      name={question.id}
+      value={strVal === "" ? null : strVal}
+      options={radioOptions}
+      onChange={(v) => onChange(v)}
+    />
   );
 }
 
 // ---------------------------------------------------------------------------
-// Boolean (Yes / No radio pair)
+// Boolean (Yes / No radio pair)  →  ui RadioGroup (mode="bool")
+// prop-gap: same aria-labelledby gap as RadioField above.
 // ---------------------------------------------------------------------------
 
 function BoolField({ question, value, onChange }: FieldProps) {
   const strVal = stringValue(value);
-  const yesId = `${question.id}-yes`;
-  const noId = `${question.id}-no`;
   return (
-    <div role="radiogroup" aria-labelledby={`label-${question.id}`}>
-      <label htmlFor={yesId} style={OPTION_ROW_STYLE}>
-        <input
-          type="radio"
-          id={yesId}
-          name={question.id}
-          value="true"
-          checked={strVal === "true"}
-          onChange={() => onChange("true")}
-          style={{ marginTop: 2, accentColor: "#3fb950" }}
-        />
-        <span style={OPTION_LABEL_STYLE}>Yes</span>
-      </label>
-      <label htmlFor={noId} style={OPTION_ROW_STYLE}>
-        <input
-          type="radio"
-          id={noId}
-          name={question.id}
-          value="false"
-          checked={strVal === "false"}
-          onChange={() => onChange("false")}
-          style={{ marginTop: 2, accentColor: "#3fb950" }}
-        />
-        <span style={OPTION_LABEL_STYLE}>No</span>
-      </label>
-    </div>
+    <RadioGroup
+      mode="bool"
+      name={question.id}
+      value={strVal === "" ? null : strVal}
+      options={[]}
+      onChange={(v) => onChange(v)}
+    />
   );
 }
 
 // ---------------------------------------------------------------------------
 // Multi-select (checkboxes)
+// one-off: MultiSelect primitive uses inputId = "multiselect-${opt.value}"
+// whereas the original uses "${question.id}-${opt.value}". The id prefix
+// change is a behavioral diff (element IDs differ). Kept inline until the
+// primitive exposes a groupId/name prop to control the prefix.
+// Also: MultiSelect's <div role="group"> does not expose aria-labelledby
+// (same prop-gap as RadioGroup).
 // ---------------------------------------------------------------------------
 
 function MultiSelectField({ question, value, onChange }: FieldProps) {
@@ -279,25 +257,14 @@ function MultiSelectField({ question, value, onChange }: FieldProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Notice (read-only; no input)
+// Notice (read-only; no input)  →  ui Notice
 // ---------------------------------------------------------------------------
 
 function NoticeField({ question }: Pick<FieldProps, "question">) {
   return (
-    <div
-      style={{
-        padding: "14px 16px",
-        background: "#161b22",
-        border: "1px solid #30363d",
-        borderRadius: 8,
-        fontSize: 13,
-        color: "#8b949e",
-        lineHeight: 1.6,
-        whiteSpace: "pre-wrap",
-      }}
-    >
+    <Notice>
       {question.body ?? question.help_text ?? question.prompt}
-    </div>
+    </Notice>
   );
 }
 
@@ -339,10 +306,27 @@ export function QuestionField({
             )}
           </>
         );
+        // one-off: grouped fields (radio/bool/multi_select) use <span> not <label>
+        // because the Label primitive always renders <label>, which is not valid
+        // as a direct wrapper for radiogroup/group role elements. The id attribute
+        // is required so aria-labelledby="label-{id}" on the control group resolves.
         return isGrouped ? (
-          <span id={`label-${question.id}`} style={LABEL_STYLE}>{labelContent}</span>
+          <span
+            id={`label-${question.id}`}
+            style={{
+              display: "block",
+              fontSize: 13,
+              color: "#e6edf3",
+              fontWeight: 600,
+              marginBottom: 6,
+            }}
+          >
+            {labelContent}
+          </span>
         ) : (
-          <label id={`label-${question.id}`} htmlFor={question.id} style={LABEL_STYLE}>{labelContent}</label>
+          <Label id={`label-${question.id}`} htmlFor={question.id} required={question.required === true}>
+            {labelText}
+          </Label>
         );
       })()}
 
@@ -351,7 +335,7 @@ export function QuestionField({
       )}
 
       {question.type === "text" || question.type === "short_text" ? (
-        <TextField question={question} value={value} onChange={onChange} />
+        <TextFieldControl question={question} value={value} onChange={onChange} />
       ) : question.type === "autocomplete" ? (
         <AutocompleteField question={question} value={value} onChange={onChange} />
       ) : question.type === "select" ? (
