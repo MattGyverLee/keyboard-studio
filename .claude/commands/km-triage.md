@@ -102,7 +102,7 @@ You are an advisor, a router, and a mechanical fixer — but never a merger and 
 - **Still mergeable.** Re-fetch `mergeable_state` immediately before push; if `dirty` (CONFLICTING), reroute to MENTION_ONLY with reason `became_conflicting_during_review`. Phase 2's earlier CONFLICTING gate may pass a PR whose mergeability degrades during the review window — this re-check catches it.
 - **Still not a draft.** Re-fetch `.draft` immediately before push (the same `gh api .../pulls/<NUM>` call that returns the head SHA and `mergeable_state`); if the PR went to draft during the review window, abort with reason `became_draft_during_review` and skip the push (and the comment). The triage never commits to a draft PR. Phase 2's earlier draft gate may pass a PR the author later pulls back to draft — this re-check catches it.
 - **No manifest/lockfile fix.** If any fix proposal targets a dependency manifest or lockfile — `**/package.json`, `**/pnpm-lock.yaml`, `**/pnpm-workspace.yaml`, `**/package-lock.json` (single source of truth for the filenames: [utilities/km-triage-app/manifest-guard.js](utilities/km-triage-app/manifest-guard.js)) — reroute the entire findings list to MENTION_ONLY with reason `manifest_change_needs_human`. A `package.json`-only fix that leaves the lockfile stale passes every other gate yet breaks CI on the next `pnpm install --frozen-lockfile`; manifest changes go through a human.
-- **Worktree-isolated execution.** km-programmer applies auto-fixes inside a fresh `git worktree add` under `.escalations/worktrees/` and pushes from there. It NEVER `git checkout`s in the triage's main working tree, because doing so would swap the in-tree definitions of `.claude/agents/`, `.claude/commands/`, fixtures, etc. and contaminate every subsequent PR in the same sweep. The triage asserts the main working tree's HEAD is unchanged after km-programmer returns.
+- **Worktree-isolated execution.** km-programmer applies auto-fixes inside a fresh `git worktree add` under `.escalations/worktrees/` and pushes from there. It NEVER `git checkout`s in the triage's main working tree, because doing so would swap the in-tree definitions of `.claude/agents/`, `.claude/commands/`, fixtures, etc. and contaminate every subsequent PR in the same sweep. The triage asserts BOTH that the main working tree's HEAD SHA is unchanged AND that its index/untracked-files set (as captured by `git status --porcelain=v1 --untracked-files=all`) is byte-identical after km-programmer returns. Either mismatch aborts the sweep immediately.
 
 Pushing a fresh commit that violates any of the above is exactly the kind of "make it go away" shortcut the policy forbids — when in doubt, MENTION_ONLY and let the lead decide.
 
@@ -267,6 +267,12 @@ Before touching any PR:
 ```bash
 mkdir -p .escalations/runs .escalations/diffs .escalations/worktrees
 test -f .escalations/audit-log.jsonl || : > .escalations/audit-log.jsonl
+
+# Worktree-isolation baseline: snapshot the main tree state before any PR is
+# touched. Both values are re-asserted after every km-programmer fix-mode call
+# (AUTO_FIX_ONLY step 11). Either mismatch aborts the entire sweep.
+SWEEP_START_HEAD=$(git rev-parse HEAD)
+SWEEP_START_PORCELAIN=$(git status --porcelain=v1 --untracked-files=all)
 
 # Triage labels: create once per repo lifetime, guarded by a sentinel file.
 # Bump the sentinel suffix whenever a label is added so existing installs
@@ -1077,7 +1083,13 @@ Procedure (worktree-isolated — NEVER mutates the triage's own working tree):
      git -C "$WORKTREE" push "https://x-access-token:$(node utilities/km-triage-app/mint-token.js)@github.com/keyboard-studio/keyboard-studio.git" "HEAD:<HEAD>"
 10. Clean up the worktree:
      git worktree remove "$WORKTREE"
-11. Post-condition (the triage runs this after km-programmer returns): verify the triage's main working-tree HEAD equals the SHA recorded at sweep start. If it changed, print a critical error to stderr ("PR #<NUM> auto-fix appears to have bypassed worktree isolation — sweep aborted"), record it in the audit log, and stop the entire sweep until investigated.
+11. Post-condition (the triage runs this after km-programmer returns): assert BOTH of the following against the values recorded at sweep start.
+
+    a. **HEAD SHA unchanged.** `git rev-parse HEAD` must equal the sweep-start HEAD SHA. If it differs: print `[CRITICAL] PR #<NUM> auto-fix appears to have bypassed worktree isolation — HEAD moved in main tree — sweep aborted` to stderr, record `action_taken: isolation_breach_head` in the audit log, append a critical note to `.escalations/INBOX.md` (format: `## [CRITICAL] Isolation breach on PR #<NUM> — HEAD moved\n<old SHA> -> <new SHA>`), and stop the entire sweep — do not continue to the next PR.
+
+    b. **Porcelain/index/untracked set unchanged.** `git status --porcelain=v1 --untracked-files=all` must be byte-identical to the snapshot taken at sweep start. If it differs: print `[CRITICAL] PR #<NUM> auto-fix leaked stray index/untracked files into the main working tree — sweep aborted` to stderr, record `action_taken: isolation_breach_porcelain` in the audit log, append a critical note to `.escalations/INBOX.md` (format: `## [CRITICAL] Isolation breach on PR #<NUM> — working tree contaminated\nDiff:\n<lines that differ, prefixed with + or ->`) and stop the entire sweep — do not continue to the next PR.
+
+    Both checks must pass. A clean main tree (nothing staged, no untracked files) has an empty porcelain output — that is the expected baseline for a scheduled sweep.
 12. Return a verdict block:
 
 ```verdict
@@ -1311,7 +1323,7 @@ Record the completed check's `id` and `conclusion` in the Phase-7 audit log for 
 After every PR action (including skips), append exactly one JSON line to `.escalations/audit-log.jsonl`:
 
 ```json
-{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA before triage>","last_audited_sha":"<previous audit's head_sha or null>","review_range":"full|incremental","signed_off_skipped":["km-qc","..."],"triage_approved_skipped":["km-synthesis","..."],"scope_skipped":["km-strategy","..."],"trigger":"schedule|comment|manual_arg","triggering_comment_id":<comment_id_or_null>,"triggering_comment_author":"<login_or_null>","verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|auto_fix_only|mention_only|fix_and_mention|escalate|auto_fix_attempt_failed|skipped|auth_failed|bypass","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>","bypass_trigger":"process_title_prefix|triage_bypass_label|null","auto_fix":{"applied":<int>,"escalated":<int>,"commit_sha":"<sha or null>"},"mention_comment_url":"<url or null>","mention_resolution":"ok|self_dedup|lookup_failed|n_a","check_run":{"id":<check_run_id_or_null>,"conclusion":"success|action_required|null"}}
+{"ts":"<ISO timestamp>","pr":<NUM>,"author":"<LOGIN>","directed_by":"<email|login|\"unknown\">","channel":"desktop|web|unknown","team":"<engine|content|shared|null>","crew":"engine|content|both|none","head_sha":"<NUM's last commit SHA before triage>","last_audited_sha":"<previous audit's head_sha or null>","review_range":"full|incremental","signed_off_skipped":["km-qc","..."],"triage_approved_skipped":["km-synthesis","..."],"scope_skipped":["km-strategy","..."],"trigger":"schedule|comment|manual_arg","triggering_comment_id":<comment_id_or_null>,"triggering_comment_author":"<login_or_null>","verdicts":[{"specialist":"<name>","status":"APPROVE|REQUEST_CHANGES|ESCALATE","confidence":"<X>","summary":"<...>"}],"action_taken":"approve_park|auto_fix_only|mention_only|fix_and_mention|escalate|auto_fix_attempt_failed|skipped|auth_failed|bypass|isolation_breach_head|isolation_breach_porcelain","ci_status":"<rollup>","missing_team_label":<bool>,"reason":"<skip reason or null>","bypass_trigger":"process_title_prefix|triage_bypass_label|null","auto_fix":{"applied":<int>,"escalated":<int>,"commit_sha":"<sha or null>"},"mention_comment_url":"<url or null>","mention_resolution":"ok|self_dedup|lookup_failed|n_a","check_run":{"id":<check_run_id_or_null>,"conclusion":"success|action_required|null"}}
 ```
 
 Field notes:
@@ -1329,6 +1341,7 @@ Field notes:
   - `self_dedup` — directing human resolved to the tech lead's own login; comment tags the lead once.
   - `lookup_failed` — desktop-channel case where commit-author email didn't map to a known GitHub login; comment tagged only the lead and the body noted the directing-human's email verbatim.
   - `n_a` — this entry didn't post a mention (e.g. action was APPROVE-AND-PARK or skipped).
+- `isolation_breach_head` / `isolation_breach_porcelain` are written by the Phase-6 step-11 worktree-isolation post-condition (and its `triage-linux.sh` / `triage-windows.ps1` mirrors) when a fix-mode return leaves the main working tree's HEAD (resp. index/untracked set) different from the once-per-sweep `SWEEP_START_*` baseline. They are terminal: the wrapper `exit`s non-zero and the entire sweep halts, so no `pr-end` follows. Downstream consumers must treat these as critical breach markers, not ordinary review outcomes.
 - `bypass_trigger` names the Pre-filter D path that fired when `action_taken` is `bypass`. Two values: `process_title_prefix` (the PR title matched `^(feat|fix|docs|chore|maint|refactor|auto)\(process\):`), or `triage_bypass_label` (the PR carried the `triage-bypass` label). `null` for all other action_taken values — this field is always present in the JSON, but non-null only on bypass entries.
 - `reason` carries the per-action explanation when `action_taken` is `skipped` or `bypass`, or when an auto-fix or approve-park was rerouted to MENTION_ONLY by a precondition gate. Known values include:
   - Bypass reasons (Pre-filter D): `process_title_prefix`, `triage_bypass_label`. These match `bypass_trigger` exactly; both fields carry the same value on bypass entries.
