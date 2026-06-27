@@ -12,6 +12,14 @@
 
 > **Note on technical content in this spec (deliberate).** Like P1 ([specs/011-ui-primitives](../011-ui-primitives/spec.md)), Phase 4 is principally an **architectural refactor** with little net-new *end-user-visible* behavior — its value is the architecture: one ordered step model, one manifest that both the runtime and the dashboard read, and a precise completeness/staleness contract. Per author direction and repository convention — where dependency-cruiser rules are architectural **contracts** and extracted `specs/NNN/` folders carry real contract material — the non-obvious architectural constraints (step model, manifest as single source of ordering, the §3.5 invariants, the reserved P5 seams) are specified here as Functional Requirements and Success Criteria. The *mechanics* (move order, the ~510-LOC `SurveyView` rewrite, exact depcruise rule syntax, codemod approach, import-extension handling) remain plan-level.
 
+## Clarifications
+
+### Session 2026-06-27
+
+- Q: Folder/grouping names for the editor and dashboard layers (resolves FR-025) → A: Adopt the plan's proposed names as-is — `editors/` (with `editors/assignLoop/`, `editors/carve/`, `editors/panels/`, `editors/touchSuggest/`), `steps/`, and `dashboard/` (absorbing `flowmap/`).
+- Q: Delivery split for P4a vs P4b → A: Two sequential PRs — P4a merges first (adapters behind the old stage machine, byte-identical), then P4b (manifest cutover + completeness checks) on top; each independently revertible.
+- Q: How the spine-prefix shippability check is evaluated (FR-017 / SC-007) → A: Structural proxy — assert each spine prefix yields a complete, lock-consistent working copy (relying on the base-template shippability guarantee); no validator invocation is wired into the dashboard in this phase (real per-prefix validation is reserved for P5).
+
 ## User Scenarios & Testing *(mandatory)*
 
 > The "users" of this refactor are the studio engineering and content teams (today) and the people running the survey (whose experience must not regress). The keyboard author is the end user whose flow must stay byte-identical through P4a and continue to work — now manifest-driven — after P4b. Stories are framed as the journeys each constituency depends on; each is independently testable and independently valuable.
@@ -64,7 +72,7 @@ A developer or content author looks at the dashboard and sees, across all reacha
 1. **Given** a step is re-opened (e.g. a lock is broken), **When** staleness is computed, **Then** it marks **every** step reachable along the `writes → inputs` relation, iterated to a fixpoint — not just direct one-hop dependents.
 2. **Given** a manifest whose `writes → inputs` graph contains a cycle, **When** the completeness check runs, **Then** it reports the cycle as a **hard error** (a cycle has no valid staleness ordering).
 3. **Given** an off-spine (side-trail) chain, **When** the rejoin check runs, **Then** it verifies the chain carries an explicit join target and that the terminal branch of the chain lands on a spine step — no side trail may dead-end or leak off-spine.
-4. **Given** any prefix of the spine, **When** the spine-prefix shippability check runs, **Then** it confirms stopping there yields a keyboard that passes the validity/criteria gate (a check **distinct from** inputs-satisfiability).
+4. **Given** any prefix of the spine, **When** the spine-prefix shippability check runs, **Then** it confirms stopping there yields a **complete, lock-consistent working copy** (a structural proxy for the validity/criteria gate, relying on the base-template shippability guarantee — no validator is invoked in this phase) — a check **distinct from** inputs-satisfiability.
 5. **Given** a step whose declared inputs are produced by no upstream step's `writes`, **When** the inputs-satisfiability check runs, **Then** that orphan input is flagged.
 6. **Given** the staleness result, **When** a lock is broken or a step is re-answered, **Then** the set of currently-stale steps is tracked as recomputable state and pre-existing state defaults to "fresh."
 
@@ -122,7 +130,7 @@ A future-phase (P5) contributor finds the per-key provenance tag and the `touchS
 - **FR-014**: The completeness checker MUST compute staleness as the **transitive closure to a fixpoint** over the `writes → inputs` relation when a step is re-opened (one-hop intersection is insufficient).
 - **FR-015**: The completeness checker MUST verify the `writes → inputs` graph is **acyclic** and report any cycle as a **hard error**.
 - **FR-016**: The completeness checker MUST verify the **side-trail rejoin** invariant — every off-spine chain carries an explicit join target and a reachability check confirms its terminal branch lands on a spine step.
-- **FR-017**: The completeness checker MUST verify **spine-prefix shippability** (every spine prefix passes the validity/criteria gate) as a check **distinct from** inputs-satisfiability.
+- **FR-017**: The completeness checker MUST verify **spine-prefix shippability** as a check **distinct from** inputs-satisfiability. In this phase it is evaluated as a **structural proxy** — every spine prefix leaves a complete, lock-consistent working copy (relying on the base-template guarantee that the project always starts shippable). The completeness check MUST NOT invoke the validator per prefix; real per-prefix validation is reserved for P5 (when the `mutate` seam lands).
 - **FR-018**: The completeness checker MUST verify **inputs-satisfiability** — each step's declared inputs are produced by some upstream step's `writes` — and flag orphan inputs.
 - **FR-019**: The system MUST track which steps are currently **stale** as recomputable state (recomputed when a lock is broken or a step is re-answered); pre-existing state defaults to "fresh."
 
@@ -139,7 +147,7 @@ A future-phase (P5) contributor finds the per-key provenance tag and the `touchS
 
 **Naming**
 
-- **FR-025**: The folder/grouping names for the editor and dashboard layers (proposed as `editors/`, `assignLoop/`, `dashboard/` in §4/§8) MUST be decided **before** P4a begins, to avoid a second rename pass touching many imports.
+- **FR-025**: The folder/grouping names for the editor and dashboard layers are **decided** (Clarifications 2026-06-27): the plan's proposed names are adopted as-is — `editors/` (with `editors/assignLoop/`, `editors/carve/`, `editors/panels/`, `editors/touchSuggest/`), `steps/`, and `dashboard/` (absorbing `flowmap/`). P4a MUST use these names from the start, so no second rename pass is needed.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -161,7 +169,7 @@ A future-phase (P5) contributor finds the per-key provenance tag and the `touchS
 - **SC-004**: The dashboard node/edge set equals the runtime step set **exactly** (zero ghost nodes, zero missing nodes) for the full spine.
 - **SC-005**: Every former inline side effect (physical lock, touch-layout build, copy/adapt branch) fires from the manifest-level reducer keyed by step id, and **zero** survey-level side effects remain inside editor components.
 - **SC-006**: The completeness checker flags each §3.5 violation on a crafted-violation fixture and passes a clean manifest — covering all five distinct checks (transitive staleness, acyclicity, rejoin, spine-prefix shippability, inputs-satisfiability) independently.
-- **SC-007**: A full end-to-end run of the spine order completes successfully via the manifest, and every spine prefix is confirmed shippable.
+- **SC-007**: A full end-to-end run of the spine order completes successfully via the manifest, and every spine prefix is confirmed shippable by the structural proxy check (complete, lock-consistent working copy at each prefix; no validator invocation).
 - **SC-008**: The architecture-boundary check is green with the new editor edges explicitly allowed and the P1 `ui/` leaf rule still enforced.
 - **SC-009**: Reverting P4b restores the union-driven flow **without touching the editors** (demonstrating the P4a/P4b layering held).
 - **SC-010**: Touch keys can carry provenance (defaulting to `hand-set`) and the `touchSuggest` policy exists as overridable data, with **zero** propagation logic executing in this phase.
@@ -174,4 +182,6 @@ A future-phase (P5) contributor finds the per-key provenance tag and the `touchS
 - **The `SurveyView` rewrite is substantial (~510 LOC) but behavior-preserving.** P4b is a real rewrite of `SurveyView`, not a config swap; its observable survey behavior (order aside) is preserved, and its side effects move to the reducer rather than changing.
 - **Team ownership.** This is a studio/front-end + content boundary change (survey ordering, gallery grouping, dashboard) executed within the Engine/Content team split per the constitution; no `Pattern` schema or KeyboardIR-spine contract is altered by this feature (the P2 contract additions already landed).
 - **"Byte-identical" means observable behavior**, not source-identical components — adapters wrap existing components and may add an `id`/`title`/`inputs`/`writes` envelope without changing rendered output or interaction.
-- **Folder names are decided up front** (FR-025); the spec treats `editors/`, `assignLoop/`, `dashboard/` as the working names unless changed before P4a.
+- **Folder names are decided** (FR-025, Clarifications 2026-06-27): the plan's proposed names — `editors/` (`assignLoop/`, `carve/`, `panels/`, `touchSuggest/`), `steps/`, and `dashboard/` (absorbing `flowmap/`) — are adopted as-is and used from the start of P4a.
+- **Delivery is two sequential PRs** (Clarifications 2026-06-27): P4a merges first (adapters behind the unchanged `SurveyStage` machine, byte-identical), then P4b (manifest cutover + completeness checks) on top. Each is independently revertible, which is what makes SC-009 (revert P4b without touching editors) a merge-boundary guarantee, not just an internal commit boundary.
+- **Spine-prefix shippability is a structural proxy in this phase** (FR-017, Clarifications 2026-06-27): the completeness check asserts a complete, lock-consistent working copy at each prefix rather than invoking the validator; real per-prefix validation waits for P5.
