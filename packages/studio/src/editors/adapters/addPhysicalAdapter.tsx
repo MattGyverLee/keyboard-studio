@@ -22,11 +22,12 @@ import { MechanismGallery } from "../assignLoop/MechanismGallery.tsx";
 export function AddPhysicalAdapter({ onComplete, onBack }: EditorStepProps) {
   const baseKeyboard = useWorkingCopyStore((s) => s.baseKeyboard);
 
+  // MechanismGallery's onBack is optional in its own props — pass through directly.
   return (
     <MechanismGallery
       selectedBaseKeyboard={baseKeyboard}
       onComplete={() => onComplete(undefined)}
-      onBack={onBack}
+      {...(onBack !== undefined ? { onBack } : {})}
     />
   );
 }

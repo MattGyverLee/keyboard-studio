@@ -6,7 +6,7 @@
 //        the type-error can only be asserted at compile time, not at runtime).
 
 import { describe, it, expect } from "vitest";
-import type { Step, QuestionStep, EditorStep, StepKind } from "./types.ts";
+import type { Step, QuestionStep, EditorStep, StepKind, EditorStepProps } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // G4 — reusable uniqueness helper (manifest and other test files import this)
@@ -78,7 +78,12 @@ describe("StepKind", () => {
       switch (step.kind) {
         case "question-step": return true;
         case "editor-step": return true;
-        // No default — TypeScript would error if Step had a third kind.
+        default: {
+          // If a third StepKind is ever added, this arm becomes reachable and
+          // the assignment below fails to compile — a guaranteed compile error.
+          const _never: never = step;
+          return _never;
+        }
       }
     }
     const q: QuestionStep = { kind: "question-step", id: "q", title: "Q", questionId: "qid", inputs: [], writes: [] };
@@ -109,6 +114,32 @@ describe("assertUniqueIds", () => {
 
   it("passes on an empty list", () => {
     expect(() => assertUniqueIds([])).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EditorStepProps.onBack optional — adapters without a back affordance
+// ---------------------------------------------------------------------------
+
+describe("EditorStepProps — onBack optional", () => {
+  it("an EditorStepProps value with onBack absent is valid (compile + runtime)", () => {
+    // If onBack were required on the interface, the assignment below would be a
+    // TS error at compile time. This test pins the runtime side of that contract.
+    const props: EditorStepProps = {
+      onComplete: (_result: unknown) => undefined,
+      // onBack intentionally absent — entry-point panels have no back affordance
+    };
+    expect(props.onBack).toBeUndefined();
+    expect(typeof props.onComplete).toBe("function");
+  });
+
+  it("an EditorStepProps value with onBack present is also valid", () => {
+    const onBack = () => undefined;
+    const props: EditorStepProps = {
+      onComplete: (_result: unknown) => undefined,
+      onBack,
+    };
+    expect(props.onBack).toBe(onBack);
   });
 });
 

@@ -94,7 +94,12 @@ export interface EditorStepProps {
    * The component itself performs NO survey-level side effects (G2 / FR-003).
    */
   onComplete: (result: unknown) => void;
-  onBack: () => void;
+  /**
+   * Optional — not every step has a back affordance. Panels that are entry
+   * points (TrackOneIdentityPanel, ScaffoldForm) may omit it; galleries and
+   * branching steps supply it.
+   */
+  onBack?: () => void;
   /** Shared survey/identity context (existing shape from survey/types.ts). */
-  ctx: SurveyContext;
+  ctx?: SurveyContext;
 }

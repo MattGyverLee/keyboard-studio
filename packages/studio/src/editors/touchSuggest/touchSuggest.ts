@@ -33,7 +33,11 @@ import type { TouchKeyProvenance } from "../assignLoop/provenance.ts";
 export interface TouchSuggestInput {
   /**
    * The physical keyboard IR serialised as the minimal representation the
-   * generator needs.  Full type will be KeyboardIR once wired in P5.
+   * generator needs.
+   *
+   * TODO(P5): replace Record<string, unknown> with KeyboardIR once the mutate
+   * seam lands. This stub exists so the generator's call site is typed in P4a
+   * without pulling in the full engine types.
    */
   readonly physicalIR: Readonly<Record<string, unknown>>;
 

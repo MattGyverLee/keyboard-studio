@@ -37,8 +37,8 @@ export type Step = QuestionStep | EditorStep;
 
 export interface EditorStepProps {
   onComplete: (result: unknown) => void;  // result → manifest reducer; NO side effects in component
-  onBack: () => void;
-  ctx: SurveyContext;
+  onBack?: () => void;  // optional — entry-point panels (TrackOneIdentityPanel, ScaffoldForm) have no back affordance
+  ctx?: SurveyContext;
 }
 ```
 

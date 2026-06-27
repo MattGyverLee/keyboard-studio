@@ -44,11 +44,13 @@ export function TrackStepAdapter({ onComplete, onBack }: EditorStepProps) {
     onComplete({ track });
   }
 
+  // TrackStep requires onBack — the manifest must supply it for this step.
+  // Fall back to a no-op if absent (misconfigured manifest).
   return (
     <TrackStep
       base={baseKeyboard}
       onNext={handleNext}
-      onBack={onBack}
+      onBack={onBack ?? (() => undefined)}
     />
   );
 }
@@ -72,11 +74,13 @@ export function ProjectNameStepAdapter({ onComplete, onBack }: EditorStepProps) 
     onComplete({ displayName, keyboardId });
   }
 
+  // ProjectNameStep requires onBack — the manifest must supply it for this step.
+  // Fall back to a no-op if absent (misconfigured manifest).
   return (
     <ProjectNameStep
       defaultDisplayName={defaultDisplayName}
       onNext={handleNext}
-      onBack={onBack}
+      onBack={onBack ?? (() => undefined)}
     />
   );
 }
@@ -103,17 +107,17 @@ export function ScaffoldFormAdapter({ onComplete }: EditorStepProps) {
 
 /**
  * Adapter for TrackOneIdentityPanel. The panel reads/writes the store
- * directly and has no explicit onComplete — it is a continuous editing surface.
- * The adapter fires onComplete immediately so the step is treated as "always
- * done" (the panel stays mounted alongside the working-copy preview).
+ * directly (keyboard ID, display name) and has no intrinsic completion signal —
+ * it is a continuous editing surface, not a "submit and advance" form.
  *
- * The actual transition to the next step happens when the user clicks the
- * primary action in StudioShell (P4b will wire this through the manifest).
+ * In P4a, advancement is still driven by SurveyStage in StudioShell, not by
+ * this adapter's onComplete. onComplete is declared on the interface but is
+ * intentionally not called here.
+ *
+ * TODO(P4b): step advancement for the continuous identity panel is decided by
+ * the manifest/reducer, not the component. Wire when the manifest lands.
  */
-export function TrackOneIdentityPanelAdapter({ onComplete }: EditorStepProps) {
-  // Fire onComplete on mount — identity editing is continuous, not gate-locked.
-  // The manifest (P4b) will query the panel's validity state before advancing.
-  void onComplete;
+export function TrackOneIdentityPanelAdapter(_props: EditorStepProps) {
   return <TrackOneIdentityPanel />;
 }
 

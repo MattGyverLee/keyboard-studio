@@ -21,10 +21,8 @@ export function AddTouchAdapter({ onComplete, onBack }: EditorStepProps) {
     onComplete(assignments);
   }
 
-  return (
-    <TouchGallery
-      onComplete={handleComplete}
-      onBack={onBack}
-    />
-  );
+  // TouchGallery requires onBack — the manifest must supply it for this step.
+  // If absent (misconfigured manifest), fall back to a no-op so the UI doesn't crash.
+  const handleBack = onBack ?? (() => undefined);
+  return <TouchGallery onComplete={handleComplete} onBack={handleBack} />;
 }
