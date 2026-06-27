@@ -101,6 +101,7 @@ You are an advisor, a router, and a mechanical fixer — but never a merger and 
 - **Head SHA unchanged since Phase 2.** Before push, re-fetch the current head SHA and assert it equals the snapshot from Phase 2. If the author force-pushed (or another sweep raced this one) during the review window, abort with reason `head_moved_during_fix`. Pushing fixes computed against code that's no longer at HEAD would silently bypass review.
 - **Still mergeable.** Re-fetch `mergeable_state` immediately before push; if `dirty` (CONFLICTING), reroute to MENTION_ONLY with reason `became_conflicting_during_review`. Phase 2's earlier CONFLICTING gate may pass a PR whose mergeability degrades during the review window — this re-check catches it.
 - **Still not a draft.** Re-fetch `.draft` immediately before push (the same `gh api .../pulls/<NUM>` call that returns the head SHA and `mergeable_state`); if the PR went to draft during the review window, abort with reason `became_draft_during_review` and skip the push (and the comment). The triage never commits to a draft PR. Phase 2's earlier draft gate may pass a PR the author later pulls back to draft — this re-check catches it.
+- **No manifest/lockfile fix.** If any fix proposal targets a dependency manifest or lockfile — `**/package.json`, `**/pnpm-lock.yaml`, `**/pnpm-workspace.yaml`, `**/package-lock.json` (single source of truth for the filenames: [utilities/km-triage-app/manifest-guard.js](utilities/km-triage-app/manifest-guard.js)) — reroute the entire findings list to MENTION_ONLY with reason `manifest_change_needs_human`. A `package.json`-only fix that leaves the lockfile stale passes every other gate yet breaks CI on the next `pnpm install --frozen-lockfile`; manifest changes go through a human.
 - **Worktree-isolated execution.** km-programmer applies auto-fixes inside a fresh `git worktree add` under `.escalations/worktrees/` and pushes from there. It NEVER `git checkout`s in the triage's main working tree, because doing so would swap the in-tree definitions of `.claude/agents/`, `.claude/commands/`, fixtures, etc. and contaminate every subsequent PR in the same sweep. The triage asserts BOTH that the main working tree's HEAD SHA is unchanged AND that its index/untracked-files set (as captured by `git status --porcelain=v1 --untracked-files=all`) is byte-identical after km-programmer returns. Either mismatch aborts the sweep immediately.
 
 Pushing a fresh commit that violates any of the above is exactly the kind of "make it go away" shortcut the policy forbids — when in doubt, MENTION_ONLY and let the lead decide.
@@ -457,14 +458,78 @@ Procedure:
 5. If `review_range == "incremental"` AND the incremental diff is empty (no actual file changes, e.g. only merge commits with no content), skip this PR with reason `no_content_changes_since_last_review`. This is a secondary idempotency gate beyond Phase 2's head-sha check, catching cases where new commits don't actually change reviewable content.
 6. **Cache the diff to disk once for the whole crew.** Each specialist would otherwise re-run `gh pr diff` or `git diff` independently — for a BOTH-crew PR with no sign-offs, that's 6 redundant fetches of the same data. Fetch once now and write to a sweep-scoped path under `.escalations/diffs/`:
 
+   Before fetching, identify files to **exclude from the cached diff body** so that large generated artifacts do not corrupt line-number offsets in specialist findings (see PR #350 regression: `scan.ts` cited at line 13617 vs. real line 195 because `docs/import-corpus.json` inflated the unified diff). Two exclusion criteria:
+
+   ```bash
+   # -- Configurable known-generated set --
+   # Add committed generated outputs here whenever a new large artifact is introduced.
+   KNOWN_GENERATED=(
+     "docs/import-corpus.json"
+     "docs/import-corpus.md"
+   )
+
+   # -- Per-file size threshold (changed lines = added + deleted from --numstat) --
+   # Any file whose diff exceeds this threshold is excluded even if not in the known set.
+   OVERSIZED_THRESHOLD=2000
+   ```
+
+   Build the exclusion list dynamically using `git diff --numstat` on the relevant range, then produce the cached diff and file list:
+
    ```bash
    DIFF_PATH=.escalations/diffs/<NUM>-<CURRENT_HEAD_SHORT_SHA>.diff
    FILES_PATH=.escalations/diffs/<NUM>-<CURRENT_HEAD_SHORT_SHA>.files.json
+
+   # compute_exclusions <refspec>
+   # Runs git diff --numstat on <refspec>, classifies each file as binary,
+   # generated (KNOWN_GENERATED), or oversized (OVERSIZED_THRESHOLD), and
+   # populates EXCLUDE_PATHSPECS and EXCLUDED_LOG. Logs any exclusions to
+   # stdout (required — no silent caps).
+   # Regression intent: on a PR like #350 (large committed generated file),
+   # findings must cite real file line numbers because the generated file body
+   # is no longer in the cached diff.
+   compute_exclusions() {
+     local refspec="$1"
+     EXCLUDE_PATHSPECS=()
+     EXCLUDED_LOG=()
+     while IFS=$'\t' read -r added deleted path; do
+       local reason=""
+       # Binary files: git diff --numstat emits "-\t-\t<path>"; arithmetic on "-" is 0,
+       # which silently passes OVERSIZED_THRESHOLD. Catch them first.
+       if [ "$added" = "-" ] || [ "$deleted" = "-" ]; then
+         reason="binary"
+       else
+         local total=$(( added + deleted ))
+         for gen in "${KNOWN_GENERATED[@]}"; do
+           [ "$path" = "$gen" ] && reason="generated" && break
+         done
+         [ -z "$reason" ] && [ "$total" -gt "$OVERSIZED_THRESHOLD" ] && reason="oversized: $total lines"
+       fi
+       if [ -n "$reason" ]; then
+         EXCLUDE_PATHSPECS+=(":(exclude)$path")
+         EXCLUDED_LOG+=("$path ($reason)")
+       fi
+     done < <(git diff --numstat "$refspec" 2>/dev/null)
+     if [ "${#EXCLUDED_LOG[@]}" -gt 0 ]; then
+       echo "[km-triage] Pre-filter A excluded ${#EXCLUDED_LOG[@]} file(s) from cached diff: $(IFS=', '; echo "${EXCLUDED_LOG[*]}"). Files remain in <FILES_PATH>; spot-check via git show."
+     fi
+   }
+
    if [ "<RANGE>" = "full" ]; then
-     gh pr diff <NUM> > "$DIFF_PATH"
+     # Resolve base/head OIDs for the PR so we can use git pathspecs.
+     # gh pr diff does not accept pathspec exclusions; git diff does.
+     BASE_OID=$(gh pr view <NUM> --json baseRefOid --jq '.baseRefOid')
+     HEAD_OID=$(gh pr view <NUM> --json headRefOid --jq '.headRefOid')
+     git fetch --quiet origin "$BASE_OID" "$HEAD_OID" 2>/dev/null || true
+
+     compute_exclusions "$BASE_OID...$HEAD_OID"
+     git diff "$BASE_OID"..."$HEAD_OID" -- . "${EXCLUDE_PATHSPECS[@]}" > "$DIFF_PATH"
+     # Keep the FULL file list (do not exclude here — specialists must still see the file changed).
      gh pr view <NUM> --json files > "$FILES_PATH"
+
    else
-     git diff <LAST_AUDITED_SHA>..<CURRENT_HEAD_SHA> > "$DIFF_PATH"
+     compute_exclusions "<LAST_AUDITED_SHA>..<CURRENT_HEAD_SHA>"
+     git diff <LAST_AUDITED_SHA>..<CURRENT_HEAD_SHA> -- . "${EXCLUDE_PATHSPECS[@]}" > "$DIFF_PATH"
+     # Keep the FULL file list (do not exclude here — specialists must still see the file changed).
      git diff --name-status <LAST_AUDITED_SHA>..<CURRENT_HEAD_SHA> > "$FILES_PATH"
    fi
    ```
@@ -689,10 +754,23 @@ Read it from:
 File list (paths only) for this review range:
   <FILES_PATH>
 
+IMPORTANT — generated/oversized file exclusion: the cached diff at
+<DIFF_PATH> omits the diff bodies of any files identified as generated
+(see the KNOWN_GENERATED list in Pre-filter A, step 6) or oversized
+(exceeding the OVERSIZED_THRESHOLD). The [km-triage] log lines printed
+at diff-cache time name every excluded file and the reason. Those files
+still appear in <FILES_PATH> so you can see they changed. Line numbers
+in the cached diff map to real file offsets for the included files only.
+To review an excluded file, use:
+  git show <CURRENT_HEAD_SHA>:<path>
+  (incremental sweeps only) git diff <LAST_AUDITED_SHA>..<CURRENT_HEAD_SHA> -- <path>
+Do NOT cite line numbers from an excluded file's diff — the body is not
+in the cache; fetch it directly as above and cite real file line numbers.
+
 Do NOT re-run `gh pr diff` or `git diff` yourself — the cached files
-above contain the same data. If a file in the cached diff references
-context from outside the range that you need to read in full, fetch
-it with `git show <CURRENT_HEAD_SHA>:<path>`.
+above contain the same data for included files. If a file in the cached
+diff references context from outside the range that you need to read in
+full, fetch it with `git show <CURRENT_HEAD_SHA>:<path>`.
 
 <PREVIOUS_REVIEW_CONTEXT_BLOCK>
 
@@ -958,12 +1036,15 @@ Before dispatching `km-programmer` to apply any auto-fixes, verify all of the fo
 2. **Head has not moved since Phase 2 snapshot.** Re-fetch the current head SHA via `gh api repos/keyboard-studio/keyboard-studio/pulls/<NUM> --jq .head.sha` and assert it equals the `head_sha` recorded at Phase 2. If the author force-pushed (or another sweep raced this one) during the review-and-fix window, ABORT auto-fix with reason `head_moved_during_fix`. The fixes were computed against code that's no longer at HEAD; pushing them would silently bypass review.
 3. **PR is still MERGEABLE.** Re-fetch `gh api repos/keyboard-studio/keyboard-studio/pulls/<NUM> --jq .mergeable_state` and confirm it isn't `dirty` (i.e. CONFLICTING). Another PR may have merged into `main` between Phase 2 and now, making this PR conflict. ABORT auto-fix with reason `became_conflicting_during_review` and reroute to MENTION_ONLY (mirroring the Phase-2 CONFLICTING gate).
 4. **PR is still not a draft.** From the same `gh api repos/keyboard-studio/keyboard-studio/pulls/<NUM>` response, assert `.draft` is `false`. The PR was non-draft at Phase 2 (or it would have been skipped there), so the crew ran — but converting it to draft *during* the review window is the author signalling they have pulled it back to rework. ABORT auto-fix with reason `became_draft_during_review`. **The triage never commits to a draft PR.** Unlike the other three gates, do **not** reroute to MENTION_ONLY: a draft is the author's active workspace, so skip the push *and* the comment, record an audit entry with `action_taken: skipped, reason: became_draft_during_review`, and move on. The crew's findings are preserved in the audit log; the next sweep re-reviews once the PR leaves draft.
+5. **No fix proposal touches a manifest file.** Before dispatching `km-programmer`, check every fix proposal's `file` field against the manifest basenames — `**/package.json`, `**/pnpm-lock.yaml`, `**/pnpm-workspace.yaml`, or `**/package-lock.json` — and apply the rule inline (the prompt does not invoke any module at runtime; the single source of truth for this filename list is [utilities/km-triage-app/manifest-guard.js](utilities/km-triage-app/manifest-guard.js), which any programmatic caller should `require()` rather than re-enumerate). If **any** proposal matches, ABORT auto-fix and reroute the **entire** findings list to MENTION_ONLY with reason `manifest_change_needs_human`. Rationale: manifest edits carry peer-dependency cascades and lockfile-consistency semantics a mechanical fix cannot safely resolve. A `package.json`-only change that leaves `pnpm-lock.yaml` stale satisfies every other gate yet breaks CI on the next `pnpm install --frozen-lockfile` (`ERR_PNPM_OUTDATED_LOCKFILE`). Routing to a human is the only safe response.
 
-All four checks together cost one `gh api` call (the same one returns `.head.sha`, `.mergeable_state`, and `.draft`); run it once and reuse the result across the four gates.
+> **Sanctioned-override path (dormant).** Precondition 5 blocks ALL manifest fixes today; the auto-fix path never regenerates lockfiles under normal operation. If a future class of safe manifest fixes is ever explicitly sanctioned via an override, the km-programmer procedure must, after applying any `**/package.json`-touching fix, run `pnpm install --lockfile-only` from the worktree root and stage both the `package.json` and the resulting `pnpm-lock.yaml` in the same commit. If regen fails (network error, registry auth, peer-dep conflict), abort and reroute to MENTION_ONLY with reason `lockfile_regen_failed`. This path requires `pnpm` on the bot host (documented by km-programmer in the host setup). It is not the active default.
+
+Checks 1–4 together cost one `gh api` call (the same one returns `.head.sha`, `.mergeable_state`, and `.draft`); run it once and reuse the result across those four gates. Precondition 5 is a path test over the fix-proposal list and needs no additional API call.
 
 ### Action: AUTO_FIX_ONLY (Phase 5.5 outcome)
 
-Dispatch `km-programmer` once with the consolidated auto-fix list. **First run the Auto-fix preconditions above; only proceed if all three pass.** Briefing template:
+Dispatch `km-programmer` once with the consolidated auto-fix list. **First run the Auto-fix preconditions above; only proceed if all five pass.** Briefing template:
 
 ```
 You are applying auto-fixes from a km-triage sweep against PR #<NUM>.
@@ -1265,7 +1346,7 @@ Field notes:
 - `reason` carries the per-action explanation when `action_taken` is `skipped` or `bypass`, or when an auto-fix or approve-park was rerouted to MENTION_ONLY by a precondition gate. Known values include:
   - Bypass reasons (Pre-filter D): `process_title_prefix`, `triage_bypass_label`. These match `bypass_trigger` exactly; both fields carry the same value on bypass entries.
   - Skip reasons (Phase 2 / Pre-filter A): `external_pr_not_in_scope`, `draft`, `already_awaiting_response`, `merge_conflict`, `ci_not_ready`, `no_new_commits_since_last_review`, `no_content_changes_since_last_review`. Also `became_draft_during_review` — a Phase-6 auto-fix gate (gate 4) that, unlike the other preconditions, records `action_taken: skipped` rather than rerouting to MENTION_ONLY (the triage never comments on or commits to a PR the author pulled back to draft mid-review).
-  - Auto-fix abort → MENTION_ONLY reroute (Phase 6 preconditions): `head_is_protected_branch`, `head_moved_during_fix`, `became_conflicting_during_review`.
+  - Auto-fix abort → MENTION_ONLY reroute (Phase 6 preconditions): `head_is_protected_branch`, `head_moved_during_fix`, `became_conflicting_during_review`, `manifest_change_needs_human` (precondition 5 fired — a fix proposal targets a manifest path), `lockfile_regen_failed` (the sanctioned-override path's lockfile regen via `pnpm install --lockfile-only` failed).
   - Approve-park abort → MENTION_ONLY reroute (Phase 6 APPROVE-AND-PARK re-check): `became_conflicting_during_review`, `ci_red_during_review`.
   - Other: `auth_failed`, `missing_team_label` (informational; doesn't gate). Empty array `[]` means either no trailer was present or the trailer named only specialists in the always-run set (which never get skipped). This list is *informational* — it does not appear in `verdicts` since those specialists didn't run this sweep, but it lets a later audit reconstruct why the crew was smaller than the classification suggests.
 - `auto_fix.applied` counts findings that landed mechanically. `auto_fix.escalated` counts findings that were `fixability=auto` in the verdict but couldn't be applied (e.g. km-programmer hit a failing check and rolled back).
