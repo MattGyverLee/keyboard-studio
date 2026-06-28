@@ -181,6 +181,11 @@ describe("flow-parity: phase_f_helpdocs — questions[]", () => {
       expect(hasText, `question "${q.id}" has neither prompt, label, nor body`).toBe(true);
     }
   });
+
+  it("projected fields are stable (snapshot)", () => {
+    const projected = modular.questions.map(projectQuestion);
+    expect(projected).toMatchSnapshot("Phase F questions projected");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -241,5 +246,10 @@ describe("flow-parity: identity_lite — questions[]", () => {
     const q = modular.questions.find((q) => q.id === "il_target_script");
     expect(Array.isArray(q?.options)).toBe(true);
     expect((q?.options ?? []).length).toBeGreaterThan(0);
+  });
+
+  it("projected fields are stable (snapshot)", () => {
+    const projected = modular.questions.map(projectQuestion);
+    expect(projected).toMatchSnapshot("identity_lite questions projected");
   });
 });
