@@ -25,6 +25,7 @@ import type { IRPath, KeyboardIR, TouchAssignment, VirtualFS } from "@keyboard-s
 import type { BaseKeyboard, RemovalCapability } from "@keyboard-studio/contracts";
 import type { MutateContext } from "../survey/types.ts";
 import { applyMutatePatch } from "./mutateApply.ts";
+import { repropagate } from "./repropagate.ts";
 import { isMutateSeamEnabled } from "../flags/mutateFlag.ts";
 
 // ---------------------------------------------------------------------------
@@ -130,10 +131,22 @@ export interface ReducerDeps {
    */
   getWorkingIR?: () => KeyboardIR | null;
   /**
-   * Write the merged IR back to the working copy (injected `setIR`). Called only
-   * when the mutate flag is on AND a mutate request actually changed the IR.
+   * Write the merged IR back to the working copy via the OVERLAY-PRESERVING
+   * store setter (`setWorkingIR`, NOT `setIR`). These are incremental patches to
+   * the working IR and must preserve the carve-deletion overlay
+   * (deletedNodeIds/deletedItemIds/undoStack). Called only when the mutate flag
+   * is on AND a mutate request actually changed the IR.
    */
   setWorkingIR?: (ir: KeyboardIR) => void;
+
+  // --- touch re-propagation (spec-014 US2, T024) ---
+  /**
+   * Read the current staleness closure (the P4b `staleSteps` slice). Injected
+   * (steps/ may not import stores/). Drives touch re-propagation on a physical
+   * change; an empty closure short-circuits to a no-op (R5). Absent ⇒ no
+   * re-propagation is attempted (P4b behavior).
+   */
+  getStaleSteps?: () => ReadonlySet<string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +220,23 @@ export function applyStepCompletion(
     // R1 — lock gate: fire lockDesktop() after Mechanisms completes.
     case MECHANISMS_STEP_ID: {
       deps.lockDesktop();
+      // spec-014 US2 (T024): a physical step/lock completion triggers automatic
+      // touch re-propagation, GATED on the mutate flag (flag-off ⇒ byte-identical
+      // to P4b — no re-propagation runs). repropagate() itself short-circuits to
+      // a no-op when the staleness closure is empty (R5). Deps are injected to
+      // respect the steps-layer boundary (no stores/ import here).
+      if (
+        isMutateSeamEnabled() &&
+        deps.getStaleSteps !== undefined &&
+        deps.getWorkingIR !== undefined &&
+        deps.setWorkingIR !== undefined
+      ) {
+        repropagate({
+          staleSteps: deps.getStaleSteps(),
+          getWorkingIR: deps.getWorkingIR,
+          setWorkingIR: deps.setWorkingIR,
+        });
+      }
       break;
     }
 

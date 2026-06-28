@@ -135,6 +135,56 @@ export function applyCarveMutate(
 }
 
 // ---------------------------------------------------------------------------
+// Touch re-propagation write surface — spec-014 US2 foundation (next cycle)
+// ---------------------------------------------------------------------------
+
+/**
+ * The touch write surface — the IR location touch re-propagation (US2) may
+ * rewrite. Exported here, alongside {@link CARVE_WRITES} / {@link ADD_GALLERY_WRITES},
+ * so the next cycle's `repropagate.ts` routes its `touchSuggest`-derived patch
+ * through `applyMutatePatch(baseIr, patch, TOUCH_WRITES)` and inherits the same
+ * M2 (path-scoped deep merge) + M3 (declared-`writes` containment) guarantees.
+ *
+ * Touch keys live at `touchLayout.platforms[].layers[].rows[].keys[]`. The
+ * `keys[]` array is the addressable endpoint (a path that resolves TO a
+ * `TouchKeyIR` — IRPath traversal is bounded at `TouchKeyIR`, so per-key
+ * `sk`/`flick`/`multitap` sub-trees are intentionally not separate write paths;
+ * a key and its whole sub-tree are written as a unit, FR-008 G4). Declaring the
+ * path at `keys` authorizes both a whole-array replace (`keys`) and per-element
+ * writes (`keys[3]`, `keys[3].provenance`) under the prefix-containment rule.
+ *
+ * `touchLayout.nodeIds` is ALSO in the surface: re-suggesting touch keys
+ * re-derives the platform+layer+key → nodeId map alongside the keys, so a
+ * re-propagation patch legitimately rewrites both. It stays a SEPARATE declared
+ * path (not a coarse `touchLayout` grant) so the containment guard keeps
+ * unrelated touch-layout siblings — `header`/`stores`/`groups`/`comments`/`raw`
+ * — out of bounds. Note that `platforms[].id`/`font` are NOT protected by this
+ * path guard: the declared `keys[]`/`nodeIds[]` paths sit UNDER `platforms`, and
+ * the re-propagation patch carries each whole `platforms[]` element (mergeNoClobber
+ * spreads `...platform`), so `id`/`font` ride along inside an authorized subtree.
+ * Their byte-identity is guaranteed by mergeNoClobber copying them verbatim, NOT
+ * by the containment guard rejecting them.
+ *
+ * NOTE: this cycle exports the containment set ONLY. The re-propagation logic
+ * (reading the staleness slice, re-running `touchSuggest`, the no-clobber
+ * provenance gate) is deferred to the next cycle's US2 task set (T022–T024).
+ */
+export const TOUCH_WRITES: readonly IRPath[] = [
+  irPath(
+    "touchLayout",
+    "platforms",
+    ARRAY_INDEX,
+    "layers",
+    ARRAY_INDEX,
+    "rows",
+    ARRAY_INDEX,
+    "keys",
+    ARRAY_INDEX,
+  ),
+  irPath("touchLayout", "nodeIds", ARRAY_INDEX),
+];
+
+// ---------------------------------------------------------------------------
 // Add galleries (mechanism assignment) — T017
 // ---------------------------------------------------------------------------
 
