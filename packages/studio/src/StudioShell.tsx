@@ -462,6 +462,9 @@ export function SurveyView({ baseKeyboard }: SurveyViewProps) {
       // no re-render churn); write via the existing setIR action.
       getWorkingIR: () => useWorkingCopyStore.getState().ir,
       setWorkingIR: (next) => useWorkingCopyStore.getState().setIR(next),
+      // spec-014 US2 (T024): the staleness closure drives touch re-propagation
+      // on physical-step completion. Read via getState() (no re-render churn).
+      getStaleSteps: () => useWorkingCopyStore.getState().staleSteps,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // Wrapper lambdas delegate to stable module imports — excluded from deps intentionally.
