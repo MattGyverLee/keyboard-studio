@@ -202,8 +202,8 @@ describe("applyMutatePatch — prototype-pollution hardening", () => {
     ) as Partial<KeyboardIR>;
     const result = applyMutatePatch(base, patch, []);
     expect(result).toEqual(base);
-    expect((result as Record<string, unknown>).x).toBeUndefined();
-    expect((result as Record<string, unknown>).y).toBeUndefined();
+    expect((result as unknown as Record<string, unknown>).x).toBeUndefined();
+    expect((result as unknown as Record<string, unknown>).y).toBeUndefined();
   });
 
   it("still applies legitimate sibling keys in a patch that also carries an unsafe key", () => {
