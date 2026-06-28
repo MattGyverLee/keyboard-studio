@@ -135,6 +135,45 @@ export function applyCarveMutate(
 }
 
 // ---------------------------------------------------------------------------
+// Touch re-propagation write surface — spec-014 US2 foundation (next cycle)
+// ---------------------------------------------------------------------------
+
+/**
+ * The touch write surface — the IR location touch re-propagation (US2) may
+ * rewrite. Exported here, alongside {@link CARVE_WRITES} / {@link ADD_GALLERY_WRITES},
+ * so the next cycle's `repropagate.ts` routes its `touchSuggest`-derived patch
+ * through `applyMutatePatch(baseIr, patch, TOUCH_WRITES)` and inherits the same
+ * M2 (path-scoped deep merge) + M3 (declared-`writes` containment) guarantees.
+ *
+ * Touch keys live at `touchLayout.platforms[].layers[].rows[].keys[]`. The
+ * `keys[]` array is the addressable endpoint (a path that resolves TO a
+ * `TouchKeyIR` — IRPath traversal is bounded at `TouchKeyIR`, so per-key
+ * `sk`/`flick`/`multitap` sub-trees are intentionally not separate write paths;
+ * a key and its whole sub-tree are written as a unit, FR-008 G4).
+ *
+ * Declaring the path at `keys` (the array container) authorizes both a
+ * whole-array replace (`keys`) and per-element writes (`keys[3]`,
+ * `keys[3].provenance`) under `applyMutatePatch`'s prefix-containment rule.
+ *
+ * NOTE: this cycle exports the containment set ONLY. The re-propagation logic
+ * (reading the staleness slice, re-running `touchSuggest`, the no-clobber
+ * provenance gate) is deferred to the next cycle's US2 task set (T022–T024).
+ */
+export const TOUCH_WRITES: readonly IRPath[] = [
+  irPath(
+    "touchLayout",
+    "platforms",
+    ARRAY_INDEX,
+    "layers",
+    ARRAY_INDEX,
+    "rows",
+    ARRAY_INDEX,
+    "keys",
+    ARRAY_INDEX,
+  ),
+];
+
+// ---------------------------------------------------------------------------
 // Add galleries (mechanism assignment) — T017
 // ---------------------------------------------------------------------------
 
