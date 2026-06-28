@@ -6,8 +6,12 @@
 // C1: 2-edge-distant dependent is in the stale set.
 // C2: A→B→A data graph yields a cycle (hard error).
 // C3: off-spine chain that dead-ends off-spine is flagged; rejoining is not.
-// C4: prefix stranding a half-applied lock is flagged; clean prefix is not.
-//     NO validator is called (structural proxy only).
+// C4: prefix stranding a half-applied lock is flagged; clean prefix is not
+//     (structural proxy, retained). PLUS the spec-014 US5/T034 graduation: a
+//     BLOCKING real-validator finding on the current working copy strands the
+//     lock-reaching prefixes (V1); shippability stays distinct from C5 (V2);
+//     the findings are PASSED IN (no validator run here) so no second debounce /
+//     parallel validation path is created (V3).
 // C5: orphan input flagged, distinct from C4 (both directions).
 // C6: the real steps/manifest.ts passes all five with empty stale set.
 // C7: unreachable step is surfaced.
@@ -35,6 +39,25 @@ import type { StepGraph } from "./model.ts";
 import { manifest } from "../steps/manifest.ts";
 import type { Step, EditorStep } from "../steps/types.ts";
 import { irPath, ARRAY_INDEX, formatIRPath } from "@keyboard-studio/contracts";
+import type { LintFinding, LintSeverity } from "@keyboard-studio/contracts";
+
+// ---------------------------------------------------------------------------
+// Validator-finding fixtures (spec-014 US5/T034) — real Layer-A LintFindings.
+// ---------------------------------------------------------------------------
+
+/** A Layer-A LintFinding of the given severity (blocking when error/fatal). */
+function finding(
+  severity: LintSeverity,
+  origin?: "authored" | "upstream",
+): LintFinding {
+  return {
+    code: "KM_ERROR_DUPLICATE_STORE",
+    severity,
+    layer: "A",
+    message: `test ${severity} finding`,
+    ...(origin !== undefined ? { origin } : {}),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -319,17 +342,132 @@ describe("C4 — checkSpinePrefixShippability: half-applied lock is flagged", ()
     expect(unshippable).toEqual([]);
   });
 
-  // Confirm no validator is called — the check is purely structural.
-  // (No import of a validator module exists in completeness.ts.)
-  it("NO validator invocation: the check is purely structural over manifest + wc fields", () => {
-    // This test verifies C4 uses only desktopLocked and touchLayoutJson — no
-    // external calls. The two assertions above already confirm this implicitly
-    // (if a validator were called, it would need mocking and the test setup
-    // would fail). We document the intent explicitly here.
+  // The validator is NOT RUN inside this check — findings are PASSED IN. With
+  // no findings supplied, the check falls back to the pure structural proxy
+  // (preserving the P4b / flag-off behavior — V3 honored, no validator run here).
+  it("no findings supplied: falls back to the pure structural proxy (P4b behavior)", () => {
     const wc: WcForCompleteness = { desktopLocked: true, touchLayoutJson: "{}" };
+    // No third arg → defaults to no findings → structural-only. Both locks
+    // applied + no findings ⇒ clean.
     const unshippable = checkSpinePrefixShippability(mfest, wc);
-    // Both locks applied: clean.
     expect(unshippable).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C4 (spec-014 US5/T034) — REAL Layer-A validator graduation (V1/V2/V3)
+// ---------------------------------------------------------------------------
+
+describe("C4 graduation — real Layer-A validator findings strand lock-reaching prefixes (V1/SC-009)", () => {
+  // S0 (no lock) → S1 (lock:physical) → S2 (lock:touch). Locks fully applied so
+  // the structural proxy is CLEAN — only the validator findings can flag here.
+  const mfest: readonly Step[] = [
+    makeSpineStep("s0"),
+    { ...makeSpineStep("s1"), lock: "physical" } satisfies Step,
+    { ...makeSpineStep("s2"), lock: "touch" } satisfies Step,
+  ];
+
+  it("V1: base-template-derived working copy (no findings) PASSES — clean prefixes", () => {
+    const unshippable = checkSpinePrefixShippability(mfest, WC_BOTH_LOCKED, []);
+    expect(unshippable).toEqual([]);
+  });
+
+  it("V1: a deliberately-broken WC (blocking error finding) FLAGS the lock-reaching prefixes", () => {
+    const unshippable = checkSpinePrefixShippability(mfest, WC_BOTH_LOCKED, [
+      finding("error"),
+    ]);
+    // s1 (physical lock) and s2 (touch lock) reach the shippability assertion
+    // point → both stranded by the blocking finding. s0 (pre-lock) is NOT.
+    expect(unshippable).toContain(1);
+    expect(unshippable).toContain(2);
+    expect(unshippable).not.toContain(0);
+  });
+
+  it("V1: a `fatal` finding is also blocking", () => {
+    const unshippable = checkSpinePrefixShippability(mfest, WC_BOTH_LOCKED, [
+      finding("fatal"),
+    ]);
+    expect(unshippable).toContain(1);
+  });
+
+  it("a `warning` / `hint` / `info` finding is advisory — does NOT strand a prefix", () => {
+    for (const sev of ["warning", "hint", "info"] as const) {
+      const unshippable = checkSpinePrefixShippability(mfest, WC_BOTH_LOCKED, [
+        finding(sev),
+      ]);
+      expect(unshippable, `severity=${sev} should not strand`).toEqual([]);
+    }
+  });
+
+  it("an `origin:\"upstream\"` error is muted — does NOT strand a prefix", () => {
+    const unshippable = checkSpinePrefixShippability(mfest, WC_BOTH_LOCKED, [
+      finding("error", "upstream"),
+    ]);
+    expect(unshippable).toEqual([]);
+  });
+
+  it("a blocking finding does NOT strand a pre-lock prefix (base-template guarantee)", () => {
+    // A manifest whose only spine step is pre-lock: even with a blocking finding,
+    // nothing is stranded — shippability is only asserted from the lock onward.
+    const preLockOnly: readonly Step[] = [makeSpineStep("s0")];
+    const unshippable = checkSpinePrefixShippability(preLockOnly, WC_BOTH_LOCKED, [
+      finding("error"),
+    ]);
+    expect(unshippable).toEqual([]);
+  });
+});
+
+describe("C4 graduation — shippability stays DISTINCT from C5 inputs-satisfiability (V2/FR-018)", () => {
+  it("V2 direction 1: WC passes C4 lock+validator but the manifest fails C5 (orphan input)", () => {
+    // No lock issues, no blocking finding → C4 clean. One orphan input → C5 fails.
+    const mfest: readonly Step[] = [
+      makeSpineStep("a", [], []),
+      makeSpineStep("b", [], [PATH_BCP47]), // orphan input
+    ];
+    const unshippable = checkSpinePrefixShippability(mfest, WC_BOTH_LOCKED, []);
+    expect(unshippable).toEqual([]); // C4 passes
+    expect(checkInputsSatisfiableFromManifest(mfest).length).toBeGreaterThan(0); // C5 fails
+  });
+
+  it("V2 direction 2: manifest passes C5 (no orphans) but C4 fails on a blocking validator finding", () => {
+    // All inputs satisfied → C5 passes. A blocking finding on a lock-reaching
+    // prefix → C4 fails. The two checks read different signals (validity vs.
+    // input-coverage), so they diverge — proving they are distinct.
+    const mfest: readonly Step[] = [
+      makeSpineStep("a", [PATH_GROUPS], []),
+      { ...makeSpineStep("b", [], [PATH_GROUPS]), lock: "physical" } satisfies Step,
+    ];
+    const unshippable = checkSpinePrefixShippability(mfest, WC_BOTH_LOCKED, [
+      finding("error"),
+    ]);
+    expect(unshippable.length).toBeGreaterThan(0); // C4 fails (validity)
+    expect(checkInputsSatisfiableFromManifest(mfest)).toEqual([]); // C5 passes (coverage)
+  });
+});
+
+describe("C4 graduation — runCompleteness threads findings into C4 (V1/V3)", () => {
+  // S0 → S1(physical) → S2(touch), locks applied: structural proxy clean, so any
+  // unshippable prefix is attributable to the threaded validator findings.
+  const mfest: readonly Step[] = [
+    makeSpineStep("s0"),
+    { ...makeSpineStep("s1"), lock: "physical" } satisfies Step,
+    { ...makeSpineStep("s2"), lock: "touch" } satisfies Step,
+  ];
+
+  it("no findings ⇒ no unshippable prefixes (clean WC + clean validator)", () => {
+    const report = runCompleteness(mfest, WC_BOTH_LOCKED, new Set(), []);
+    expect(report.unshippablePrefixes).toEqual([]);
+  });
+
+  it("blocking findings ⇒ unshippable prefixes surface through runCompleteness", () => {
+    const report = runCompleteness(mfest, WC_BOTH_LOCKED, new Set(), [finding("error")]);
+    expect(report.unshippablePrefixes.length).toBeGreaterThan(0);
+  });
+
+  it("findings arg is OPTIONAL — omitting it preserves the pure structural proxy", () => {
+    // No findings arg → structural-only. Locks applied ⇒ clean (P4b behavior).
+    const report = runCompleteness(mfest, WC_BOTH_LOCKED);
+    expect(report.unshippablePrefixes).toEqual([]);
   });
 });
 

@@ -1083,6 +1083,23 @@ export function StudioShell() {
   const desktopLocked = useWorkingCopyStore((s) => s.desktopLocked);
   const touchLayoutJson = useWorkingCopyStore((s) => s.touchLayoutJson);
   const staleSteps = useWorkingCopyStore((s) => s.staleSteps);
+  // spec-014 US5/T034: C4 spine-prefix shippability has GRADUATED at the
+  // function level — runCompleteness/checkSpinePrefixShippability now accept the
+  // REAL Layer-A validator findings and strand lock-reaching prefixes on a
+  // blocking finding (see dashboard/completeness.ts; V1/V2 proved in
+  // completeness.test.ts, V3 in tests/dashboard/articleIVProbe.test.ts).
+  //
+  // The LIVE wiring of those findings into THIS call is intentionally NOT made
+  // here: the single `useValidator` cycle lives in the sibling `SurveyView`
+  // component (line ~545), so its `findings` are NOT in `StudioShell`'s scope.
+  // Honoring V3 (Article IV — no SECOND debounce / parallel validation path)
+  // therefore requires bridging the existing debounced findings across the two
+  // components (e.g. publishing them into `useWorkingCopyStore` from SurveyView
+  // and reading them here) — a cross-component / store-boundary change beyond a
+  // local edit. Calling `useValidator` a second time HERE would add a second
+  // 300 ms debounce and VIOLATE V3, so it is deliberately avoided. Until the
+  // store bridge lands, `findings` defaults to none ⇒ the pure structural proxy
+  // (byte-identical to P4b / flag-off). Flagged to the lead (spec-014 US5).
   const completenessReport = useMemo(
     () =>
       runCompleteness(

@@ -7,7 +7,8 @@
 //   C1  computeStaleness(graph, reopened)  — transitive fixpoint over DATA edges
 //   C2  findCycles(graph)                  — cycle detection on DATA graph (hard error)
 //   C3  checkRejoin(manifest)              — off-spine joinTarget must reach spine
-//   C4  checkSpinePrefixShippability(m,wc) — structural lock-consistency proxy
+//   C4  checkSpinePrefixShippability(m,wc,findings) — structural lock-consistency
+//        proxy + REAL Layer-A validator graduation (spec-014 US5/T034)
 //   C5  checkInputsSatisfiable(graph)      — inputs with no upstream writer
 //   C7  findUnreachable(manifest)          — steps not reachable from spine entry
 //
@@ -21,7 +22,7 @@
 // Boundary: no stores/ import. WorkingCopyState is passed as a parameter type.
 
 import { formatIRPath } from "@keyboard-studio/contracts";
-import type { IRPath } from "@keyboard-studio/contracts";
+import type { IRPath, LintFinding } from "@keyboard-studio/contracts";
 import type { Step } from "../steps/types.ts";
 import type { StepGraph, StepGraphEdge } from "./model.ts";
 
@@ -308,32 +309,69 @@ export function checkRejoin(manifest: readonly Step[]): RejoinViolation[] {
 }
 
 // ---------------------------------------------------------------------------
-// C4 — spine-prefix shippability (structural proxy, NO validator) (FR-017)
+// C4 — spine-prefix shippability (FR-017): structural lock-consistency proxy
+//      + REAL Layer-A validator graduation (spec-014 US5/T034)
 // ---------------------------------------------------------------------------
 
 /**
- * "Lock-consistent" definition (structural proxy, C4):
+ * True when a validator finding is BLOCKING for shippability — an authored
+ * Layer-A validity failure (`error` / `fatal`). `origin: "upstream"` findings
+ * are muted (they do not count toward the Submit-blocked threshold, per the
+ * LintFinding contract), and `warning` / `hint` / `info` are advisory, so none
+ * of those mark a prefix unshippable. Mirrors the studio's submit-blocked rule.
+ */
+function isBlockingFinding(f: LintFinding): boolean {
+  if (f.origin === "upstream") return false;
+  return f.severity === "error" || f.severity === "fatal";
+}
+
+/**
+ * Spine-prefix shippability (C4 / FR-017), graduated from 012's structural proxy
+ * to the REAL Layer-A engine validator (spec-014 US5/T034).
  *
- * A spine prefix ending at step index `i` is lock-consistent when:
- *   (a) If the prefix includes a step with `lock: "physical"` (i.e. the
- *       mechanisms step), then `wc.desktopLocked === true`. A prefix that
- *       includes the mechanisms step but leaves `desktopLocked === false`
- *       has a half-applied physical lock gate.
- *   (b) If the prefix includes a step with `lock: "touch"`, then
- *       `wc.touchLayoutJson !== null`. A prefix that includes the touch step
- *       but leaves `touchLayoutJson === null` has a half-applied touch lock gate.
+ * A spine prefix ending at step index `i` is UNSHIPPABLE when EITHER:
  *
- * This check does NOT invoke the validator (Clarifications 2026-06-27).
+ *   (proxy — retained as the broader structural invariant guard)
+ *   (a) the prefix includes a `lock: "physical"` step but `wc.desktopLocked ===
+ *       false` (a half-applied physical lock gate); OR
+ *   (b) the prefix includes a `lock: "touch"` step but `wc.touchLayoutJson ===
+ *       null` (a half-applied touch lock gate); OR
+ *
+ *   (real validator — the US5 graduation, FR-017)
+ *   (c) the REAL Layer-A validator reported a BLOCKING finding against the
+ *       current `mutate()`-produced working copy AND the prefix has reached the
+ *       point shippability is asserted (i.e. it includes a lock step). A prefix
+ *       before any lock step is shippable by the base-template guarantee, so a
+ *       current-WC validity failure does not retroactively strand it.
+ *
+ * V1 (FR-017): the validator findings are the REAL Layer-A
+ * `validateWithOracle`/`runAllChecks` output — passed in (already debounced) by
+ * the caller; this function does NOT run the validator itself.
+ * V2 (FR-018): shippability stays DISTINCT from C5 inputs-satisfiability — a
+ * prefix can satisfy all inputs yet carry a blocking validator finding (and vice
+ * versa); the two checks read different signals.
+ * V3 (Article IV): no debounce / async loop lives here — `findings` are the
+ * single-debounce `useValidator` cycle's output, REUSED (no second timer / path).
+ *
+ * `findings` is optional and defaults to no findings — so a caller that has not
+ * yet wired the validator (or runs with the seam off) gets the pure structural
+ * proxy, preserving the P4b/flag-off behavior byte-for-byte.
  *
  * Returns the indices of spine steps (in the SPINE-only subsequence, not the
- * full manifest array) whose prefix is not lock-consistent.
+ * full manifest array) whose prefix is not shippable.
  */
 export function checkSpinePrefixShippability(
   manifest: readonly Step[],
   wc: WcForCompleteness,
+  findings: readonly LintFinding[] = [],
 ): number[] {
   const spineSteps = manifest.filter((s) => s.spine === true);
   const unshippable: number[] = [];
+
+  // (c) real-validator signal: does the current working copy carry a blocking
+  // Layer-A finding? Computed once (the validator output is whole-WC, not
+  // per-prefix — single-prefix/current-WC granularity, US5 lead default).
+  const wcHasBlockingFinding = findings.some(isBlockingFinding);
 
   let seenPhysicalLock = false;
   let seenTouchLock = false;
@@ -344,9 +382,15 @@ export function checkSpinePrefixShippability(
     if (step.lock === "physical") seenPhysicalLock = true;
     if (step.lock === "touch") seenTouchLock = true;
 
+    const reachedLock = seenPhysicalLock || seenTouchLock;
+
     let inconsistent = false;
+    // (a)/(b) structural lock-consistency proxy (retained).
     if (seenPhysicalLock && !wc.desktopLocked) inconsistent = true;
     if (seenTouchLock && wc.touchLayoutJson === null) inconsistent = true;
+    // (c) real Layer-A validator: a blocking finding on the current WC strands
+    // every prefix that has reached the shippability assertion point.
+    if (reachedLock && wcHasBlockingFinding) inconsistent = true;
 
     if (inconsistent) {
       unshippable.push(i);
@@ -465,7 +509,11 @@ export interface CompletenessReport {
   cycles: string[][];
   /** Side trails missing/dead-ending joinTarget (FR-016). */
   rejoinViolations: RejoinViolation[];
-  /** Spine-prefix indices whose working copy is not lock-consistent (FR-017). */
+  /**
+   * Spine-prefix indices that are not shippable (FR-017): a half-applied lock
+   * gate (structural proxy) OR a blocking Layer-A validator finding on the
+   * current working copy (the spec-014 US5 real-validator graduation).
+   */
   unshippablePrefixes: number[];
   /** Inputs produced by no upstream writes (FR-018). */
   orphanInputs: OrphanInput[];
@@ -530,11 +578,19 @@ function buildMinimalStepGraph(manifest: readonly Step[]): StepGraph {
  * @param manifest  The ordered Step[] (steps/manifest.ts).
  * @param wc        Minimal working-copy state (desktopLocked, touchLayoutJson).
  * @param reopened  (Optional) The currently re-opened step ids for C1 staleness.
+ * @param findings  (Optional) The REAL Layer-A validator findings for the
+ *                  current working copy — already produced by the single
+ *                  `useValidator`/`useDebounce` cycle in StudioShell and passed
+ *                  in here (spec-014 US5/T034, V1/V3). C4 graduates to consume
+ *                  these; this function NEVER runs the validator itself, so no
+ *                  second debounce timer / parallel validation path is created
+ *                  (Article IV). Defaults to none ⇒ the pure structural proxy.
  */
 export function runCompleteness(
   manifest: readonly Step[],
   wc: WcForCompleteness,
   reopened: ReadonlySet<string> = new Set(),
+  findings: readonly LintFinding[] = [],
 ): CompletenessReport {
   const graph = buildMinimalStepGraph(manifest);
 
@@ -547,8 +603,10 @@ export function runCompleteness(
   // C3: side-trail rejoin check.
   const rejoinViolations = checkRejoin(manifest);
 
-  // C4: spine-prefix shippability (structural proxy, no validator).
-  const unshippablePrefixes = checkSpinePrefixShippability(manifest, wc);
+  // C4: spine-prefix shippability — structural proxy + REAL Layer-A validator
+  // graduation (US5/T034). `findings` are the already-debounced useValidator
+  // output, REUSED here (no second debounce / async loop — V3/Article IV).
+  const unshippablePrefixes = checkSpinePrefixShippability(manifest, wc, findings);
 
   // C5: orphan inputs (contract-named).
   const orphanInputs = checkInputsSatisfiable(graph);
