@@ -17,6 +17,8 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { useWorkingCopyStore } from "../../../src/stores/workingCopyStore.ts";
+import { applyCarveMutate, CARVE_WRITES } from "../../../src/steps/editorMutate.ts";
+import { applyMutatePatch, MutatePatchContainmentError } from "../../../src/steps/mutateApply.ts";
 import { makeTestIR, makeCharStore } from "@keyboard-studio/contracts/fixtures";
 import type { KeyboardIR } from "@keyboard-studio/contracts";
 
@@ -70,5 +72,50 @@ describe("carve shell — store mutators never mutate the IR object in place (AC
     expect(s.deletedNodeIds.size).toBe(0);
     expect(s.deletedItemIds.size).toBe(0);
     expect(s.ir).toEqual(snapshot); // IR untouched throughout
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T016 — the mutate() seam is the canonical carve-IR producer (M6/SC-001).
+//
+// With the seam on, the carve overlay (the same reversible UI state the block
+// above pins) is PROJECTED into the working IR exclusively through applyCarveMutate
+// → applyMutatePatch / CARVE_WRITES. These cases prove that single write path
+// derives the carved IR straight from the overlay + baseIr.
+// ---------------------------------------------------------------------------
+
+describe("carve seam — applyCarveMutate is the canonical IR producer (M6/SC-001)", () => {
+  it("derives the carved IR from the overlay through the single mutate() write path", () => {
+    const ir = freshIR();
+    const store = useWorkingCopyStore.getState();
+    store.setIR(ir);
+    store.deleteNode("s0"); // overlay-only edit
+
+    const overlay = useWorkingCopyStore.getState();
+    const carved = applyCarveMutate(ir, overlay.deletedNodeIds, overlay.deletedItemIds);
+
+    // The seam (not a direct store IR write) produced the carved IR.
+    expect(carved.stores.map((s) => s.nodeId)).toEqual(["s1"]);
+    // base + overlay store IR remain unmutated (overlay is UI state, M1).
+    expect(ir.stores.map((s) => s.nodeId)).toEqual(["s0", "s1"]);
+    expect(useWorkingCopyStore.getState().ir!.stores.map((s) => s.nodeId)).toEqual([
+      "s0",
+      "s1",
+    ]);
+  });
+
+  it("constrains carve writes to CARVE_WRITES — an out-of-surface patch is rejected whole (M3)", () => {
+    const ir = freshIR();
+    // A patch touching header (outside CARVE_WRITES) must fail fast, IR unchanged.
+    expect(() =>
+      applyMutatePatch(ir, { header: { ...ir.header, name: "X" } }, CARVE_WRITES),
+    ).toThrow(MutatePatchContainmentError);
+  });
+
+  it("an empty overlay routes to an empty patch → a structural copy of baseIr (M5)", () => {
+    const ir = freshIR();
+    const out = applyCarveMutate(ir, new Set(), new Set());
+    expect(out).toEqual(ir);
+    expect(out).not.toBe(ir);
   });
 });
