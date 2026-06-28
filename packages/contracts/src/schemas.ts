@@ -105,12 +105,13 @@ type LooseOptional<T> = T extends (infer U)[]
   ? LooseOptional<U>[]
   : T extends object
     ? {
-        // Required keys stay exact; optional keys (detected via `{} extends
-        // Pick<T,K>`) gain `| undefined` to match zod `.optional()` output under
-        // exactOptionalPropertyTypes.
-        [K in keyof T]: {} extends Pick<T, K>
-          ? LooseOptional<T[K]> | undefined
-          : LooseOptional<T[K]>;
+        // Required keys stay exact; optional keys (detected by comparing the
+        // single-key Pick against its Required form — a key is optional iff
+        // making it required changes the type) gain `| undefined` to match zod
+        // `.optional()` output under exactOptionalPropertyTypes.
+        [K in keyof T]: Pick<T, K> extends Required<Pick<T, K>>
+          ? LooseOptional<T[K]>
+          : LooseOptional<T[K]> | undefined;
       }
     : T;
 
