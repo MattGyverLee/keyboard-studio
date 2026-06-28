@@ -274,11 +274,11 @@ describe("M4b — project_name CYOA fork (copy-track only)", () => {
 // ---------------------------------------------------------------------------
 
 describe("Off-spine step inventory", () => {
-  it("exactly two spine:false steps exist (project_name and touch_seed_source)", () => {
+  it("exactly three spine:false steps exist (build_list, project_name, touch_seed_source)", () => {
     const offSpine = offSpineSteps(manifest);
-    expect(offSpine).toHaveLength(2);
+    expect(offSpine).toHaveLength(3);
     const ids = offSpine.map((s) => s.id).sort();
-    expect(ids).toEqual(["project_name", "touch_seed_source"]);
+    expect(ids).toEqual(["build_list", "project_name", "touch_seed_source"]);
   });
 
   it("all spine:false steps have a joinTarget declared", () => {
@@ -293,6 +293,54 @@ describe("Off-spine step inventory", () => {
       const target = manifest.find((s) => s.id === step.joinTarget);
       expect(target?.spine).toBe(true);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// build_list — Phase B build-list imported as a first-class manifest step.
+//
+// The build-list is the DEFAULT Phase B character-discovery surface, imported as
+// a single opaque step. It is an off-spine CYOA fork off the characters step
+// (joinTarget: "characters"), mirroring project_name. It declares its IR write
+// surface (stores[]) — the confirmed character inventory materializes downstream
+// as keyboard store items.
+// ---------------------------------------------------------------------------
+
+import { formatIRPath } from "@keyboard-studio/contracts";
+
+describe("build_list — first-class Phase B build-list step", () => {
+  const buildList = manifest.find((s) => s.id === "build_list");
+
+  it("is registered in the manifest", () => {
+    expect(buildList).toBeDefined();
+  });
+
+  it("is an editor-step", () => {
+    expect(buildList?.kind).toBe("editor-step");
+  });
+
+  it("is an off-spine CYOA fork that rejoins the characters step", () => {
+    expect(buildList?.spine).toBe(false);
+    expect(buildList?.joinTarget).toBe("characters");
+    const target = manifest.find((s) => s.id === buildList?.joinTarget);
+    expect(target?.spine).toBe(true);
+  });
+
+  it("appears in the manifest immediately after the characters step", () => {
+    const charIdx = manifest.findIndex((s) => s.id === "characters");
+    const buildIdx = manifest.findIndex((s) => s.id === "build_list");
+    expect(charIdx).toBeGreaterThanOrEqual(0);
+    expect(buildIdx).toBe(charIdx + 1);
+  });
+
+  it("declares its IR write surface (stores[]) and no hard IR inputs", () => {
+    expect(buildList?.writes.map(formatIRPath)).toEqual(["stores[]"]);
+    expect(buildList?.inputs).toEqual([]);
+  });
+
+  it("does NOT change the spine order (build-list is off-spine)", () => {
+    const actualSpineIds = spineSteps(manifest).map((s) => s.id);
+    expect(actualSpineIds).toEqual([...EXPECTED_SPINE_ORDER]);
   });
 });
 

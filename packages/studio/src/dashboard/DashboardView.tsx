@@ -25,7 +25,7 @@ import phaseAModularRaw from "../../../../content/flows/phase_a_identity.modular
 import phaseBModularRaw from "../../../../content/flows/phase_b_characters.modular.yaml?raw";
 import phaseFModularRaw from "../../../../content/flows/phase_f_helpdocs.modular.yaml?raw";
 
-import { buildModularFlowGraph } from "./buildStepGraph.ts";
+import { buildModularFlowGraph, buildManifestProjectionGraph } from "./buildStepGraph.ts";
 import { phaseARegistry } from "../survey/questions/registry.a.ts";
 import { phaseBRegistry } from "../survey/questions/registry.b.ts";
 import { phaseFRegistry } from "../survey/questions/registry.f.ts";
@@ -311,6 +311,10 @@ export interface FlowMapViewProps {
 export function FlowMapView({ completeness }: FlowMapViewProps) {
   const [section, setSection] = useState<Section>("flow");
   const flows = useMemo(() => FLOW_SOURCES.map((f) => ({ ...safeBuild(f), title: f.title })), []);
+  // Manifest spine projection: one node per steps/manifest.ts entry, rendered by
+  // construction so every runtime step (including the build-list) appears on the
+  // map. Adding a step to the manifest makes it appear here with no extra wiring.
+  const manifestGraph = useMemo(() => buildManifestProjectionGraph(), []);
 
   return (
     <div
@@ -354,6 +358,25 @@ export function FlowMapView({ completeness }: FlowMapViewProps) {
       {section === "flow" && (
         <>
           <FlowLegend />
+
+          {/* Manifest spine — projected directly from steps/manifest.ts so every
+              runtime step (galleries, panels, the Phase B build-list) appears on
+              the map by construction. This is the same `manifest` array the
+              SurveyView runtime reads: map == runtime, can't drift. */}
+          <section style={{ marginBottom: 28 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
+              <h2 style={{ margin: 0, fontSize: 15, color: "#6ea8fe" }}>{manifestGraph.title}</h2>
+              <span style={{ fontSize: 11.5, color: "#6e7681", fontFamily: MONO }}>
+                {manifestGraph.flowId} · {manifestGraph.nodes.length} steps · {manifestGraph.edges.length} edges
+              </span>
+            </div>
+            <p style={{ margin: "0 0 8px", fontSize: 12.5, color: "#8b949e", maxWidth: 920 }}>
+              Projected from <code style={{ fontFamily: MONO }}>steps/manifest.ts</code> — the same ordered step list the
+              survey runtime executes. Add a step to the manifest and it appears here automatically.
+            </p>
+            <FlowGraphView graph={manifestGraph} />
+          </section>
+
           {flows.map(({ graph, error, title }) => (
             <section key={title} style={{ marginBottom: 28 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>

@@ -22,7 +22,9 @@
 //     pool so the pool matches the manifest exactly.
 
 import type { EditorStep } from "./types.ts";
+import { irPath, ARRAY_INDEX } from "@keyboard-studio/contracts";
 import { CarveAdapter } from "../editors/adapters/carveAdapter.tsx";
+import { BuildListAdapter } from "../editors/adapters/buildListAdapter.tsx";
 import { AddPhysicalAdapter } from "../editors/adapters/addPhysicalAdapter.tsx";
 import { AddTouchAdapter } from "../editors/adapters/addTouchAdapter.tsx";
 import {
@@ -93,6 +95,40 @@ export const projectNameStep: EditorStep = {
   component: ProjectNameStepAdapter,
   inputs: [],
   writes: [],
+};
+
+/**
+ * Build-list step: the Phase B "build my character list" surface (DEFAULT
+ * character-discovery method). A mature, hand-built component imported as a
+ * single, opaque first-class step. Breaking it down into sub-questions/loops is
+ * deferred to a later cycle (Matt's direction).
+ *
+ * Placement (set in manifest.ts): spine:false with joinTarget:"characters". The
+ * build-list is the default surface WITHIN the characters phase — a side trail
+ * off the characters spine step that rejoins it, exactly mirroring how
+ * project_name forks off and rejoins. This keeps the spine order unchanged
+ * (no user-facing regression) while making the build-list a first-class,
+ * map-visible step.
+ *
+ * Declared IR contract:
+ *   inputs:  [] — the build-list reads the session CLDR/identity context
+ *                 (bcp47_tag, language_name) and uses baseIr ONLY to compute
+ *                 advisory "missing character" suggestions. None of those reads
+ *                 are a hard IR dependency that gates the step, so no IRPath
+ *                 input is declared (declaring one would assert an upstream
+ *                 writer the build-list does not actually require).
+ *   writes:  [stores[]] — the confirmed character inventory is the character set
+ *                 that materializes downstream as keyboard store items. This is
+ *                 the build-list's authoritative IR-level write surface.
+ */
+export const buildListStep: EditorStep = {
+  kind: "editor-step",
+  id: "build_list",
+  title: "Build Character List",
+  spine: true,
+  component: BuildListAdapter,
+  inputs: [],
+  writes: [irPath("stores", ARRAY_INDEX)],
 };
 
 // ---------------------------------------------------------------------------
@@ -212,6 +248,7 @@ export const registeredEditorSteps: readonly EditorStep[] = [
   chooseBaseStep,
   trackStep,
   projectNameStep,
+  buildListStep,
   carveStep,
   mechanismsStep,
   touchSeedSourceStep,

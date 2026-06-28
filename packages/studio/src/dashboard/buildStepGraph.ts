@@ -311,3 +311,77 @@ export function buildManifestStepGraph(): StepGraph {
 
   return { nodes, edges, dataEdges };
 }
+
+// ---------------------------------------------------------------------------
+// Manifest projection for the flow map (FR-010 "map == runtime by construction")
+//
+// The flow map (DashboardView) historically rendered ONLY the per-phase
+// *.modular.yaml question graphs and never showed the manifest spine — so
+// hand-built editor steps (carve, mechanisms, touch) and the Phase B build-list
+// were invisible on the map. This projection turns the manifest StepGraph into a
+// render-ready FlowGraph so DashboardView can draw the spine directly: every
+// manifest step becomes a node automatically. Add a step to the manifest and it
+// appears on the map with no extra wiring — the map cannot drift from the runtime.
+//
+// Manifest steps are rendered as "stub" nodes (lighting up the previously-dead
+// "stub (gallery / wizard step)" legend item): they are coarse, opaque stages
+// rather than fine-grained survey questions. region "flow" for spine steps,
+// "not-yet-ordered" for off-spine side trails.
+// ---------------------------------------------------------------------------
+
+/** Stable flow id used for the manifest-spine projection section on the map. */
+export const MANIFEST_PROJECTION_FLOW_ID = "manifest-spine";
+
+/**
+ * Project the manifest StepGraph into a FlowGraph the existing FlowGraphView /
+ * layoutFlowGraph can render. One node per manifest step (node set == runtime
+ * step set, by construction); spine/fork/join edges become linear edges.
+ *
+ * This is the single helper DashboardView calls to draw the manifest spine and
+ * the drift-guard test asserts against — both read the same projection, so the
+ * map shows exactly the steps the runtime can run.
+ */
+export function buildManifestProjectionGraph(): FlowGraph {
+  const stepGraph = buildManifestStepGraph();
+
+  const nodes: GraphNode[] = stepGraph.nodes.map((s) => ({
+    id: s.id,
+    flowId: MANIFEST_PROJECTION_FLOW_ID,
+    label: s.label,
+    // FlowQuestionType is the GraphNode.type; manifest steps are not survey
+    // questions, so stamp a descriptive non-question type for display.
+    type: s.type as unknown as GraphNode["type"],
+    required: false,
+    engineResolved: false,
+    advisory: false,
+    isEntry: s.isEntry,
+    isTerminal: s.isTerminal,
+    isGate: false,
+    optionCount: 0,
+    // Manifest steps are opaque stages, not registry questions → "stub".
+    kind: "stub",
+    region: s.spine ? "flow" : "not-yet-ordered",
+  }));
+
+  // Spine/fork/join order edges become linear flow edges. Data edges are not
+  // re-projected here (the per-phase question graphs already show data flow);
+  // the spine projection is about step presence + ordering.
+  const orderEdges: GraphEdge[] = stepGraph.edges.map((e) => ({
+    from: e.from,
+    to: e.to,
+    kind: "linear",
+    dangling: false,
+  }));
+
+  const entry = nodes.find((n) => n.isEntry);
+
+  return {
+    flowId: MANIFEST_PROJECTION_FLOW_ID,
+    phase: "manifest",
+    title: "Manifest spine (steps the runtime runs)",
+    nodes,
+    edges: orderEdges,
+    entryId: entry?.id ?? null,
+    danglingTargets: [],
+  };
+}

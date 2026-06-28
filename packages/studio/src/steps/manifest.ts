@@ -23,6 +23,7 @@ import {
   chooseBaseStep,
   trackStep,
   projectNameStep,
+  buildListStep,
   carveStep,
   mechanismsStep,
   touchSeedSourceStep,
@@ -87,6 +88,22 @@ export const manifest: readonly Step[] = [
 
   // --- Character inventory (Phase A / Phase B question battery) ---
   charactersStep,
+
+  // --- Build-list (default Phase B character-discovery surface) ---
+  // spine:false — CYOA fork off the characters step: the build-list is the
+  // DEFAULT discovery surface within the characters phase (the manual-question
+  // path is the alternative). joinTarget: "characters" — it rejoins the spine
+  // at the characters step, mirroring the project_name fork.
+  //
+  // Imported as a single opaque first-class step (Matt's direction): the
+  // build-list's internal sub-questions/loops are NOT broken out here. This
+  // makes the build-list visible on the flow map by construction without
+  // changing how PhaseB renders it to the user (behavior unchanged).
+  {
+    ...buildListStep,
+    spine: false,
+    joinTarget: "characters",
+  } satisfies Step,
 
   // --- Carve (Phase D: remove unwanted base keys) ---
   carveStep,

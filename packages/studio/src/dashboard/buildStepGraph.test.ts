@@ -5,7 +5,12 @@ import phaseAModularRaw from "../../../../content/flows/phase_a_identity.modular
 import phaseBModularRaw from "../../../../content/flows/phase_b_characters.modular.yaml?raw";
 import phaseFModularRaw from "../../../../content/flows/phase_f_helpdocs.modular.yaml?raw";
 
-import { buildModularFlowGraph, buildGraphFromQuestions, buildManifestStepGraph } from "./buildStepGraph.ts";
+import {
+  buildModularFlowGraph,
+  buildGraphFromQuestions,
+  buildManifestStepGraph,
+  buildManifestProjectionGraph,
+} from "./buildStepGraph.ts";
 import { buildScriptRouting } from "./buildScriptRouting.ts";
 import { loadModularFlow } from "../survey/loadModularFlow.ts";
 import { phaseARegistry } from "../survey/questions/registry.a.ts";
@@ -418,5 +423,90 @@ describe("buildManifestStepGraph — C8/C9 (T032)", () => {
       );
       expect(joinEdge, `missing join edge from "${node.id}" to "${node.joinTarget}"`).toBeDefined();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildManifestProjectionGraph — the flow-map manifest projection (FR-010)
+//
+// The flow map renders this projection so every manifest step appears as a node
+// by construction. These tests assert the projection emits a node for the
+// build-list step and that the view-facing helper is actually consumed.
+// ---------------------------------------------------------------------------
+
+describe("buildManifestProjectionGraph — flow-map manifest projection", () => {
+  const projection = buildManifestProjectionGraph();
+
+  it("emits exactly one node per manifest step (node set == runtime step set)", () => {
+    const nodeIds = projection.nodes.map((n) => n.id).sort();
+    const manifestIds = manifest.map((s) => s.id).sort();
+    expect(nodeIds).toEqual(manifestIds);
+  });
+
+  it("emits a node for the build-list step", () => {
+    const buildListNode = projection.nodes.find((n) => n.id === "build_list");
+    expect(buildListNode).toBeDefined();
+    expect(buildListNode?.label).toBe("Build Character List");
+  });
+
+  it("renders manifest steps as stub nodes (lights up the stub legend item)", () => {
+    for (const n of projection.nodes) {
+      expect(n.kind).toBe("stub");
+    }
+  });
+
+  it("places spine steps in region 'flow' and off-spine steps in 'not-yet-ordered'", () => {
+    const buildListNode = projection.nodes.find((n) => n.id === "build_list");
+    // build_list is an off-spine fork → not-yet-ordered region.
+    expect(buildListNode?.region).toBe("not-yet-ordered");
+    const carveNode = projection.nodes.find((n) => n.id === "carve");
+    expect(carveNode?.region).toBe("flow");
+  });
+
+  it("marks the first manifest step as the entry and the last as terminal", () => {
+    const entry = projection.nodes.find((n) => n.id === projection.entryId);
+    expect(entry?.isEntry).toBe(true);
+    expect(projection.nodes[0]?.id).toBe(manifest[0]!.id);
+    expect(projection.nodes[projection.nodes.length - 1]?.isTerminal).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Drift guard (FR-010, "map == runtime by construction"):
+//
+// Enforced by the BUILD, not by convention. Every reachable runtime step — any
+// step the runtime can render, i.e. every entry in steps/manifest.ts, which is
+// the single ordered list the SurveyView runtime executes — MUST have a node in
+// the flow map's manifest projection (the graph DashboardView actually renders).
+//
+// This passes now that the build-list step is registered AND projected. It would
+// FAIL CI if a future reachable step were added to the manifest without showing
+// up on the map (e.g. the projection helper diverging from buildManifestStepGraph,
+// or a node being dropped). buildManifestStepGraph() is the source of truth for
+// "reachable steps": its node set == the manifest step set by construction
+// (asserted by the C8/C9 tests above).
+// ---------------------------------------------------------------------------
+
+describe("drift guard — the map projection covers every reachable runtime step", () => {
+  it("every reachable manifest step has a node in the flow-map projection", () => {
+    // Source of truth for reachable runtime steps: the manifest step graph.
+    const reachableStepIds = buildManifestStepGraph().nodes.map((n) => n.id);
+    // What the flow map actually renders.
+    const projectedIds = new Set(buildManifestProjectionGraph().nodes.map((n) => n.id));
+
+    const missing = reachableStepIds.filter((id) => !projectedIds.has(id));
+    expect(
+      missing,
+      `Reachable runtime step(s) absent from the flow-map projection: ${missing.join(", ")}. ` +
+        `Every manifest step must appear on the map by construction (FR-010) — the map ` +
+        `cannot be allowed to drift from the runtime.`,
+    ).toEqual([]);
+  });
+
+  it("the build-list specifically is a reachable step that the map covers", () => {
+    const reachableStepIds = buildManifestStepGraph().nodes.map((n) => n.id);
+    const projectedIds = buildManifestProjectionGraph().nodes.map((n) => n.id);
+    expect(reachableStepIds).toContain("build_list");
+    expect(projectedIds).toContain("build_list");
   });
 });

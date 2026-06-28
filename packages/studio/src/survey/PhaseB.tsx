@@ -526,13 +526,22 @@ function GridPlaceholder() {
 // BuildListView — unified "build my character list" method
 // ---------------------------------------------------------------------------
 
-interface BuildListViewProps {
+export interface BuildListViewProps {
   context: SurveyContext;
   onComplete: (result: SurveyPhaseResult) => void;
   onBack: () => void;
 }
 
-function BuildListView({ context, onComplete, onBack }: BuildListViewProps) {
+/**
+ * BuildListView — the unified "build my character list" Phase B method (DEFAULT).
+ *
+ * Exported so the steps layer can register it as a first-class manifest step
+ * (build_list) via editors/adapters/buildListAdapter.tsx. The export does NOT
+ * change how the user-facing Phase B renders it: PhaseB still mounts BuildListView
+ * directly through its own discoveryMethod branch. The manifest registration is a
+ * declaration that puts the build-list on the flow map by construction.
+ */
+export function BuildListView({ context, onComplete, onBack }: BuildListViewProps) {
   const [chars, setChars] = useState<string[]>([]);
   const doneDisabled = chars.length === 0;
 
