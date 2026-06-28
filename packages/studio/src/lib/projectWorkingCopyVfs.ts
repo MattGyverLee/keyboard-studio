@@ -42,6 +42,11 @@ import {
   renameFilesInVfs,
   parseSlotId,
 } from "@keyboard-studio/engine";
+import { applyCarveMutate, applyAddGalleryMutate } from "../steps/editorMutate.ts";
+import { isMutateSeamEnabled } from "../flags/mutateFlag.ts";
+
+/** Shared empty deletion set for the seam-path emit (the seam already filtered). */
+const EMPTY_DELETION_SET: ReadonlySet<string> = new Set<string>();
 
 // ---------------------------------------------------------------------------
 // Types
@@ -208,13 +213,45 @@ export function projectWorkingCopyVfs(
   //     triggers a (harmless, idempotent) re-emit of the unmodified IR.
   const carveIr = removalResult.ir; // equals baseIr when slotIds was empty
   const allWholeNodeIds = new Set([...deletedNodeIds, ...wholeNodeItemIds]);
-  const carveResult = applyCarveToVfs(
-    vfs,
-    keyboardId,
-    carveIr,
-    allWholeNodeIds,
-    { forceEmit: slotIds.size > 0 },
-  );
+
+  // spec-014 T016c — carve IR-projection via the single mutate() write seam.
+  //
+  // Flag-on: derive the deletion-filtered carve IR through applyCarveMutate
+  // (which routes the carve patch through applyMutatePatch / CARVE_WRITES) and
+  // hand THAT pre-filtered IR to applyCarveToVfs with an empty deletion set so
+  // the emit step only serializes — the seam, not applyCarveToVfs's internal
+  // filter, is the canonical IR producer (M6/SC-001).
+  //
+  // The patch is built from baseIr (never the slot-rewritten carveIr) so it is a
+  // pure function of the overlay (idempotent + reversible). The entry-group
+  // safety gate is preserved: when the deletion set would remove the entry group
+  // we DEFER to the legacy applyCarveToVfs call, which warns and skips the
+  // re-emit (the seam IR would otherwise have silently dropped it). This keeps
+  // the emitted artifact byte-identical to the flag-off path.
+  const entryGroup = baseIr.groups.find((g) => !g.readonly);
+  const entryGroupDeleted =
+    entryGroup !== undefined && allWholeNodeIds.has(entryGroup.nodeId);
+
+  // Whether carve has any edit at all. The legacy path re-emits the .kmn iff
+  // there is a whole-node deletion OR a store-slot rewrite; with no edits it
+  // leaves the fetched base .kmn untouched (no re-emit). The seam path must
+  // match this exactly so an unedited working copy stays byte-identical.
+  const hasCarveEdit = allWholeNodeIds.size > 0 || slotIds.size > 0;
+
+  let carveResult: { warnings: string[] };
+  if (isMutateSeamEnabled() && !entryGroupDeleted && hasCarveEdit) {
+    const seamIr = applyCarveMutate(baseIr, deletedNodeIds, deletedItemIds);
+    // The seam already filtered every node; hand it to emit with an empty
+    // deletion set. forceEmit:true because there IS an edit (matching the
+    // legacy emit-when-edited behavior); an unedited copy never reaches here.
+    carveResult = applyCarveToVfs(vfs, keyboardId, seamIr, EMPTY_DELETION_SET, {
+      forceEmit: true,
+    });
+  } else {
+    carveResult = applyCarveToVfs(vfs, keyboardId, carveIr, allWholeNodeIds, {
+      forceEmit: slotIds.size > 0,
+    });
+  }
   warnings.push(...carveResult.warnings);
 
   // Step 2: Assignments projection — inject mechanism pattern fragments.
@@ -229,6 +266,35 @@ export function projectWorkingCopyVfs(
       getPattern,
     );
     warnings.push(...assignResult.warnings);
+
+    // spec-014 T017 — add-gallery IR projection via the single mutate() seam.
+    //
+    // The reference emit above is text-based (applyAssignmentsToVfs writes the
+    // injected .kmn directly, byte-identical in both flag states). When the flag
+    // is on we ALSO derive the canonical assignment IR through the mutate() write
+    // path: parse the just-written .kmn back to IR and route its physical-assignment
+    // arrays (groups[]/stores[]) through applyAddGalleryMutate (applyMutatePatch /
+    // ADD_GALLERY_WRITES). This makes mutate() the single IR write route for the
+    // add surface (M6/SC-001) and enforces declared-writes containment (M3) — the
+    // patch can never reach header, comments, or the deferred keycap/touch targets.
+    // The derived IR is intentionally NOT re-emitted: the text artifact stays
+    // byte-identical to the flag-off path. Keycap-label / touch-layout projection
+    // is deferred to US2.
+    if (isMutateSeamEnabled()) {
+      const entry = vfs.get(`source/${keyboardId}.kmn`);
+      if (entry !== undefined && typeof entry.content === "string") {
+        try {
+          const assignedIr = parseKmn(entry.content, keyboardId).ir;
+          // Route through the seam; a containment violation (M3) surfaces here.
+          applyAddGalleryMutate(carveIr, assignedIr);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          warnings.push(
+            `[project-working-copy] add-gallery mutate-seam derivation skipped: ${msg}`,
+          );
+        }
+      }
+    }
   }
 
   // Step 3: Identity projection — write &NAME (display name) into the .kmn.
