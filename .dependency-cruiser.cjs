@@ -92,6 +92,21 @@ module.exports = {
       to:   { path: '^packages/studio/src/(editors|stores)/' },
     },
     {
+      name: 'question-modules-no-bypass-mutate-seam',
+      comment:
+        'survey/questions/ modules must be PURE descriptors: they declare ' +
+        'inputs/writes and a pure mutate(value, ctx) that returns a ' +
+        'Partial<KeyboardIR> patch (spec-014 mutate-seam, FR-002/-005). They MUST ' +
+        'NOT write the working copy directly — no imports of stores/, editors/, or ' +
+        'lib/. The single executed IR write path is mutate() applied by the ' +
+        'reducer (steps/reducer.ts -> steps/mutateApply.ts). Importing the store ' +
+        'or an editor from a question module would re-open the answer-store-vs-IR ' +
+        'state fork P5 closes (SC-001).',
+      severity: 'error',
+      from: { path: '^packages/studio/src/survey/questions/' },
+      to:   { path: '^packages/studio/src/(stores|editors|lib)/' },
+    },
+    {
       name: 'no-deps-on-studio-poc',
       comment:
         'studio-poc is a throwaway prototype — do not build on it (CLAUDE.md). ' +
