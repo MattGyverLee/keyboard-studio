@@ -10,7 +10,9 @@ import { layoutFlowGraph, NODE_W, NODE_H, type LaidOutGraph, type PositionedNode
 import type { FlowGraph } from "./model.ts";
 import { MONO, SANS } from "./tokens.ts";
 
-/** Truncate a path string to fit inside NODE_W with an ellipsis. */
+/** Truncate a path string to fit inside NODE_W with an ellipsis.
+ *  maxLen=28: empirically fits NODE_W=220 px at the monospace font size (9.5 px) +
+ *  padding used by the card; adjust if NODE_W or font-size change. */
 function truncatePath(path: string, maxLen = 28): string {
   return path.length > maxLen ? path.slice(0, maxLen - 1) + "…" : path;
 }
@@ -270,7 +272,7 @@ export function FlowGraphView({ graph }: FlowGraphViewProps) {
                     : "—"}
                 </div>
               )}
-              {hasMetadata && n.inputPaths !== undefined && n.inputPaths.length > 0 && (
+              {hasMetadata && (
                 <div
                   style={{
                     fontFamily: MONO,
@@ -284,7 +286,9 @@ export function FlowGraphView({ graph }: FlowGraphViewProps) {
                 >
                   <span style={{ color: "#58a6ff" }}>inputs:</span>
                   {" "}
-                  {n.inputPaths.map((p) => truncatePath(p)).join(", ")}
+                  {n.inputPaths!.length > 0
+                    ? n.inputPaths!.map((p) => truncatePath(p)).join(", ")
+                    : "—"}
                 </div>
               )}
             </div>
