@@ -15,6 +15,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useIdentitySession } from "../hooks/useIdentitySession.ts";
+import { navigateTo } from "../lib/navigate.ts";
 import { GitHubMark, GoogleMark } from "./ProviderMarks.tsx";
 import {
   BG_CARD,
@@ -247,6 +248,17 @@ export function AccountControl() {
                 </div>
               )}
               <div style={dividerStyle} role="none" />
+              <button
+                type="button"
+                role="menuitem"
+                style={menuItemStyle}
+                onClick={() => {
+                  navigateTo("profile");
+                  close();
+                }}
+              >
+                Profile
+              </button>
               <button
                 type="button"
                 role="menuitem"

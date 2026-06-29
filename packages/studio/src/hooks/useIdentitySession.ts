@@ -30,14 +30,26 @@ export interface IdentitySession {
    * null. Used as the avatar initial.
    */
   initial: string | null;
-  /** GitHub provider surface — connect flow and any in-flight error. */
+  /** GitHub provider surface — connect flow, link state, and any in-flight error. */
   github: {
+    /** True when GitHub status is "connected" or "needs-scope". */
+    linked: boolean;
+    /** GitHub login name from the verified token, or null. */
+    login: string | null;
     connect: (scope?: string) => Promise<void>;
+    disconnect: () => void;
     error: string | null;
   };
-  /** Google provider surface — connect flow and any in-flight error. */
+  /** Google provider surface — connect flow, link state, and any in-flight error. */
   google: {
+    /** True when Google status is "connected". */
+    linked: boolean;
+    /** Display name from the Google identity, or null. */
+    name: string | null;
+    /** Email address from the Google identity, or null. */
+    email: string | null;
     connect: () => Promise<void>;
+    disconnect: () => void;
     error: string | null;
   };
   /** Sign out of both providers simultaneously. */
@@ -90,8 +102,21 @@ export function useIdentitySession(): IdentitySession {
     isVerifying,
     displayName,
     initial,
-    github: { connect: ghConnect, error: ghError },
-    google: { connect: googleConnect, error: googleError },
+    github: {
+      linked: ghSignedIn,
+      login,
+      connect: ghConnect,
+      disconnect: ghDisconnect,
+      error: ghError,
+    },
+    google: {
+      linked: googleSignedIn,
+      name: googleIdentity?.name ?? null,
+      email: googleIdentity?.email ?? null,
+      connect: googleConnect,
+      disconnect: googleDisconnect,
+      error: googleError,
+    },
     signOut,
   };
 }

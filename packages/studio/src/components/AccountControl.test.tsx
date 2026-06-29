@@ -201,6 +201,16 @@ describe("AccountControl — signed in (Google)", () => {
   });
 });
 
+describe("AccountControl — Profile navigation", () => {
+  it("navigates to #profile when the 'Profile' menu item is clicked", () => {
+    mockAuth({ status: "connected", login: "octocat" });
+    render(<AccountControl />);
+    fireEvent.click(screen.getByRole("button", { name: /Account: octocat/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Profile" }));
+    expect(window.location.hash).toBe("#profile");
+  });
+});
+
 describe("AccountControl — keyboard dismissal", () => {
   it("closes the signed-in menu when Escape is pressed", () => {
     mockAuth({ status: "connected", login: "octocat" });

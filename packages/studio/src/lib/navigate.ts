@@ -10,7 +10,8 @@ export type RouteId =
   | 'survey'
   | 'preview'
   | 'output'
-  | 'flowmap';
+  | 'flowmap'
+  | 'profile';
 
 export function navigateTo(route: RouteId): void {
   window.location.hash = route;

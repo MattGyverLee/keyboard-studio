@@ -43,6 +43,7 @@ import { runCompleteness } from "./dashboard/completeness.ts";
 import { PreviewScreen } from "./components/PreviewScreen.tsx";
 import { OutputScreen } from "./components/OutputScreen.tsx";
 import { WelcomeScreen } from "./components/WelcomeScreen.tsx";
+import { ProfileScreen } from "./components/ProfileScreen.tsx";
 import { AccountControl } from "./components/AccountControl.tsx";
 import { navigateTo } from "./lib/navigate.ts";
 import { manifest } from "./steps/manifest.ts";
@@ -87,7 +88,7 @@ const SHOW_FLOWMAP =
   import.meta.env.DEV || import.meta.env.VITE_SHOW_FLOWMAP === "1";
 
 const VALID_ROUTES = new Set<RouteId>(
-  (["welcome", "survey", "preview", "output", "flowmap"] as const).filter(
+  (["welcome", "survey", "preview", "output", "flowmap", "profile"] as const).filter(
     (r) => r !== "flowmap" || SHOW_FLOWMAP,
   ),
 );
@@ -1152,6 +1153,9 @@ export function StudioShell() {
       break;
     case "flowmap":
       content = <FlowMapView completeness={completenessReport} />;
+      break;
+    case "profile":
+      content = <ProfileScreen />;
       break;
   }
 
