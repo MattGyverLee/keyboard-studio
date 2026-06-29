@@ -1,4 +1,8 @@
-// Tests for ProfileScreen — the full-screen account management card.
+// Tests for ProfileScreen — the top-left focused account page.
+//
+// Layout: large avatar + username top-left, GitHub/Google details on the right,
+// and a single global "Sign out" button at the bottom (Keyboard Studio is one
+// account — no per-provider sign-out).
 //
 // Mocking idiom: same as AccountControl.test.tsx — mock useGitHubAuth and
 // useGoogleAuth at the module boundary; let useIdentitySession run its real
@@ -20,6 +24,15 @@ const connect = vi.fn(async () => {});
 const disconnect = vi.fn();
 const googleConnect = vi.fn(async () => {});
 const googleDisconnect = vi.fn();
+
+const googleIdentity = {
+  provider: "google" as const,
+  sub: "456",
+  email: "tester@example.com",
+  emailVerified: true,
+  name: "Tester User",
+  picture: "",
+};
 
 function mockAuth(
   ghOverrides: Partial<UseGitHubAuthResult>,
@@ -55,23 +68,36 @@ afterEach(() => {
 });
 
 describe("ProfileScreen — guest (neither provider linked)", () => {
-  it("renders 'Link GitHub' button when GitHub is not connected", () => {
+  it("renders a 'link github' control when GitHub is not connected", () => {
     mockAuth({ status: "idle" });
     render(<ProfileScreen />);
-    expect(screen.getByRole("button", { name: "Link GitHub" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "link github" })).toBeTruthy();
   });
 
-  it("renders 'Link Google account' button when Google is not connected", () => {
+  it("renders a 'link google' control when Google is not connected", () => {
     mockAuth({ status: "idle" });
     render(<ProfileScreen />);
-    expect(screen.getByRole("button", { name: "Link Google account" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "link google" })).toBeTruthy();
   });
 
-  it("renders both link buttons simultaneously when neither provider is linked", () => {
+  it("clicking 'link github' starts the GitHub connect flow", () => {
     mockAuth({ status: "idle" });
     render(<ProfileScreen />);
-    expect(screen.getByRole("button", { name: "Link GitHub" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Link Google account" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "link github" }));
+    expect(connect).toHaveBeenCalledOnce();
+  });
+
+  it("clicking 'link google' starts the Google connect flow", () => {
+    mockAuth({ status: "idle" });
+    render(<ProfileScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "link google" }));
+    expect(googleConnect).toHaveBeenCalledOnce();
+  });
+
+  it("does not render a 'Sign out' button when no provider is linked", () => {
+    mockAuth({ status: "idle" });
+    render(<ProfileScreen />);
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
   });
 });
 
@@ -79,151 +105,71 @@ describe("ProfileScreen — GitHub linked", () => {
   it("shows the GitHub login name when GitHub is connected", () => {
     mockAuth({ status: "connected", login: "octocat" });
     render(<ProfileScreen />);
-    // The login appears in both the heading sub-paragraph and the provider row.
+    // Login appears as the username heading and in the github: line.
     expect(screen.getAllByText("octocat").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders a 'Sign out' button for GitHub when connected", () => {
+  it("does not render a 'link github' control when GitHub is already linked", () => {
     mockAuth({ status: "connected", login: "octocat" });
     render(<ProfileScreen />);
-    expect(screen.getByRole("button", { name: "Sign out of GitHub" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "link github" })).toBeNull();
   });
 
-  it("calls github.disconnect() when the GitHub 'Sign out' button is clicked", () => {
+  it("renders the single 'Sign out' button when signed in", () => {
     mockAuth({ status: "connected", login: "octocat" });
     render(<ProfileScreen />);
-    fireEvent.click(screen.getByRole("button", { name: "Sign out of GitHub" }));
-    expect(disconnect).toHaveBeenCalledOnce();
-    expect(googleDisconnect).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
   });
 
-  it("does not render the 'Link GitHub' button when GitHub is already linked", () => {
+  it("still offers 'link google' when only GitHub is linked", () => {
     mockAuth({ status: "connected", login: "octocat" });
     render(<ProfileScreen />);
-    expect(screen.queryByRole("button", { name: "Link GitHub" })).toBeNull();
+    expect(screen.getByRole("button", { name: "link google" })).toBeTruthy();
   });
 });
 
 describe("ProfileScreen — Google linked", () => {
   it("shows the Google display name when Google is connected", () => {
-    mockAuth(
-      { status: "idle" },
-      {
-        status: "connected",
-        identity: {
-          provider: "google",
-          sub: "456",
-          email: "tester@example.com",
-          emailVerified: true,
-          name: "Tester User",
-          picture: "",
-        },
-      },
-    );
+    mockAuth({ status: "idle" }, { status: "connected", identity: googleIdentity });
     render(<ProfileScreen />);
-    // The name appears in both the heading sub-paragraph and the provider row.
+    // Name appears as the username heading and in the google: line.
     expect(screen.getAllByText("Tester User").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("shows the Google email when Google is connected", () => {
-    mockAuth(
-      { status: "idle" },
-      {
-        status: "connected",
-        identity: {
-          provider: "google",
-          sub: "456",
-          email: "tester@example.com",
-          emailVerified: true,
-          name: "Tester User",
-          picture: "",
-        },
-      },
-    );
+  it("does not render a 'link google' control when Google is already linked", () => {
+    mockAuth({ status: "idle" }, { status: "connected", identity: googleIdentity });
     render(<ProfileScreen />);
-    expect(screen.getByText("tester@example.com")).toBeTruthy();
-  });
-
-  it("calls google.disconnect() when the Google 'Sign out' button is clicked", () => {
-    mockAuth(
-      { status: "idle" },
-      {
-        status: "connected",
-        identity: {
-          provider: "google",
-          sub: "456",
-          email: "tester@example.com",
-          emailVerified: true,
-          name: "Tester User",
-          picture: "",
-        },
-      },
-    );
-    render(<ProfileScreen />);
-    fireEvent.click(screen.getByRole("button", { name: "Sign out of Google" }));
-    expect(googleDisconnect).toHaveBeenCalledOnce();
-    expect(disconnect).not.toHaveBeenCalled();
-  });
-
-  it("does not render the 'Link Google account' button when Google is already linked", () => {
-    mockAuth(
-      { status: "idle" },
-      {
-        status: "connected",
-        identity: {
-          provider: "google",
-          sub: "456",
-          email: "tester@example.com",
-          emailVerified: true,
-          name: "Tester User",
-          picture: "",
-        },
-      },
-    );
-    render(<ProfileScreen />);
-    expect(screen.queryByRole("button", { name: "Link Google account" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "link google" })).toBeNull();
   });
 });
 
-describe("ProfileScreen — both providers linked (disconnect isolation)", () => {
+describe("ProfileScreen — single global sign-out (one account)", () => {
   const bothLinked = (): void => {
     mockAuth(
       { status: "connected", login: "octocat" },
-      {
-        status: "connected",
-        identity: {
-          provider: "google",
-          sub: "456",
-          email: "tester@example.com",
-          emailVerified: true,
-          name: "Tester User",
-          picture: "",
-        },
-      },
+      { status: "connected", identity: googleIdentity },
     );
   };
 
-  it("renders two Sign-out controls when both providers are linked", () => {
+  it("renders exactly one 'Sign out' button when both providers are linked", () => {
     bothLinked();
     render(<ProfileScreen />);
-    expect(screen.getByRole("button", { name: "Sign out of GitHub" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Sign out of Google" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Sign out" })).toHaveLength(1);
   });
 
-  it("clicking 'Sign out of GitHub' calls only github.disconnect()", () => {
+  it("does not render any per-provider sign-out buttons", () => {
     bothLinked();
     render(<ProfileScreen />);
-    fireEvent.click(screen.getByRole("button", { name: "Sign out of GitHub" }));
+    expect(screen.queryByRole("button", { name: "Sign out of GitHub" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign out of Google" })).toBeNull();
+  });
+
+  it("clicking 'Sign out' disconnects both providers", () => {
+    bothLinked();
+    render(<ProfileScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect(disconnect).toHaveBeenCalledOnce();
-    expect(googleDisconnect).not.toHaveBeenCalled();
-  });
-
-  it("clicking 'Sign out of Google' calls only google.disconnect()", () => {
-    bothLinked();
-    render(<ProfileScreen />);
-    fireEvent.click(screen.getByRole("button", { name: "Sign out of Google" }));
     expect(googleDisconnect).toHaveBeenCalledOnce();
-    expect(disconnect).not.toHaveBeenCalled();
   });
 });
 
