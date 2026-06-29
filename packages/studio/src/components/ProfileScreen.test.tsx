@@ -71,26 +71,26 @@ describe("ProfileScreen — guest (neither provider linked)", () => {
   it("renders a 'link github' control when GitHub is not connected", () => {
     mockAuth({ status: "idle" });
     render(<ProfileScreen />);
-    expect(screen.getByRole("button", { name: "link github" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Link GitHub" })).toBeTruthy();
   });
 
   it("renders a 'link google' control when Google is not connected", () => {
     mockAuth({ status: "idle" });
     render(<ProfileScreen />);
-    expect(screen.getByRole("button", { name: "link google" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Link Google" })).toBeTruthy();
   });
 
   it("clicking 'link github' starts the GitHub connect flow", () => {
     mockAuth({ status: "idle" });
     render(<ProfileScreen />);
-    fireEvent.click(screen.getByRole("button", { name: "link github" }));
+    fireEvent.click(screen.getByRole("button", { name: "Link GitHub" }));
     expect(connect).toHaveBeenCalledOnce();
   });
 
   it("clicking 'link google' starts the Google connect flow", () => {
     mockAuth({ status: "idle" });
     render(<ProfileScreen />);
-    fireEvent.click(screen.getByRole("button", { name: "link google" }));
+    fireEvent.click(screen.getByRole("button", { name: "Link Google" }));
     expect(googleConnect).toHaveBeenCalledOnce();
   });
 
@@ -112,7 +112,7 @@ describe("ProfileScreen — GitHub linked", () => {
   it("does not render a 'link github' control when GitHub is already linked", () => {
     mockAuth({ status: "connected", login: "octocat" });
     render(<ProfileScreen />);
-    expect(screen.queryByRole("button", { name: "link github" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Link GitHub" })).toBeNull();
   });
 
   it("renders the single 'Sign out' button when signed in", () => {
@@ -124,7 +124,7 @@ describe("ProfileScreen — GitHub linked", () => {
   it("still offers 'link google' when only GitHub is linked", () => {
     mockAuth({ status: "connected", login: "octocat" });
     render(<ProfileScreen />);
-    expect(screen.getByRole("button", { name: "link google" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Link Google" })).toBeTruthy();
   });
 });
 
@@ -139,7 +139,7 @@ describe("ProfileScreen — Google linked", () => {
   it("does not render a 'link google' control when Google is already linked", () => {
     mockAuth({ status: "idle" }, { status: "connected", identity: googleIdentity });
     render(<ProfileScreen />);
-    expect(screen.queryByRole("button", { name: "link google" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Link Google" })).toBeNull();
   });
 });
 

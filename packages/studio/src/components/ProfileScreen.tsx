@@ -182,6 +182,7 @@ export function ProfileScreen() {
               <button
                 type="button"
                 style={linkValueStyle}
+                aria-label="Link GitHub"
                 onClick={() => { void github.connect(); }}
               >
                 link github
@@ -203,6 +204,7 @@ export function ProfileScreen() {
               <button
                 type="button"
                 style={linkValueStyle}
+                aria-label="Link Google"
                 onClick={() => { void google.connect(); }}
               >
                 link google
@@ -237,7 +239,7 @@ export function ProfileScreen() {
           <button
             type="button"
             style={signOutStyle}
-            onClick={() => { signOut(); }}
+            onClick={signOut}
           >
             Sign out
           </button>
