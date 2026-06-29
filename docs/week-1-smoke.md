@@ -155,7 +155,7 @@ Decision criteria:
 | **Rationale** | Artifact opened in Keyman Developer, built with zero diagnostics, installed, and typed the expected `ɔaɛƆƐ` for the 5-keystroke sequence — exact match to studio `simulate()`. No `simulate()`-vs-KD discrepancies; the in-browser oracle is trustworthy for this base. |
 | **Blocking follow-ups** | None. |
 | **Decided by / date** | Kevin Nicholas, 2026-06-29 |
-| **Recorded on board** | [ ] _(record on the project board)_ |
+| **Recorded on board** | [x] Recorded on the project board, 2026-06-29 |
 
 ---
 
