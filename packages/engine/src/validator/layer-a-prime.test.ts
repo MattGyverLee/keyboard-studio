@@ -16,6 +16,8 @@ import {
   checkHeaderPreservation,
   checkOpaqueFeatureInventory,
   checkSidecarHash,
+  headerFieldLabel,
+  HEADER_FIELD_MISSING_CODE,
 } from "./layer-a-prime.js";
 import { parse } from "../codec/parse.js";
 import { computeSha256Hex } from "../codec/hash.js";
@@ -287,6 +289,50 @@ describe("checkHeaderPreservation (I3)", () => {
     const emitted = "store(&NAME) 'Test'\nstore(&COPYRIGHT) '(c)'\n";
     const findings = checkHeaderPreservation(ir, emitted);
     expect(findings.find((f) => f.message.includes("version"))).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// headerFieldLabel — extractor lock-test
+//
+// The supportability scanner derives its i3HeaderMissing column from this
+// extractor. The lock-test pins the round-trip (message -> label) so a reword
+// of checkHeaderPreservation's "missing" message breaks HERE, loudly, instead
+// of silently degrading the scanner's output to raw message prose.
+// ---------------------------------------------------------------------------
+
+describe("headerFieldLabel (I3 extractor)", () => {
+  it("recovers every field label emitted by checkHeaderPreservation", () => {
+    // Drive the real check with everything missing (empty IR header + empty
+    // emitted text), then confirm each finding's label round-trips.
+    const ir = makeCleanIR({ keyboardId: "", bcp47: [] });
+    const findings = checkHeaderPreservation(ir, "");
+    expect(findings.length).toBeGreaterThan(0);
+    for (const f of findings) {
+      expect(f.code).toBe(HEADER_FIELD_MISSING_CODE);
+      const label = headerFieldLabel(f);
+      // Must extract a non-null label, and it must actually appear in the message.
+      expect(label).not.toBeNull();
+      expect(f.message).toContain(`"${label}"`);
+    }
+    // The known label set is recovered intact (guards the scanner's bcp47 filter).
+    const labels = findings.map(headerFieldLabel);
+    expect(labels).toContain("keyboardId");
+    expect(labels).toContain("name (&NAME)");
+    expect(labels).toContain("bcp47 (language tags)");
+    expect(labels).toContain("copyright (&COPYRIGHT)");
+    expect(labels).toContain("version (&KEYBOARDVERSION / &VERSION)");
+  });
+
+  it("returns null for a finding that is not a header-field-missing one", () => {
+    expect(
+      headerFieldLabel({
+        code: "KM_HINT_ROUND_TRIP_DEFERRED",
+        severity: "hint",
+        layer: "A-prime",
+        message: "Functional round-trip (I2) deferred: ...",
+      }),
+    ).toBeNull();
   });
 });
 

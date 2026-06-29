@@ -53,6 +53,7 @@ import { recognizePatterns } from "../../packages/engine/src/recognizer/index.js
 import {
   checkParseCompleteness,
   checkHeaderPreservation,
+  headerFieldLabel,
 } from "../../packages/engine/src/validator/layer-a-prime.js";
 import { emitPlacementMap, detectBaseLayoutFamily } from "../../packages/engine/src/placement/index.js";
 import { aggregatePlacements, computeFingerprintFromCandidates } from "../../packages/engine/src/placement/aggregate.js";
@@ -272,13 +273,21 @@ interface ScanReport {
    *   - I2-functional is a deferred stub (Keyman Core runtime); the structural
    *     proxy in `i2` stands in. I5 (sidecar hash) is N/A — release keyboards
    *     have no import sidecar.
+   *
+   * `null` when the checks did not run — i.e. the keyboard failed to parse
+   * (ImportStatus.ParseFailure). Consumers MUST distinguish `null` ("not run")
+   * from `{ i1ParseComplete: true }` ("ran and passed"); a parse-failure
+   * keyboard is not silently reported as I1-clean.
    */
-  layerAPrime: {
-    /** I1: false when the codec left ≥1 source token with no IR node. */
-    i1ParseComplete: boolean;
-    /** I3: header fields absent/empty in the emitted .kmn ([] = all present). */
-    i3HeaderMissing: string[];
-  };
+  layerAPrime: LayerAPrimeResult | null;
+}
+
+/** I1/I3 results for a keyboard that parsed; see ScanReport.layerAPrime. */
+interface LayerAPrimeResult {
+  /** I1: false when the codec left ≥1 source token with no IR node. */
+  i1ParseComplete: boolean;
+  /** I3: header fields absent/empty in the emitted .kmn ([] = all present). */
+  i3HeaderMissing: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -315,7 +324,9 @@ function scanOne(
     ruleCount: 0,
     groupCount: 0,
     rawFragmentCount: 0,
-    layerAPrime: { i1ParseComplete: true, i3HeaderMissing: [] },
+    // null until the keyboard parses; the parse-failure early-returns below
+    // leave it null so a ParseFailure record is never reported as I1-clean.
+    layerAPrime: null,
   };
 
   let text: string;
@@ -349,8 +360,7 @@ function scanOne(
   }
 
   // Layer A' I1 — parse completeness (parse-stage; detects silent token drops).
-  base.layerAPrime.i1ParseComplete =
-    checkParseCompleteness(parsed, text).length === 0;
+  const i1ParseComplete = checkParseCompleteness(parsed, text).length === 0;
 
   // I4 — opaque inventory. `checkOpaqueFeatureInventory` only formats the
   // inventory into one info finding; its documented data surface is the
@@ -367,20 +377,25 @@ function scanOne(
   }
 
   // I3 — header preservation (emit-stage; needs the emitted text).
+  // The short field label is recovered via layer-a-prime's own `headerFieldLabel`
+  // extractor (co-located with the message builder, lock-tested) rather than
+  // re-parsing the message prose here.
   // Scope caveat: BCP47 language tags live in the .kps / .keyboard_info, NOT in
   // the .kmn the scanner parses, so `ir.header.bcp47` is always empty here and
   // the check's bcp47 dimension is a guaranteed false positive in a .kmn-only
   // scan. Drop it; name/copyright/version come from .kmn stores and stay. The
   // bcp47 dimension remains valid on the import path (where package metadata
   // populates ir.header.bcp47) — this filter is scanner-context-only.
+  let i3HeaderMissing: string[] = [];
   if (emitted !== null) {
-    base.layerAPrime.i3HeaderMissing = checkHeaderPreservation(ir, emitted)
-      .map((f) => {
-        const m = /Header field "([^"]+)"/.exec(f.message);
-        return m ? m[1]! : f.message;
-      })
+    i3HeaderMissing = checkHeaderPreservation(ir, emitted)
+      .map((f) => headerFieldLabel(f) ?? f.message)
       .filter((label) => !label.startsWith("bcp47"));
   }
+
+  // The keyboard parsed, so Layer A' actually ran — record the result object
+  // (vs. the null default that marks a ParseFailure where the checks never ran).
+  base.layerAPrime = { i1ParseComplete, i3HeaderMissing };
 
   // I2 structural proxy. A failed emit is itself a round-trip failure.
   const i2: I2Result = emitted === null ? "error" : structuralRoundTrip(ir, keyboardId, emitted);
@@ -458,8 +473,8 @@ function buildJson(sorted: ScanReport[], opaqueTotals: OpaqueEntry[]): string {
     totals: {
       keyboards: sorted.length,
       ...summarise(sorted),
-      i1ParseIncomplete: sorted.filter((r) => !r.layerAPrime.i1ParseComplete).length,
-      i3HeaderIssues: sorted.filter((r) => r.layerAPrime.i3HeaderMissing.length > 0).length,
+      i1ParseIncomplete: sorted.filter((r) => r.layerAPrime && !r.layerAPrime.i1ParseComplete).length,
+      i3HeaderIssues: sorted.filter((r) => r.layerAPrime && r.layerAPrime.i3HeaderMissing.length > 0).length,
     },
     opaqueFeatureTotals: opaqueTotals,
     keyboards: sorted,
@@ -516,13 +531,17 @@ function buildMarkdown(sorted: ScanReport[], opaque: OpaqueEntry[]): string {
     `- ParseFailure: ${counts[ImportStatus.ParseFailure]} (${pct(counts[ImportStatus.ParseFailure])}%)`,
   );
   lines.push("");
-  const i1Incomplete = sorted.filter((r) => !r.layerAPrime.i1ParseComplete).length;
-  const i3Issues = sorted.filter((r) => r.layerAPrime.i3HeaderMissing.length > 0).length;
+  // Layer A' I1/I3 ran only on keyboards that parsed (layerAPrime != null);
+  // ParseFailure keyboards are excluded from these denominators, not counted
+  // as passing.
+  const aPrimeRan = sorted.filter((r) => r.layerAPrime !== null).length;
+  const i1Incomplete = sorted.filter((r) => r.layerAPrime && !r.layerAPrime.i1ParseComplete).length;
+  const i3Issues = sorted.filter((r) => r.layerAPrime && r.layerAPrime.i3HeaderMissing.length > 0).length;
   lines.push(
-    `- **Layer A' I1** (parse-complete): ${total - i1Incomplete} pass, ${i1Incomplete} with unaccounted tokens`,
+    `- **Layer A' I1** (parse-complete): ${aPrimeRan - i1Incomplete} pass, ${i1Incomplete} with unaccounted tokens (of ${aPrimeRan} parsed)`,
   );
   lines.push(
-    `- **Layer A' I3** (header preservation): ${total - i3Issues} clean, ${i3Issues} with missing/empty header fields`,
+    `- **Layer A' I3** (header preservation): ${aPrimeRan - i3Issues} clean, ${i3Issues} with missing/empty header fields (of ${aPrimeRan} parsed)`,
   );
   lines.push("");
 
@@ -551,11 +570,14 @@ function buildMarkdown(sorted: ScanReport[], opaque: OpaqueEntry[]): string {
   lines.push("| --- | --- | ---: | ---: | --- | :-: | --- | --- |");
   for (const r of sorted) {
     const opaqueCount = r.opaqueFeatureInventory.reduce((s, o) => s + o.count, 0);
-    const i1 = r.layerAPrime.i1ParseComplete ? "✓" : "✗";
+    // null layerAPrime = ParseFailure (checks never ran) → "n/a", not a pass.
+    const i1 = r.layerAPrime === null ? "n/a" : r.layerAPrime.i1ParseComplete ? "✓" : "✗";
     const i3 =
-      r.layerAPrime.i3HeaderMissing.length === 0
-        ? "✓"
-        : r.layerAPrime.i3HeaderMissing.join(", ");
+      r.layerAPrime === null
+        ? "n/a"
+        : r.layerAPrime.i3HeaderMissing.length === 0
+          ? "✓"
+          : r.layerAPrime.i3HeaderMissing.join(", ");
     lines.push(
       `| \`${r.keyboardId}\` | ${r.status} | ${fmtRatio(r.recognizedRatio)} | ${opaqueCount} | ${r.i2} | ${i1} | ${i3} | ${fmtOpaque(r.opaqueFeatureInventory)} |`,
     );
