@@ -616,6 +616,8 @@ key carries **both** its provenance **and the specific default that produced it*
 
 ### 3.7 Dashboard (flow map becomes the index)
 
+> **Node-metadata rendering landed (branch `km/flowmap-form34-parity`, PR pending).** The manifest-spine nodes for Form 3 wizard steps (identity / choose_base / track / project_name) and Form 4 galleries (carve / mechanisms / touch) now render their declared `inputs`/`writes` and `lock·physical`/`lock·touch` badge on the Flow Map, advancing the "dashboard as honest index" goal via [spec-021](../specs/021-qu-wire-galleries/spec.md) FR-004. This covers gallery/wizard node-metadata rendering only; the remaining P0 completeness checks and the broader dashboard goals below are not yet complete.
+
 The flow map (`flowmap/`) graduates from a stale viewer into the **dashboard /
 index**, reading `steps/manifest.ts`. It shows, per step:
 
