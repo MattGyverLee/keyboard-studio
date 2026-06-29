@@ -3,7 +3,7 @@
 **Issue:** #54 — Day-7 buffer: E2E smoke test with real Keyman Developer (S-09)
 **Goal:** Take a studio-produced output zip, open + build it in Keyman Developer 17+ on Windows, install it, type a short sequence — catch anything the in-browser oracle (kmcmplib WASM + KeymanWeb `simulate()`) missed.
 
-> **Build half green; install + typing still human-run.** The **build** half (AC #1/#2) now passes against the real `kmc` 19.0 command-line compiler — a scaffolded `akan` builds end-to-end to an installable `.kmp` with zero diagnostics (see "Confirmed KD build evidence"). The two scaffolder defects that originally blocked it are fixed: **#364** (stale `&BITMAP` store, fixed in #421) and **#416** (stub `.kps`, fixed in #436). The **install + typing** half (AC #3/#5) still requires a person on Windows with the KD GUI, and the go/no-go (AC #6, final section) is a project-leadership decision recorded on the project board.
+> **COMPLETE — GO (2026-06-29).** The full run passed on Windows 11 with Keyman Developer (`kmc` 19.0): a scaffolded `akan` artifact opened, built with zero diagnostics, installed, and typed the expected `ɔaɛƆƐ` for the 5-keystroke smoke sequence — an exact match to studio `simulate()`, no discrepancies. All six ACs of #54 are satisfied; see the Sign-Off and Go/No-Go tables below. The two scaffolder defects that originally blocked the build half are fixed: **#364** (stale `&BITMAP` store, fixed in #421) and **#416** (stub `.kps`, fixed in #436).
 
 ---
 
@@ -70,39 +70,45 @@ Output: `build/e2e_smoke_akan.kmx`, `build/e2e_smoke_akan.js`, `build/e2e_smoke_
 
 **History:** before #421/#436 this build failed in two stages — `KM02031` on the stale `&BITMAP` store (#364), then `KM04021` on the stub `.kps` (#416). Both are fixed; the sequence above is the current result.
 
-**Net:** AC #1 (opens in KD) ✓ — `kmc` opens the auto-discovery `.kpj` and builds its members. **AC #2 (zero-error build) ✓** — the project builds clean to an installable `.kmp`. The install + 5-keystroke typing half (AC #3 / #5) is the remaining human-run step on Windows.
+**Net:** AC #1 (opens in KD) ✓ — `kmc` opens the auto-discovery `.kpj` and builds its members. **AC #2 (zero-error build) ✓** — the project builds clean to an installable `.kmp`. The install + 5-keystroke typing half (AC #3 / #5) was completed in the GUI on 2026-06-29 (Sign-Off table below) — typed `ɔaɛƆƐ`, exact match.
 
 ---
 
 ## Prerequisites
 
-- [ ] Keyman Developer **17 or later** installed on Windows
-- [ ] The artifact zip extracted to a working folder
-- [ ] A scratch text field for typing (Notepad, WordPad, browser textbox)
+- [x] Keyman Developer **17 or later** installed on Windows
+- [x] The artifact zip extracted to a working folder
+- [x] A scratch text field for typing (Notepad, WordPad, browser textbox)
 
 ---
 
 ## Smoke-Run Steps
 
-1. - [ ] Extract `e2e_smoke_akan.zip`. Confirm it expands without errors and contains `source/e2e_smoke_akan.kmn` plus its sibling files under `source/`, with the `.kpj` and `NEXT_STEPS.md` at the zip root.
-2. - [ ] In Keyman Developer, **Open Project** → the `.kpj` in the extracted folder. _(It is a v2.0 auto-discovery project, so KD finds `source/*.kmn` regardless of the `.kpj` filename.)_ — **AC #1: opens cleanly.**
-3. - [ ] **Build** the project. — **AC #2.** _Verified green with `kmc` 19.0 (see "Confirmed KD build evidence"): the project builds clean to `build/e2e_smoke_akan.kmp` with zero diagnostics. Re-confirm in the KD **GUI** and log any divergence. Outcomes:_
+1. - [x] Extract `e2e_smoke_akan.zip`. Confirm it expands without errors and contains `source/e2e_smoke_akan.kmn` plus its sibling files under `source/`, with the `.kpj` and `NEXT_STEPS.md` at the zip root.
+2. - [x] In Keyman Developer, **Open Project** → the `.kpj` in the extracted folder. _(It is a v2.0 auto-discovery project, so KD finds `source/*.kmn` regardless of the `.kpj` filename.)_ — **AC #1: opens cleanly.**
+3. - [x] **Build** the project. — **AC #2.** _Verified green with `kmc` 19.0 (see "Confirmed KD build evidence"): the project builds clean to `build/e2e_smoke_akan.kmp` with zero diagnostics. Re-confirm in the KD **GUI** and log any divergence. Outcomes:_
        - _**Build succeeds, `.kmp` produced** → expected; proceed to install._
        - _**Build fails on `KM02031` (`&BITMAP`) or `KM04021` (`.kps`)** → a regression of #364 / #416; log it under Discrepancies._
        - _**Any other error/warning** → a new finding; log it under Discrepancies._
-4. - [ ] **Install** the produced `.kmp` into Windows. — **AC #5: installs without error.**
-5. - [ ] Pick a 5-keystroke smoke sequence and record the **expected** output from the studio preview (`simulate()`) first:
+4. - [x] **Install** the produced `.kmp` into Windows. — **AC #5: installs without error.**
+5. - [x] Pick a 5-keystroke smoke sequence and record the **expected** output from the studio preview (`simulate()`) first.
 
-       | # | Key(s) pressed | Expected (studio simulate) |
-       |---|----------------|----------------------------|
-       | 1 |                |                            |
-       | 2 |                |                            |
-       | 3 |                |                            |
-       | 4 |                |                            |
-       | 5 |                |                            |
+       **Recommended sequence (derived from `source/e2e_smoke_akan.kmn`).** The `akan` layout is flat — no deadkeys, no context rules, every key is a single keystroke → single output char. Most keys pass through to their ASCII keycap, but four are remapped to non-ASCII Akan/IPA letters: `K_Q`→ɛ (U+025B), `Shift+Q`→Ɛ (U+0190), `K_C`→ɔ (U+0254), `Shift+C`→Ɔ (U+0186). This sequence hits all four remapped keys plus one passthrough (`A`→a) to confirm the layout is selectively remapping and is actually active (not falling through to system QWERTY).
 
-6. - [ ] Type that exact sequence with the installed keyboard in the scratch field. — **AC #3: types expected output.**
-7. - [ ] Record the **actual** KD output beside the expected, and screenshot the result.
+       | # | Key(s) pressed | Expected (studio simulate) | Codepoint | Actual (real KD) |
+       |---|----------------|----------------------------|-----------|------------------|
+       | 1 | `C`            | ɔ                          | U+0254    | ɔ ✓              |
+       | 2 | `A`            | a                          | U+0061    | a ✓              |
+       | 3 | `Q`            | ɛ                          | U+025B    | ɛ ✓              |
+       | 4 | `Shift+C`      | Ɔ                          | U+0186    | Ɔ ✓              |
+       | 5 | `Shift+Q`      | Ɛ                          | U+0190    | Ɛ ✓              |
+
+       **Result: typed string `ɔaɛƆƐ` — exact match, no discrepancy.** Run on Windows 11 with Keyman Developer (kmc 19.0), 2026-06-29.
+
+       **Expected final string: `ɔaɛƆƐ`** — if you instead get `caqCQ`, the keyboard isn't engaged (still on system QWERTY); switch input method and retry — not a defect. Any other output is a genuine `simulate()`-vs-KD discrepancy → log under Discrepancies as an AC #4 follow-up.
+
+6. - [x] Type that exact sequence with the installed keyboard in the scratch field. — **AC #3: types expected output.**
+7. - [x] Record the **actual** KD output in the table above (and beside the expected), and screenshot the result.
 
 ---
 
@@ -116,16 +122,21 @@ _No open build discrepancies — the build path matches `simulate()` (both produ
 |---|-----------|-------------------|---------|----------|-------------|
 | 1 | _(build)_ | clean compile | ~~`KM02031` — stale `&BITMAP` ref~~ → now builds clean | major | **resolved** — #364 (#421) |
 | 2 | _(package)_ | clean compile | ~~`KM04021` — stub `.kps`~~ → now builds to `.kmp` | major | **resolved** — #416 (#436) |
-| _typing_ |  |  | _record here during the human-run typing step_ |  |  |
+| _typing_ | `C A Q Shift+C Shift+Q` | `ɔaɛƆƐ` | `ɔaɛƆƐ` | — | **none** — exact match, no follow-up filed |
 
 ---
 
 ## Screenshots
 
-_Attach at run time (add the files under `docs/img/` and link them here):_
+Captured during the 2026-06-29 run:
 
-- KD build output panel — `docs/img/week-1-smoke-build.png`
-- Installed-keyboard typing result — `docs/img/week-1-smoke-typing.png`
+**KD build output panel** — clean `info`-only build (`KM05002` building → `KM05006` built successfully), zero warnings/errors:
+
+![KD build output panel](img/week-1-smoke-build.png)
+
+**Installed-keyboard typing result** — typing `C A Q Shift+C Shift+Q` produced `ɔaɛƆƐ`:
+
+![Installed-keyboard typing result](img/week-1-smoke-typing.png)
 
 ---
 
@@ -140,11 +151,11 @@ Decision criteria:
 
 | | |
 |---|---|
-| **Call** | [ ] GO  [ ] NO-GO |
-| **Rationale** | |
-| **Blocking follow-ups** | |
-| **Decided by / date** | |
-| **Recorded on board** | [ ] |
+| **Call** | [x] GO  [ ] NO-GO |
+| **Rationale** | Artifact opened in Keyman Developer, built with zero diagnostics, installed, and typed the expected `ɔaɛƆƐ` for the 5-keystroke sequence — exact match to studio `simulate()`. No `simulate()`-vs-KD discrepancies; the in-browser oracle is trustworthy for this base. |
+| **Blocking follow-ups** | None. |
+| **Decided by / date** | Kevin Nicholas, 2026-06-29 |
+| **Recorded on board** | [x] Recorded on the project board, 2026-06-29 |
 
 ---
 
@@ -152,10 +163,10 @@ Decision criteria:
 
 | Step | Result | Tester | Date |
 |------|--------|--------|------|
-| 1 |  |  |  |
-| 2 |  |  |  |
-| 3 |  |  |  |
-| 4 |  |  |  |
-| 5 |  |  |  |
-| 6 |  |  |  |
-| 7 |  |  |  |
+| 1 — extract zip | PASS — expanded cleanly, expected layout (`.kpj` + `source/` siblings) | Kevin Nicholas | 2026-06-29 |
+| 2 — open `.kpj` (AC #1) | PASS — opened cleanly in KD | Kevin Nicholas | 2026-06-29 |
+| 3 — build (AC #2) | PASS — `info`-only log, zero warnings/errors, `.kmp` produced | Kevin Nicholas | 2026-06-29 |
+| 4 — install `.kmp` (AC #5) | PASS — installed without error | Kevin Nicholas | 2026-06-29 |
+| 5 — record expected (simulate) | PASS — expected `ɔaɛƆƐ` | Kevin Nicholas | 2026-06-29 |
+| 6 — type sequence (AC #3) | PASS — typed `ɔaɛƆƐ`, exact match | Kevin Nicholas | 2026-06-29 |
+| 7 — record actual + screenshot | PASS — actual matches expected; screenshots captured | Kevin Nicholas | 2026-06-29 |
