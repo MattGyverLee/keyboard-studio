@@ -6,6 +6,7 @@
 // callback props (onComplete / onBack) — navigateTo is for top-level route changes only.
 
 export type RouteId =
+  | 'welcome'
   | 'survey'
   | 'preview'
   | 'output'
