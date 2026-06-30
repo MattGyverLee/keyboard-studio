@@ -151,7 +151,9 @@ export function IdentityLite({
   // Kick off the one-time lazy load on mount so the langtags module is ready
   // by the time the user reaches il_language_code. Does NOT block rendering.
   useEffect(() => {
-    void loadLangtags();
+    void loadLangtags().catch(() => {
+      // Degrade silently on import failure — no seed, fields stay free-text (FR-009).
+    });
   }, []);
 
   const handleAnswerCommit = useCallback(
@@ -196,6 +198,9 @@ export function IdentityLite({
                   : []),
               ]);
             }
+          }).catch(() => {
+            // Degrade silently on import failure — seeds stay undefined, fields
+            // remain free-text (FR-009). No unhandled rejection.
           });
         }
       }

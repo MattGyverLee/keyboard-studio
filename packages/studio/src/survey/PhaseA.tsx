@@ -260,6 +260,9 @@ export function PhaseA({ context = {}, onComplete, onBack, findingsByQuestionId 
 
       seedsRef.current = seeds;
       provenanceRef.current = prov;
+    }).catch(() => {
+      // Degrade silently on import failure — seeds stay empty, all Phase A
+      // fields remain free-text (FR-009). No unhandled rejection.
     });
     // Effect deps: only fire once per Phase A mount (the language code is fixed).
     // eslint-disable-next-line react-hooks/exhaustive-deps

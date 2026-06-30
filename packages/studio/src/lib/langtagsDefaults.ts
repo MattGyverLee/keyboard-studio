@@ -37,7 +37,14 @@ let _modulePromise: Promise<LangtagsModule> | null = null;
  */
 export function loadLangtags(): Promise<LangtagsModule> {
   if (_modulePromise === null) {
-    _modulePromise = import("@keyboard-studio/engine/langtags") as Promise<LangtagsModule>;
+    _modulePromise = (import("@keyboard-studio/engine/langtags") as Promise<LangtagsModule>).catch(
+      (err: unknown) => {
+        // Reset the memo so a subsequent call can retry. The success path remains
+        // memoized (one load per session); only rejections clear the slot.
+        _modulePromise = null;
+        throw err;
+      },
+    );
   }
   return _modulePromise;
 }

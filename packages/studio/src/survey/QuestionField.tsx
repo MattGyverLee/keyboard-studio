@@ -133,9 +133,19 @@ function LangtagsAutocompleteField({ question, value, onChange }: FieldProps) {
   const [options, setOptions] = useState<LanguageSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const loadedRef = useRef(false);
+  // Unmount guard: prevents setOptions from running after the component unmounts,
+  // which would produce a React "state update on unmounted component" warning.
+  const isMountedRef = useRef(true);
 
   // One-time lazy load of the langtags module on mount. The module promise is
   // memoized in langtagsDefaults.ts so repeated renders share the same import.
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   useEffect(() => {
     if (loadedRef.current) return;
     loadedRef.current = true;
@@ -144,12 +154,14 @@ function LangtagsAutocompleteField({ question, value, onChange }: FieldProps) {
         // Pre-populate with the full list so the datalist is available immediately
         // before the user starts typing. listLanguages() returns a readonly array
         // from the already-loaded module (synchronous after the import resolves).
+        if (!isMountedRef.current) return;
         const all = mod.listLanguages();
         setOptions(all as LanguageSummary[]);
         setLoaded(true);
       })
       .catch(() => {
         // If the module fails to load, the field degrades to a plain text input.
+        if (!isMountedRef.current) return;
         setLoaded(true);
       });
   }, []);
@@ -163,6 +175,7 @@ function LangtagsAutocompleteField({ question, value, onChange }: FieldProps) {
     if (loaded) {
       loadLangtags()
         .then((mod) => {
+          if (!isMountedRef.current) return;
           const results = typed
             ? mod.lookupByName(typed)
             : mod.listLanguages();
@@ -188,11 +201,13 @@ function LangtagsAutocompleteField({ question, value, onChange }: FieldProps) {
     };
   });
 
+  // aria-label is omitted here: the input's `id` matches the `<Label htmlFor={question.id}>`
+  // rendered by QuestionField, so the accessible name comes from the associated <label>
+  // element — consistent with all sibling field renderers (TextFieldControl, SelectField, etc.).
   return (
     <Autocomplete
       id={question.id}
       aria-required={question.required === true}
-      aria-label={question.prompt ?? question.label ?? question.id}
       placeholder={loaded ? "Search by name, autonym, or code..." : "Loading languages..."}
       value={strVal}
       onChange={handleChange}
