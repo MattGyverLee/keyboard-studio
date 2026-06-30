@@ -1,15 +1,14 @@
 // ProfileScreen — account management page (proposal §A.5).
 //
-// Full-screen centered card matching WelcomeScreen styling. Shows linked
-// provider status and lets the user connect or disconnect each provider.
-// "Link GitHub" is highlighted as the preferred provider since fork+PR
-// delivery (§12) requires it.
+// Top-left focused layout: a large avatar + username anchor the top-left of the
+// screen, with the linked-provider details (GitHub / Google) on the right. A
+// single global "Sign out" button sits at the bottom — Keyboard Studio is one
+// account, so there is no per-provider sign-out; providers can only be linked.
 
 import { useIdentitySession } from "../hooks/useIdentitySession.ts";
 import { navigateTo } from "../lib/navigate.ts";
 import {
   BG_PAGE,
-  BG_CARD,
   BORDER,
   ACCENT,
   TEXT_DIM,
@@ -23,97 +22,75 @@ import { GitHubMark, GoogleMark } from "./ProviderMarks.tsx";
 // Shared style helpers
 // ---------------------------------------------------------------------------
 
-const githubPrimaryStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "9px 18px",
-  borderRadius: 6,
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: "pointer",
+const AVATAR_SIZE = 96;
+
+const pageStyle: React.CSSProperties = {
+  background: BG_PAGE,
+  height: "100%",
+  boxSizing: "border-box",
   fontFamily: FONT,
-  background: "#238636",
-  color: "#e6edf3",
-  border: "1px solid #2ea043",
-  whiteSpace: "nowrap",
+  color: TEXT_MAIN,
+  padding: "48px 56px",
+  overflowY: "auto",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  gap: 40,
 };
 
-const googlePrimaryStyle: React.CSSProperties = {
-  display: "inline-flex",
+const avatarStyle: React.CSSProperties = {
+  width: AVATAR_SIZE,
+  height: AVATAR_SIZE,
+  borderRadius: "50%",
+  background: ACCENT,
+  color: "#0d1117",
+  display: "flex",
   alignItems: "center",
-  gap: 8,
-  padding: "9px 18px",
-  borderRadius: 6,
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: "pointer",
+  justifyContent: "center",
+  flexShrink: 0,
   fontFamily: FONT,
-  background: "#1a73e8",
-  color: "#ffffff",
-  border: "1px solid #1a73e8",
-  whiteSpace: "nowrap",
+  fontSize: 44,
+  fontWeight: 700,
+  lineHeight: 1,
+  userSelect: "none",
 };
 
-const secondaryButtonStyle: React.CSSProperties = {
-  padding: "6px 14px",
-  borderRadius: 6,
-  fontSize: 12,
-  fontWeight: 500,
-  cursor: "pointer",
-  fontFamily: FONT,
-  background: "transparent",
-  color: TEXT_DIM,
-  border: `1px solid ${BORDER}`,
-  whiteSpace: "nowrap",
+// Neutral dim circle shown during the initial token-verify pass — mirrors
+// AccountControl's placeholder so a returning user does not flash the "Guest"
+// state before the GitHub token round-trip resolves.
+const verifyingAvatarStyle: React.CSSProperties = {
+  width: AVATAR_SIZE,
+  height: AVATAR_SIZE,
+  borderRadius: "50%",
+  background: "#283040",
   flexShrink: 0,
 };
 
-const providerRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  padding: "14px 16px",
-  background: "#0d1117",
-  border: `1px solid ${BORDER}`,
-  borderRadius: 8,
-};
-
-const providerLabelStyle: React.CSSProperties = {
+const providerLineStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 8,
-  fontSize: 14,
-  fontWeight: 600,
-  color: TEXT_MAIN,
-  fontFamily: FONT,
-  flexShrink: 0,
-  minWidth: 100,
-};
-
-const connectedInfoStyle: React.CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  overflow: "hidden",
-};
-
-const connectedNameStyle: React.CSSProperties = {
-  fontSize: 13,
-  color: TEXT_MAIN,
-  fontFamily: FONT,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-const connectedSubStyle: React.CSSProperties = {
-  fontSize: 12,
+  fontSize: 15,
   color: TEXT_DIM,
   fontFamily: FONT,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  marginTop: 2,
+};
+
+const providerValueStyle: React.CSSProperties = {
+  color: TEXT_MAIN,
+  fontWeight: 700,
+};
+
+/** Bold value styled as an inline link — used for "link google" / "link github". */
+const linkValueStyle: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  padding: 0,
+  margin: 0,
+  font: "inherit",
+  fontWeight: 700,
+  color: ACCENT,
+  cursor: "pointer",
+  textDecoration: "underline",
 };
 
 const errorStyle: React.CSSProperties = {
@@ -124,105 +101,144 @@ const errorStyle: React.CSSProperties = {
   fontFamily: FONT,
 };
 
+const signOutStyle: React.CSSProperties = {
+  alignSelf: "flex-start",
+  padding: "10px 22px",
+  borderRadius: 6,
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+  fontFamily: FONT,
+  background: "transparent",
+  color: TEXT_MAIN,
+  border: `1px solid ${BORDER}`,
+};
+
+const backLinkStyle: React.CSSProperties = {
+  alignSelf: "flex-start",
+  padding: "7px 16px",
+  borderRadius: 6,
+  fontSize: 13,
+  fontWeight: 500,
+  cursor: "pointer",
+  fontFamily: FONT,
+  background: "transparent",
+  color: TEXT_DIM,
+  border: `1px solid ${BORDER}`,
+};
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export function ProfileScreen() {
-  const { isSignedIn, displayName, github, google } = useIdentitySession();
+  const { isSignedIn, isVerifying, displayName, initial, github, google, signOut } =
+    useIdentitySession();
+
+  // During the initial token-verify pass we cannot yet know whether the user is
+  // signed in, so render a neutral placeholder rather than flashing the "Guest"
+  // state and the link controls before the GitHub token round-trip resolves.
+  if (isVerifying) {
+    return (
+      <main aria-label="Account profile" style={pageStyle}>
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <div style={verifyingAvatarStyle} aria-hidden="true" />
+          <div
+            role="status"
+            aria-live="polite"
+            style={{ fontSize: 15, color: TEXT_DIM, fontFamily: FONT }}
+          >
+            Checking sign-in&hellip;
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main
-      aria-label="Account profile"
-      style={{
-        background: BG_PAGE,
-        height: "100%",
-        boxSizing: "border-box",
-        fontFamily: FONT,
-        color: TEXT_MAIN,
-        padding: "24px 32px",
-        overflowY: "auto",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
+    <main aria-label="Account profile" style={pageStyle}>
+      {/* Top row — avatar + username on the left, provider details on the right */}
       <div
         style={{
           width: "100%",
-          maxWidth: 520,
-          background: BG_CARD,
-          border: `1px solid ${BORDER}`,
-          borderRadius: 12,
-          padding: "32px 36px",
           display: "flex",
-          flexDirection: "column",
-          gap: 24,
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 32,
+          flexWrap: "wrap",
         }}
       >
-        {/* Heading */}
-        <div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: "1.4rem",
-              fontWeight: 600,
-              color: ACCENT,
-              fontFamily: FONT,
-            }}
-          >
-            Your account
-          </h1>
-          <p
-            style={{
-              margin: "6px 0 0",
-              fontSize: 14,
-              color: TEXT_DIM,
-              fontFamily: FONT,
-            }}
-          >
-            {isSignedIn
-              ? (displayName !== null ? displayName : "Signed in")
-              : "Guest — sign in to save and submit keyboards"}
-          </p>
+        {/* Left: large avatar + username */}
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <div style={avatarStyle} aria-hidden="true">
+            {initial ?? "?"}
+          </div>
+          <div>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: "1.8rem",
+                fontWeight: 700,
+                color: TEXT_MAIN,
+                fontFamily: FONT,
+              }}
+            >
+              {displayName ?? "Guest"}
+            </h1>
+            <p
+              style={{
+                margin: "6px 0 0",
+                fontSize: 14,
+                color: TEXT_DIM,
+                fontFamily: FONT,
+              }}
+            >
+              {isSignedIn
+                ? "Keyboard Studio account"
+                : "Sign in to save and submit keyboards"}
+            </p>
+          </div>
         </div>
 
-        {/* Provider rows */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-
-          {/* GitHub row */}
-          <div style={providerRowStyle}>
-            <div style={providerLabelStyle}>
-              <GitHubMark />
-              GitHub
-            </div>
-
+        {/* Right: GitHub / Google details */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* GitHub line */}
+          <div style={providerLineStyle}>
+            <GitHubMark />
+            <span>github:</span>
             {github.linked ? (
-              <>
-                <div style={connectedInfoStyle}>
-                  <div style={connectedNameStyle}>
-                    {github.login ?? "Connected"}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  aria-label="Sign out of GitHub"
-                  style={secondaryButtonStyle}
-                  onClick={() => github.disconnect()}
-                >
-                  Sign out
-                </button>
-              </>
+              <span style={providerValueStyle}>{github.login ?? "Connected"}</span>
             ) : (
-              <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  style={githubPrimaryStyle}
-                  onClick={() => { void github.connect(); }}
-                >
-                  Link GitHub
-                </button>
-              </div>
+              <button
+                type="button"
+                style={linkValueStyle}
+                aria-label="Link GitHub"
+                onClick={() => { void github.connect(); }}
+              >
+                link github
+              </button>
+            )}
+          </div>
+
+          {/* Google line */}
+          <div style={providerLineStyle}>
+            <GoogleMark />
+            <span>google:</span>
+            {google.linked ? (
+              <span style={providerValueStyle}>
+                {google.name !== null && google.name.length > 0
+                  ? google.name
+                  : (google.email ?? "Connected")}
+              </span>
+            ) : (
+              <button
+                type="button"
+                style={linkValueStyle}
+                aria-label="Link Google"
+                onClick={() => { void google.connect(); }}
+              >
+                link google
+              </button>
             )}
           </div>
 
@@ -231,86 +247,33 @@ export function ProfileScreen() {
               {github.error}
             </p>
           )}
-
-          {/* Google row */}
-          <div style={providerRowStyle}>
-            <div style={providerLabelStyle}>
-              <GoogleMark />
-              Google
-            </div>
-
-            {google.linked ? (
-              <>
-                <div style={connectedInfoStyle}>
-                  {google.name !== null && (
-                    <div style={connectedNameStyle}>{google.name}</div>
-                  )}
-                  {google.email !== null && (
-                    <div style={connectedSubStyle}>{google.email}</div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  aria-label="Sign out of Google"
-                  style={secondaryButtonStyle}
-                  onClick={() => google.disconnect()}
-                >
-                  Sign out
-                </button>
-              </>
-            ) : (
-              <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  style={googlePrimaryStyle}
-                  onClick={() => { void google.connect(); }}
-                >
-                  Link Google account
-                </button>
-              </div>
-            )}
-          </div>
-
           {google.error !== null && (
             <p role="alert" style={errorStyle}>
               {google.error}
             </p>
           )}
         </div>
+      </div>
 
-        {/* Note */}
-        <p
-          style={{
-            margin: 0,
-            fontSize: 12,
-            lineHeight: 1.6,
-            color: TEXT_DIM,
-            fontFamily: FONT,
-          }}
-        >
-          One Keyboard Studio account can link both — GitHub is preferred (needed
-          to submit your keyboard via fork + pull request).
-        </p>
-
-        {/* Back link */}
+      {/* Bottom — back link, then the single global Sign out button */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: "auto" }}>
         <button
           type="button"
-          style={{
-            alignSelf: "flex-start",
-            padding: "7px 16px",
-            borderRadius: 6,
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: "pointer",
-            fontFamily: FONT,
-            background: "transparent",
-            color: TEXT_DIM,
-            border: `1px solid ${BORDER}`,
-          }}
+          style={backLinkStyle}
           onClick={() => navigateTo("survey")}
         >
           &larr; Back to studio
         </button>
+
+        {isSignedIn && (
+          <button
+            type="button"
+            style={signOutStyle}
+            onClick={signOut}
+          >
+            Sign out
+          </button>
+        )}
       </div>
     </main>
   );

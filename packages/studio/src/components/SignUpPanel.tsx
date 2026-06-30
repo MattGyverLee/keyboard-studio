@@ -16,12 +16,12 @@
 // off that discriminant.
 //
 // Replaces the older coupled "Connect GitHub + Submit PR" panel
-// (GitHubSubmitPanel). Reuses the existing useGitHubAuth hook for the OAuth
-// connect/disconnect lifecycle — no new auth plumbing.
+// (GitHubSubmitPanel). Consumes useIdentitySession for the unified connect /
+// link state and the single GLOBAL sign-out — Keyboard Studio is one account,
+// so there is no per-provider sign-out here (the same model as ProfileScreen
+// and AccountControl).
 
-import { useCallback } from "react";
-import { useGitHubAuth } from "../hooks/useGitHubAuth.ts";
-import { useGoogleAuth } from "../hooks/useGoogleAuth.ts";
+import { useIdentitySession } from "../hooks/useIdentitySession.ts";
 import { GitHubMark, GoogleMark } from "./ProviderMarks.tsx";
 
 const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
@@ -94,30 +94,28 @@ const secondaryButtonStyle: React.CSSProperties = {
 };
 
 
+const statusLineStyle: React.CSSProperties = {
+  fontSize: 13,
+  color: "#7ee787",
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+};
+
+const alertStyle: React.CSSProperties = { fontSize: 12, color: "#f0a0a0" };
+
+/** "Signed in with Google as <name> (<email>)" — name falls back to email. */
+function googleLabel(name: string | null, email: string | null): string {
+  const display = name !== null && name.length > 0 ? name : (email ?? "");
+  return display.length > 0 ? `Signed in with Google as ${display}` : "Signed in with Google";
+}
+
 export function SignUpPanel() {
-  const { status: ghStatus, login, error: ghError, connect: ghConnect, disconnect: ghDisconnect } =
-    useGitHubAuth();
-  const { status: googleStatus, identity: googleIdentity, error: googleError, connect: googleConnect, disconnect: googleDisconnect } =
-    useGoogleAuth();
+  const { isVerifying, github, google, signOut } = useIdentitySession();
 
-  const onGitHubSignUp = useCallback(() => {
-    void ghConnect();
-  }, [ghConnect]);
-
-  const onGoogleSignUp = useCallback(() => {
-    void googleConnect();
-  }, [googleConnect]);
-
-  // "connected" and "needs-scope" both mean a GitHub identity is established —
-  // which is all sign-up cares about. (The missing-scope distinction matters
-  // only for the later submit step, which is decoupled from sign-up.)
-  const ghSignedIn = ghStatus === "connected" || ghStatus === "needs-scope";
-  const googleSignedIn = googleStatus === "connected";
-
-  // If both identities are established, show both connected states.
-  // If only one is established, show the connected state + the other sign-in button.
-  // Verifying state: show interim while GitHub token is being checked.
-  if (ghStatus === "verifying") {
+  // Verifying state: show interim while the GitHub token is being checked, so we
+  // don't flash the signed-out sign-up state for a returning user.
+  if (isVerifying) {
     return (
       <section aria-label="Account" style={sectionStyle}>
         <div style={labelStyle}>Account</div>
@@ -128,91 +126,59 @@ export function SignUpPanel() {
     );
   }
 
-  // Both signed in — show both identities with sign-out for each.
-  if (ghSignedIn && googleSignedIn && googleIdentity !== null) {
+  // Keyboard Studio is one account — sign-out is global (it clears both
+  // providers), never per-provider. Providers can only be linked or unlinked
+  // together. Below: identity lines for whatever is linked, sign-up buttons for
+  // whatever is not, and exactly one "Sign out" once any provider is linked.
+  if (github.linked || google.linked) {
     return (
       <section aria-label="Account" style={sectionStyle}>
         <div style={labelStyle}>Account</div>
-        <div
-          role="status"
-          style={{ fontSize: 13, color: "#7ee787", display: "flex", alignItems: "center", gap: 8 }}
-        >
-          <GitHubMark /> Signed up with GitHub{login !== null ? ` as ${login}` : ""}
-        </div>
-        <button type="button" onClick={ghDisconnect} style={secondaryButtonStyle}>
-          Sign out of GitHub
-        </button>
-        <div
-          role="status"
-          style={{ fontSize: 13, color: "#7ee787", display: "flex", alignItems: "center", gap: 8 }}
-        >
-          <GoogleMark /> Signed in with Google as {googleIdentity.name} ({googleIdentity.email})
-        </div>
-        <button type="button" onClick={googleDisconnect} style={secondaryButtonStyle}>
-          Sign out of Google
-        </button>
-      </section>
-    );
-  }
 
-  // GitHub only signed in.
-  if (ghSignedIn) {
-    return (
-      <section aria-label="Account" style={sectionStyle}>
-        <div style={labelStyle}>Account</div>
-        <div
-          role="status"
-          style={{ fontSize: 13, color: "#7ee787", display: "flex", alignItems: "center", gap: 8 }}
-        >
-          <GitHubMark /> Signed up with GitHub{login !== null ? ` as ${login}` : ""}
-        </div>
-        <button type="button" onClick={ghDisconnect} style={secondaryButtonStyle}>
+        {github.linked ? (
+          <div role="status" style={statusLineStyle}>
+            <GitHubMark /> Signed up with GitHub{github.login !== null ? ` as ${github.login}` : ""}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => { void github.connect(); }}
+            aria-label="Sign up with GitHub"
+            style={githubButtonStyle(true)}
+          >
+            <GitHubMark />
+            Sign up with GitHub
+          </button>
+        )}
+
+        {google.linked ? (
+          <div role="status" style={statusLineStyle}>
+            <GoogleMark /> {googleLabel(google.name, google.email)}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => { void google.connect(); }}
+            aria-label="Sign up with Google"
+            style={googleButtonStyle(true)}
+          >
+            <GoogleMark />
+            Sign up with Google
+          </button>
+        )}
+
+        <button type="button" onClick={signOut} style={secondaryButtonStyle}>
           Sign out
         </button>
-        <button
-          type="button"
-          onClick={onGoogleSignUp}
-          aria-label="Sign up with Google"
-          style={googleButtonStyle(true)}
-        >
-          <GoogleMark />
-          Sign up with Google
-        </button>
-        {googleError !== null && (
-          <div role="alert" style={{ fontSize: 12, color: "#f0a0a0" }}>
-            {googleError}
+
+        {github.error !== null && (
+          <div role="alert" style={alertStyle}>
+            {github.error}
           </div>
         )}
-      </section>
-    );
-  }
-
-  // Google only signed in.
-  if (googleSignedIn && googleIdentity !== null) {
-    return (
-      <section aria-label="Account" style={sectionStyle}>
-        <div style={labelStyle}>Account</div>
-        <div
-          role="status"
-          style={{ fontSize: 13, color: "#7ee787", display: "flex", alignItems: "center", gap: 8 }}
-        >
-          <GoogleMark /> Signed in with Google as {googleIdentity.name} ({googleIdentity.email})
-        </div>
-        <button type="button" onClick={googleDisconnect} style={secondaryButtonStyle}>
-          Sign out
-        </button>
-        <button
-          type="button"
-          onClick={onGitHubSignUp}
-          aria-label="Sign up with GitHub"
-          style={githubButtonStyle(true)}
-        >
-          <GitHubMark />
-          Sign up with GitHub
-        </button>
-        {ghError !== null && (
-          <div role="alert" style={{ fontSize: 12, color: "#f0a0a0" }}>
-            {ghError}
+        {google.error !== null && (
+          <div role="alert" style={alertStyle}>
+            {google.error}
           </div>
         )}
       </section>
@@ -230,7 +196,7 @@ export function SignUpPanel() {
 
       <button
         type="button"
-        onClick={onGitHubSignUp}
+        onClick={() => { void github.connect(); }}
         aria-label="Sign up with GitHub"
         style={githubButtonStyle(true)}
       >
@@ -240,7 +206,7 @@ export function SignUpPanel() {
 
       <button
         type="button"
-        onClick={onGoogleSignUp}
+        onClick={() => { void google.connect(); }}
         aria-label="Sign up with Google"
         style={googleButtonStyle(true)}
       >
@@ -248,14 +214,14 @@ export function SignUpPanel() {
         Sign up with Google
       </button>
 
-      {ghError !== null && (
-        <div role="alert" style={{ fontSize: 12, color: "#f0a0a0" }}>
-          {ghError}
+      {github.error !== null && (
+        <div role="alert" style={alertStyle}>
+          {github.error}
         </div>
       )}
-      {googleError !== null && (
-        <div role="alert" style={{ fontSize: 12, color: "#f0a0a0" }}>
-          {googleError}
+      {google.error !== null && (
+        <div role="alert" style={alertStyle}>
+          {google.error}
         </div>
       )}
     </section>
