@@ -14,7 +14,7 @@
  *                     -> assert .kmn + .kps + .kvks + welcome.htm present and non-empty
  *
  * Playwright runs via the global CLI (`npx playwright test`).
- * @playwright/test is NOT a devDependency — resolved at runtime by the CLI.
+ * @playwright/test is a workspace-root devDependency (root package.json). It is NOT in packages/studio/package.json.
  *
  * refs #410 AC §3
  */
@@ -28,7 +28,7 @@ import * as path from "node:path";
 // ---------------------------------------------------------------------------
 
 const FIXTURE = {
-  /** base_kbdfr is a simple Latin keyboard; codec-clean and available in the
+  /** basic_kbdfr is a simple Latin keyboard; codec-clean and available in the
    *  local keyboard catalog served by the Vite dev server. */
   baseKeyboardId: "basic_kbdfr",
   /** Language name typed into identity-lite autonym field. */
@@ -194,7 +194,7 @@ async function completePhaseB(page: Page): Promise<void> {
  * The Output screen runs its own compile pipeline independently.
  * Wait until the download button is enabled (meaning WASM compile succeeded).
  */
-async function navigateToOutputAndWaitForCompile(page: Page): Promise<void> {
+async function navigateToOutput(page: Page): Promise<void> {
   // Click the "Output" nav link.
   await page.click('a[href="#output"]');
   await page.waitForSelector('[data-testid="output-screen-root"]', { timeout: 10_000 });
@@ -244,7 +244,7 @@ test.describe("Track 1 (copy-edit) E2E", () => {
     await completePhaseB(page);
 
     // Navigate to Output tab and trigger the download.
-    await navigateToOutputAndWaitForCompile(page);
+    await navigateToOutput(page);
     const download = await triggerDownload(page);
 
     // Verify the download event fired and produced a file.
@@ -263,7 +263,6 @@ test.describe("Track 1 (copy-edit) E2E", () => {
     expect(kmnEntry, "zip must contain a .kmn source file").toBeDefined();
     expect(kmnEntry!.uncompressedSize, ".kmn must be non-empty").toBeGreaterThan(0);
 
-    console.log("zip entries:", entryNames);
   });
 
   test("emitted .kmn compiles cleanly via kmcmplib WASM oracle", async ({
@@ -276,7 +275,7 @@ test.describe("Track 1 (copy-edit) E2E", () => {
     await acceptProjectName(page);
     await confirmPrefill(page);
     await completePhaseB(page);
-    await navigateToOutputAndWaitForCompile(page);
+    await navigateToOutput(page);
 
     // The download button becoming enabled IS the compile-clean assertion:
     // canDownload = (stage.kind === "ready") && isInstantiated
@@ -301,7 +300,7 @@ test.describe("Track 1 (copy-edit) E2E", () => {
     await acceptProjectName(page);
     await confirmPrefill(page);
     await completePhaseB(page);
-    await navigateToOutputAndWaitForCompile(page);
+    await navigateToOutput(page);
     const download = await triggerDownload(page);
 
     const dlPath = await download.path();
