@@ -43,11 +43,27 @@ interface Pt {
   y: number;
 }
 
-/** Cubic bezier path from the bottom-centre of `from` to the top-centre of `to`. */
+/**
+ * Cubic bezier between two nodes.
+ *
+ * Forward edge (target below source): exit the source bottom, enter the target top.
+ * Back-edge (target at or above source — a loop back into the flow): exit the
+ * source TOP and enter the target BOTTOM so the curve routes UPWARD. Otherwise it
+ * would exit the source bottom and bow downward first, drawing stray lines BELOW
+ * the bottom-most nodes of a phase (e.g. Phase B's confirm steps) before sweeping
+ * back up — which read as the graph continuing past its last question.
+ */
 function edgePath(from: Pt, to: Pt): string {
   const x1 = from.x + NODE_W / 2;
-  const y1 = from.y + NODE_H;
   const x2 = to.x + NODE_W / 2;
+  if (to.y < from.y) {
+    // Back-edge: route upward (source top → target bottom); never dips below source.
+    const y1 = from.y;
+    const y2 = to.y + NODE_H;
+    const dy = Math.max(28, Math.abs(y2 - y1) * 0.4);
+    return `M ${x1} ${y1} C ${x1} ${y1 - dy}, ${x2} ${y2 + dy}, ${x2} ${y2}`;
+  }
+  const y1 = from.y + NODE_H;
   const y2 = to.y;
   const dy = Math.max(28, Math.abs(y2 - y1) * 0.4);
   return `M ${x1} ${y1} C ${x1} ${y1 + dy}, ${x2} ${y2 - dy}, ${x2} ${y2}`;
