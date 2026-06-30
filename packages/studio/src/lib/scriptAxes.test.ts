@@ -45,13 +45,17 @@ describe("scriptClassOf (A2)", () => {
     expect(scriptClassOf("Mand")).toBe("abjad");
     expect(scriptClassOf("Samr")).toBe("abjad");
   });
-  it("classifies Thaana, Adlam, and Hanifi Rohingya as alphabetic (RTL alphabets, not abjads)", () => {
+  it("classifies Thaana and Adlam as alphabetic (RTL alphabets, not abjads)", () => {
     // These are RTL scripts added to primary_script in PR #870.
     // They are true alphabets (vowels written), so they fall through to the
     // "alphabetic" default — NOT the ABJAD set.
     expect(scriptClassOf("Thaa")).toBe("alphabetic");
     expect(scriptClassOf("Adlm")).toBe("alphabetic");
-    expect(scriptClassOf("Rohg")).toBe("alphabetic");
+  });
+  it("classifies Hanifi Rohingya as an abugida (inherent vowel + dependent vowel signs)", () => {
+    // Rohg writes consonants with an inherent vowel modified by dependent vowel
+    // signs, so it is structurally an abugida rather than the alphabetic default.
+    expect(scriptClassOf("Rohg")).toBe("abugida");
   });
   it("defaults unknown subtags to alphabetic", () => {
     expect(scriptClassOf("Zxxx")).toBe("alphabetic");
@@ -90,11 +94,12 @@ describe("primary_script ↔ scriptAxes classification guard", () => {
   // here; do NOT add a code just to silence the test without understanding it.
   const ALPHABETIC_DEFAULT_ALLOWLIST = new Set<string>([
     // RTL alphabets (vowels written) — true alphabets, so alphabetic is correct.
-    // These are exactly the scripts #870 added; keeping them OUT of ABJAD is the
-    // fix from that PR, so they are allowlisted rather than classified.
+    // These are scripts #870 added; keeping them OUT of ABJAD is the fix from
+    // that PR, so they are allowlisted rather than classified. (Rohg, also added
+    // by #870, is now explicitly classified as an abugida — see scriptAxes.ts —
+    // so it lives in EXPLICITLY_CLASSIFIED_SCRIPTS, not this allowlist.)
     "Thaa", // Thaana (Maldivian / Dhivehi)
     "Adlm", // Adlam (Fulani / Pular)
-    "Rohg", // Hanifi Rohingya
     // Phase A out-of-scope gate (D5): Ethiopic and Hangul are routed to the
     // script-not-supported stub before any A2 class matters, so they are left to
     // the alphabetic default. Han/Hani (the third gated script) IS explicitly

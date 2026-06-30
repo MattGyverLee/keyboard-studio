@@ -39,10 +39,15 @@ const LATIN_ALPHABETIC = new Set(["Latn", "Cyrl", "Grek", "Geor", "Armn"]);
 const ABUGIDA = new Set([
   "Deva", "Beng", "Taml", "Telu", "Knda", "Mlym", "Guru", "Gujr",
   "Orya", "Sinh", "Thai", "Khmr", "Mymr", "Laoo", "Tibt",
+  // Rohg (Hanifi Rohingya) is structurally an abugida: consonants carry an
+  // inherent vowel that dependent vowel signs modify. Despite being a young,
+  // RTL script that writes vowels consistently (so "alphabetic" was defensible),
+  // its inherent-vowel + dependent-sign mechanics make abugida the better fit.
+  "Rohg",
 ]);
 // Consonantal scripts. Syrc (Syriac) and Nkoo (N'Ko) are RTL abjads in active use.
 // Mand (Mandaic) and Samr (Samaritan) are also abjads; added alongside the RTL
-// scripts that primary_script.ts exposes (Thaa/Adlm/Rohg are RTL alphabets and
+// scripts that primary_script.ts exposes (Thaa/Adlm are RTL alphabets and
 // correctly fall through to the "alphabetic" default).
 const ABJAD = new Set(["Arab", "Hebr", "Syrc", "Nkoo", "Mand", "Samr"]);
 // Cher (Cherokee) and Yiii (Yi) are true syllabaries, not alphabets.
