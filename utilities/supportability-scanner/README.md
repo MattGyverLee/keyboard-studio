@@ -9,20 +9,26 @@ A keyboard is **import-ready** when the codec produces `ImportStatus.Clean` or `
 
 Like [utilities/kbgen](../kbgen/), this is a **standalone tool**, not a `packages/*` workspace member — it is kept out of `pnpm -r`. Unlike kbgen it is ESM/TypeScript, because it imports the codec source directly.
 
-## Scope: built on the codec; Layer A' (#236) is not wired in yet
+## Scope: codec + Layer A' I1/I3/I4 wired; I2-functional and I5 deferred
 
-The formal **Layer A' import-fidelity checks I1–I5** live in `@keymanapp/kmn-validator` and are **not implemented yet** (issue #236). Until they land, the scanner derives what the *codec alone* can tell us:
+Layer A' (#236) landed, and the checks runnable over a `release/` corpus are now invoked per keyboard from [packages/engine/src/validator/layer-a-prime.ts](../../packages/engine/src/validator/layer-a-prime.ts):
 
-| Column | Source today | When #236 lands |
+| Column / field | Source | Layer A' check |
 | --- | --- | --- |
-| `ImportStatus` | `Clean` / `CleanWithOpaque` / `ParseFailure` are exact from `parse()`. `RoundTripDivergence` is derived from a **structural** round-trip. | `RoundTripDivergence` switches to the functional WASM-oracle I2 result. |
-| `I2 (structural)` | `parse → emit → parse`, deep-equal of the normalised IR (mirrors the codec's `roundtrip.test.ts`). | Replaced by the functional oracle check; I1/I3 fold into the report. |
-| opaque inventory | the codec's `opaqueFeatures` (the I4/I5 surface). | unchanged. |
-| `recognizedRatio` | the pattern recognizer ([#234](../../packages/engine/src/recognizer/index.ts)). | unchanged. |
+| `ImportStatus` | `Clean` / `CleanWithOpaque` / `ParseFailure` are exact from `parse()`. `RoundTripDivergence` is derived from a **structural** round-trip. | — |
+| `I2 (structural)` | `parse → emit → parse`, deep-equal of the normalised IR (mirrors the codec's `roundtrip.test.ts`). | proxy for **I2** |
+| `layerAPrime.i1ParseComplete` | `checkParseCompleteness` — `false` if ≥1 source token has no IR node. | **I1** |
+| `layerAPrime.i3HeaderMissing` | `checkHeaderPreservation` — name / copyright / version fields absent/empty in the emitted `.kmn` (short labels recovered via layer-a-prime's lock-tested `headerFieldLabel` extractor). The check's **bcp47** dimension is excluded in this scan: language tags live in the `.kps` / `.keyboard_info`, not the `.kmn`, so it would false-positive on every keyboard. (bcp47 stays in scope on the import path, where package metadata populates it.) | **I3** |
+| opaque inventory | the codec's `opaqueFeatures`; also the documented surface of `checkOpaqueFeatureInventory`. | **I4** |
+| `recognizedRatio` | the pattern recognizer ([#234](../../packages/engine/src/recognizer/index.ts)). | — |
 
-The **structural** round-trip is conservative: it flags any case where re-emitting and re-parsing changes the IR — including emit-fidelity gaps in the codec itself (e.g. SMP-literal rules that survive the first parse as typed rules but are re-emitted into a form the parser then treats as opaque). These are real codec round-trip gaps worth their own follow-up against #233/#236, distinct from the *functional* equivalence the contract's `RoundTripDivergence` is ultimately defined by. The `i2` field in the JSON records which kind ran (`structural-pass` / `structural-divergence`).
+`layerAPrime` is **`null`** for a `ParseFailure` keyboard (the checks never ran) — distinct from `{ i1ParseComplete: true }` (ran and passed). The Markdown table renders `n/a` for those rows, and the I1/I3 summary counts are denominated over parsed keyboards only, so a parse-failure is never miscounted as I1-clean.
 
-The JSON shape is a superset of the contract `ImportReport`, so consumers do not need to change when #236 lands.
+**Why I2-functional and I5 are not wired.** The formal I2 (`checkRoundTrip`) is a **deferred stub**: it needs the Keyman Core keystroke runtime (this build ships kmcmplib, a *compiler*, not Core, a *runtime*), so it only generates a corpus and returns a "deferred" hint. The **structural** round-trip proxy therefore remains the only real `RoundTripDivergence` signal. I5 (`checkSidecarHash`) verifies a per-keyboard `.kmn.imported.sha256` sidecar that the studio writes **at import time** — upstream `release/` keyboards have none, so I5 is N/A for a corpus scan.
+
+The **structural** round-trip is conservative: it flags any case where re-emitting and re-parsing changes the IR — including emit-fidelity gaps in the codec itself (e.g. SMP-literal rules that survive the first parse as typed rules but are re-emitted into a form the parser then treats as opaque). These are real codec round-trip gaps, distinct from the *functional* equivalence the contract's `RoundTripDivergence` is ultimately defined by. The `i2` field in the JSON records which kind ran (`structural-pass` / `structural-divergence`).
+
+The JSON shape (`schema: import-corpus/v2`) is a superset of the contract `ImportReport`, so consumers do not need to change.
 
 ## Prerequisites
 
@@ -75,5 +81,5 @@ Full-corpus run time is well under the 5-minute budget (≈40 s for ~925 keyboar
 
 ## Not yet implemented
 
-- **Functional I2 (WASM oracle)** and the formal I1/I3/I5 checks — blocked on #236.
-- **`--emit-placements`** — dhigby's placement-intelligence recommendation (issue #237 comment, review §3.1): emit placement tuples (character → key/modifier/mechanism/BCP47/base-family) as a by-product of the same pass, with traps for mnemonic layouts, undeclared non-US bases, CAPS/NCAPS dedup, `begin ANSI` skip, and PUA filtering. Tracked for a follow-up.
+- **Functional I2 (Keyman Core keystroke runtime)** — `checkRoundTrip` is a deferred stub; until Core integration lands, the structural proxy stands in for `RoundTripDivergence`. Tracked as the I2 follow-up.
+- **I5 (sidecar hash)** — not applicable to a `release/` corpus scan (no per-keyboard import sidecar exists); it runs only on studio-imported keyboards.

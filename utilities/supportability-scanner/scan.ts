@@ -13,10 +13,9 @@
  * ImportStatus.Clean or .CleanWithOpaque (no parse failure) and the I2
  * round-trip passes.
  *
- * SCOPE NOTE (#237 built on #233 only; #236 still open). The formal Layer A'
- * checks I1-I5 live in @keymanapp/kmn-validator and are NOT yet implemented
- * (issue #236). Until they land this scanner derives what the *codec alone*
- * can tell us:
+ * SCOPE NOTE (#237; Layer A' #236 now landed — partially wired here). The
+ * formal Layer A' checks (packages/engine/src/validator/layer-a-prime.ts) are
+ * invoked for the subset that is meaningful over a release/ corpus:
  *
  *   - ImportStatus     — Clean / CleanWithOpaque / ParseFailure are exact.
  *                        RoundTripDivergence is derived from a STRUCTURAL
@@ -24,13 +23,18 @@
  *                        normalised IR), NOT the functional WASM oracle that
  *                        the contract's RoundTripDivergence is ultimately
  *                        defined by. The `i2` field records which kind ran.
- *   - opaqueFeatureInventory — the codec's `opaqueFeatures` (I4/I5 surface).
+ *   - layerAPrime.i1ParseComplete — Layer A' I1 (checkParseCompleteness).
+ *   - layerAPrime.i3HeaderMissing — Layer A' I3 (checkHeaderPreservation).
+ *   - opaqueFeatureInventory — the codec's `opaqueFeatures`; also the documented
+ *                        surface of Layer A' I4 (checkOpaqueFeatureInventory).
  *   - recognizedRatio  — from the pattern recognizer (issue #234).
  *
- * When #236 lands, swap `structuralRoundTrip()` for the functional I2 check and
- * fold I1/I3 into the report. The JSON shape already matches the contract
- * `ImportReport` (plus a few scanner-only diagnostic fields) so consumers do
- * not need to change.
+ * I2-functional and I5 are deliberately NOT wired: I2's functional check
+ * (checkRoundTrip) is a deferred stub requiring the Keyman Core keystroke
+ * runtime (absent from this build), so the structural proxy stands in; I5
+ * (checkSidecarHash) needs a per-keyboard import sidecar that release/
+ * keyboards do not have. The scanner's `--check` JSON is therefore still a
+ * superset of the contract `ImportReport`; consumers need not change.
  *
  * This is a standalone CLI (modelled on utilities/kbgen) — NOT a packages/*
  * workspace member. It imports the codec/recognizer SOURCE directly and is run
@@ -46,6 +50,11 @@ import { fileURLToPath } from "node:url";
 import { promises as fsp } from "node:fs";
 import { parse, emit, normaliseForComparison } from "../../packages/engine/src/codec/index.js";
 import { recognizePatterns } from "../../packages/engine/src/recognizer/index.js";
+import {
+  checkParseCompleteness,
+  checkHeaderPreservation,
+  headerFieldLabel,
+} from "../../packages/engine/src/validator/layer-a-prime.js";
 import { emitPlacementMap, detectBaseLayoutFamily } from "../../packages/engine/src/placement/index.js";
 import { aggregatePlacements, computeFingerprintFromCandidates } from "../../packages/engine/src/placement/aggregate.js";
 import type { KeyboardIR } from "@keyboard-studio/contracts";
@@ -213,9 +222,19 @@ function kmnPathsForProject(kpjPath: string): string[] {
 
 type I2Result = "structural-pass" | "structural-divergence" | "error";
 
-function structuralRoundTrip(ir: KeyboardIR, keyboardId: string): I2Result {
+/**
+ * Structural round-trip proxy. The functional I2 check (`checkRoundTrip`,
+ * Layer A' #236) is a DEFERRED STUB — it needs the Keyman Core keystroke
+ * runtime, absent from this build — so this proxy remains the only real
+ * RoundTripDivergence signal. Takes the already-emitted text (emitted once in
+ * scanOne and shared with the I3 header check) to avoid a second emit() pass.
+ */
+function structuralRoundTrip(
+  ir: KeyboardIR,
+  keyboardId: string,
+  emitted: string,
+): I2Result {
   try {
-    const emitted = emit(ir);
     const { ir: ir2 } = parse(emitted, keyboardId);
     const a = JSON.stringify(normaliseForComparison(ir));
     const b = JSON.stringify(normaliseForComparison(ir2));
@@ -246,6 +265,29 @@ interface ScanReport {
   ruleCount: number;
   groupCount: number;
   rawFragmentCount: number;
+  /**
+   * Layer A' import-fidelity results (#236, wired #237).
+   * Only the checks runnable over a release/ corpus are populated:
+   *   - I1 (parse completeness) and I3 (header preservation) run here.
+   *   - I4 (opaque inventory) is surfaced via `opaqueFeatureInventory` above.
+   *   - I2-functional is a deferred stub (Keyman Core runtime); the structural
+   *     proxy in `i2` stands in. I5 (sidecar hash) is N/A — release keyboards
+   *     have no import sidecar.
+   *
+   * `null` when the checks did not run — i.e. the keyboard failed to parse
+   * (ImportStatus.ParseFailure). Consumers MUST distinguish `null` ("not run")
+   * from `{ i1ParseComplete: true }` ("ran and passed"); a parse-failure
+   * keyboard is not silently reported as I1-clean.
+   */
+  layerAPrime: LayerAPrimeResult | null;
+}
+
+/** I1/I3 results for a keyboard that parsed; see ScanReport.layerAPrime. */
+interface LayerAPrimeResult {
+  /** I1: false when the codec left ≥1 source token with no IR node. */
+  i1ParseComplete: boolean;
+  /** I3: header fields absent/empty in the emitted .kmn ([] = all present). */
+  i3HeaderMissing: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -282,6 +324,9 @@ function scanOne(
     ruleCount: 0,
     groupCount: 0,
     rawFragmentCount: 0,
+    // null until the keyboard parses; the parse-failure early-returns below
+    // leave it null so a ParseFailure record is never reported as I1-clean.
+    layerAPrime: null,
   };
 
   let text: string;
@@ -314,7 +359,46 @@ function scanOne(
     // Recognizer failure is non-fatal; leave ratio at 0.
   }
 
-  const i2 = structuralRoundTrip(ir, keyboardId);
+  // Layer A' I1 — parse completeness (parse-stage; detects silent token drops).
+  const i1ParseComplete = checkParseCompleteness(parsed, text).length === 0;
+
+  // I4 — opaque inventory. `checkOpaqueFeatureInventory` only formats the
+  // inventory into one info finding; its documented data surface is the
+  // inventory array itself, which is `base.opaqueFeatureInventory` (populated
+  // above from parsed.opaqueFeatures). Surfacing that array IS I4 — no separate
+  // call needed.
+
+  // Emit once: reused by the I3 header check and the structural I2 proxy below.
+  let emitted: string | null = null;
+  try {
+    emitted = emit(ir);
+  } catch {
+    emitted = null;
+  }
+
+  // I3 — header preservation (emit-stage; needs the emitted text).
+  // The short field label is recovered via layer-a-prime's own `headerFieldLabel`
+  // extractor (co-located with the message builder, lock-tested) rather than
+  // re-parsing the message prose here.
+  // Scope caveat: BCP47 language tags live in the .kps / .keyboard_info, NOT in
+  // the .kmn the scanner parses, so `ir.header.bcp47` is always empty here and
+  // the check's bcp47 dimension is a guaranteed false positive in a .kmn-only
+  // scan. Drop it; name/copyright/version come from .kmn stores and stay. The
+  // bcp47 dimension remains valid on the import path (where package metadata
+  // populates ir.header.bcp47) — this filter is scanner-context-only.
+  let i3HeaderMissing: string[] = [];
+  if (emitted !== null) {
+    i3HeaderMissing = checkHeaderPreservation(ir, emitted)
+      .map((f) => headerFieldLabel(f) ?? f.message)
+      .filter((label) => !label.startsWith("bcp47"));
+  }
+
+  // The keyboard parsed, so Layer A' actually ran — record the result object
+  // (vs. the null default that marks a ParseFailure where the checks never ran).
+  base.layerAPrime = { i1ParseComplete, i3HeaderMissing };
+
+  // I2 structural proxy. A failed emit is itself a round-trip failure.
+  const i2: I2Result = emitted === null ? "error" : structuralRoundTrip(ir, keyboardId, emitted);
   base.i2 = i2;
 
   if (i2 === "structural-divergence" || i2 === "error") {
@@ -378,14 +462,19 @@ function aggregateOpaque(reports: ScanReport[]): OpaqueEntry[] {
  */
 function buildJson(sorted: ScanReport[], opaqueTotals: OpaqueEntry[]): string {
   const payload = {
-    schema: "import-corpus/v1",
+    schema: "import-corpus/v2",
     note:
-      "Generated by utilities/supportability-scanner (issue #237). I2 is a " +
-      "STRUCTURAL round-trip proxy; the functional WASM oracle check arrives " +
-      "with Layer A' (issue #236).",
+      "Generated by utilities/supportability-scanner (issues #237, #236). " +
+      "Layer A' I1 (parse completeness), I3 (header preservation), and I4 " +
+      "(opaque inventory) are wired per keyboard (see layerAPrime / " +
+      "opaqueFeatureInventory). I2 stays a STRUCTURAL round-trip proxy (the " +
+      "functional check needs the Keyman Core runtime, still deferred); I5 " +
+      "(sidecar hash) is N/A for release keyboards (no import sidecar).",
     totals: {
       keyboards: sorted.length,
       ...summarise(sorted),
+      i1ParseIncomplete: sorted.filter((r) => r.layerAPrime && !r.layerAPrime.i1ParseComplete).length,
+      i3HeaderIssues: sorted.filter((r) => r.layerAPrime && r.layerAPrime.i3HeaderMissing.length > 0).length,
     },
     opaqueFeatureTotals: opaqueTotals,
     keyboards: sorted,
@@ -417,10 +506,12 @@ function buildMarkdown(sorted: ScanReport[], opaque: OpaqueEntry[]): string {
   );
   lines.push("");
   lines.push(
-    "> **I2 is a structural round-trip proxy.** The codec (#233) is the only " +
-      "dependency wired in; the functional WASM oracle round-trip and the " +
-      "formal Layer A' checks I1-I5 arrive with #236. The `I2` column reports " +
-      "`structural-pass` / `structural-divergence`, not the functional result.",
+    "> **Layer A' I1/I3/I4 wired (#236, #237); I2 stays a structural proxy.** " +
+      "I1 (parse completeness) and I3 (header preservation) run per keyboard; " +
+      "I4 (opaque inventory) is the opaque-feature table below. The `I2` column " +
+      "reports `structural-pass` / `structural-divergence` — the **functional** " +
+      "round-trip needs the Keyman Core runtime and is still deferred. I5 " +
+      "(sidecar hash) is N/A here — release keyboards carry no import sidecar.",
   );
   lines.push("");
   lines.push("## Summary");
@@ -438,6 +529,19 @@ function buildMarkdown(sorted: ScanReport[], opaque: OpaqueEntry[]): string {
   );
   lines.push(
     `- ParseFailure: ${counts[ImportStatus.ParseFailure]} (${pct(counts[ImportStatus.ParseFailure])}%)`,
+  );
+  lines.push("");
+  // Layer A' I1/I3 ran only on keyboards that parsed (layerAPrime != null);
+  // ParseFailure keyboards are excluded from these denominators, not counted
+  // as passing.
+  const aPrimeRan = sorted.filter((r) => r.layerAPrime !== null).length;
+  const i1Incomplete = sorted.filter((r) => r.layerAPrime && !r.layerAPrime.i1ParseComplete).length;
+  const i3Issues = sorted.filter((r) => r.layerAPrime && r.layerAPrime.i3HeaderMissing.length > 0).length;
+  lines.push(
+    `- **Layer A' I1** (parse-complete): ${aPrimeRan - i1Incomplete} pass, ${i1Incomplete} with unaccounted tokens (of ${aPrimeRan} parsed)`,
+  );
+  lines.push(
+    `- **Layer A' I3** (header preservation): ${aPrimeRan - i3Issues} clean, ${i3Issues} with missing/empty header fields (of ${aPrimeRan} parsed)`,
   );
   lines.push("");
 
@@ -461,13 +565,21 @@ function buildMarkdown(sorted: ScanReport[], opaque: OpaqueEntry[]): string {
   lines.push("## Per-keyboard");
   lines.push("");
   lines.push(
-    "| Keyboard ID | ImportStatus | recognizedRatio | Opaque count | I2 (structural) | I4 opaque inventory |",
+    "| Keyboard ID | ImportStatus | recognizedRatio | Opaque count | I2 (structural) | I1 | I3 header | I4 opaque inventory |",
   );
-  lines.push("| --- | --- | ---: | ---: | --- | --- |");
+  lines.push("| --- | --- | ---: | ---: | --- | :-: | --- | --- |");
   for (const r of sorted) {
     const opaqueCount = r.opaqueFeatureInventory.reduce((s, o) => s + o.count, 0);
+    // null layerAPrime = ParseFailure (checks never ran) → "n/a", not a pass.
+    const i1 = r.layerAPrime === null ? "n/a" : r.layerAPrime.i1ParseComplete ? "✓" : "✗";
+    const i3 =
+      r.layerAPrime === null
+        ? "n/a"
+        : r.layerAPrime.i3HeaderMissing.length === 0
+          ? "✓"
+          : r.layerAPrime.i3HeaderMissing.join(", ");
     lines.push(
-      `| \`${r.keyboardId}\` | ${r.status} | ${fmtRatio(r.recognizedRatio)} | ${opaqueCount} | ${r.i2} | ${fmtOpaque(r.opaqueFeatureInventory)} |`,
+      `| \`${r.keyboardId}\` | ${r.status} | ${fmtRatio(r.recognizedRatio)} | ${opaqueCount} | ${r.i2} | ${i1} | ${i3} | ${fmtOpaque(r.opaqueFeatureInventory)} |`,
     );
   }
   lines.push("");

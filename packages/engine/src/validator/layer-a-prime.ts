@@ -97,6 +97,31 @@ export function checkParseCompleteness(
 // I3 — Header preservation
 // ---------------------------------------------------------------------------
 
+/** Code shared by every I3 "header field missing" finding. */
+export const HEADER_FIELD_MISSING_CODE = "KM_WARN_HEADER_FIELD_MISSING";
+
+/** Build the canonical I3 "missing header field" message for `label`. */
+function headerFieldMissingMessage(label: string): string {
+  return `Header field "${label}" is absent or empty in the emitted .kmn.`;
+}
+
+/**
+ * Inverse of {@link headerFieldMissingMessage}: recover the field label from an
+ * I3 finding, or `null` if the finding isn't a header-field-missing one.
+ *
+ * Co-located with the message builder so the two cannot drift — a consumer that
+ * needs the short label (e.g. the supportability scanner's `i3HeaderMissing`
+ * column) calls this instead of re-parsing the message prose at a distance. The
+ * round-trip `headerFieldLabel(missing(L)) === L` is pinned by a lock-test in
+ * layer-a-prime.test.ts, so a reword of the message breaks the test rather than
+ * silently degrading every consumer.
+ */
+export function headerFieldLabel(finding: LintFinding): string | null {
+  if (finding.code !== HEADER_FIELD_MISSING_CODE) return null;
+  const m = /Header field "([^"]+)"/.exec(finding.message);
+  return m ? m[1]! : null;
+}
+
 /**
  * I3: Verify that key header fields are non-empty in the emitted .kmn.
  *
@@ -120,10 +145,10 @@ export function checkHeaderPreservation(
 
   function missing(label: string): LintFinding {
     return {
-      code: "KM_WARN_HEADER_FIELD_MISSING",
+      code: HEADER_FIELD_MISSING_CODE,
       severity: "warning",
       layer: "A-prime",
-      message: `Header field "${label}" is absent or empty in the emitted .kmn.`,
+      message: headerFieldMissingMessage(label),
     };
   }
 
