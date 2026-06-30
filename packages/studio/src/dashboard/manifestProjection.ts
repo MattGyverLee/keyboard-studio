@@ -103,7 +103,7 @@ function projectEdgeKind(kind: StepGraphEdge["kind"]): GraphEdge["kind"] {
 
 /** Project one StepGraphNode onto a render-ready GraphNode (kind:"stub"). */
 function projectNode(step: StepGraphNode): GraphNode {
-  return {
+  const node: GraphNode = {
     id: step.id,
     flowId: MANIFEST_FLOW_ID,
     label: step.label,
@@ -121,7 +121,15 @@ function projectNode(step: StepGraphNode): GraphNode {
     // Consistent with model.ts:46 — stub nodes are not part of the ordered spine
     // taxonomy region "flow"; they sit in "not-yet-ordered".
     region: "not-yet-ordered",
+    // FR-004 (spec 021): carry metadata from the StepGraphNode so FlowGraphView
+    // can render writes/inputs/lock as first-class information.
+    writePaths: step.writePaths,
+    inputPaths: step.inputPaths,
+    stepKind: step.type,
   };
+  // exactOptionalPropertyTypes: only assign lock when present.
+  if (step.lock !== undefined) node.lock = step.lock;
+  return node;
 }
 
 /** Project one StepGraphEdge onto a render-ready GraphEdge. */
@@ -203,31 +211,48 @@ export function registryKeyForFlow(graph: FlowGraph): string | null {
  * attachDrillDowns — hang the per-phase modular graphs under their manifest
  * question-step node, keyed by a questionRegistry id (FR-004).
  *
- * @param flows the per-phase modular graphs (the four FLOW_SOURCES, already built
- *              via safeBuild — each is { graph, error, title }).
+ * Each flow entry may carry a `stepId` indicating which manifest step it hangs
+ * under. Flows without a `stepId` default to CHARACTERS_STEP_ID for backwards
+ * compatibility with callers that pass plain { graph, error, title } triples.
+ *
+ * @param flows the per-phase modular graphs (FLOW_SOURCES entries, already built
+ *              via safeBuild — each is { graph, error, title, stepId? }).
  * @returns drill-downs grouped by the manifest step id they attach under.
  */
 export function attachDrillDowns(
-  flows: ReadonlyArray<{ graph: FlowGraph | null; error: string | null; title: string }>,
+  flows: ReadonlyArray<{ graph: FlowGraph | null; error: string | null; title: string; stepId?: string }>,
 ): Record<string, ManifestDrillDown[]> {
-  const drillDowns: ManifestDrillDown[] = flows.map((f) => ({
-    registryKey:
-      f.graph !== null ? (registryKeyForFlow(f.graph) ?? f.title) : f.title,
-    title: f.title,
-    graph: f.graph,
-    error: f.error,
-  }));
+  const grouped: Record<string, ManifestDrillDown[]> = {};
 
-  // Phase 1: all four batteries hang under the single "characters" placeholder.
-  return { [CHARACTERS_STEP_ID]: drillDowns };
+  for (const f of flows) {
+    const stepId = f.stepId ?? CHARACTERS_STEP_ID;
+    const dd: ManifestDrillDown = {
+      registryKey:
+        f.graph !== null ? (registryKeyForFlow(f.graph) ?? f.title) : f.title,
+      title: f.title,
+      graph: f.graph,
+      error: f.error,
+    };
+    if (!Object.prototype.hasOwnProperty.call(grouped, stepId)) {
+      grouped[stepId] = [];
+    }
+    grouped[stepId]!.push(dd);
+  }
+
+  return grouped;
 }
 
 /**
- * buildManifestProjectionWithDrillDowns — the full projection used by the
- * dashboard: the spine FlowGraph + the registry-keyed drill-downs.
+ * buildManifestProjectionWithDrillDowns — the spine FlowGraph + the registry-keyed
+ * drill-downs grouped by manifest step id.
+ *
+ * NOTE: the live dashboard (DashboardView) calls buildManifestProjection() and
+ * attachDrillDowns() directly; this convenience wrapper is retained for the
+ * projection-layer tests. It accepts the optional `stepId` carried by
+ * BuiltFlowSource so the multi-step grouping path is exercised.
  */
 export function buildManifestProjectionWithDrillDowns(
-  flows: ReadonlyArray<{ graph: FlowGraph | null; error: string | null; title: string }>,
+  flows: ReadonlyArray<{ graph: FlowGraph | null; error: string | null; title: string; stepId?: string }>,
 ): ManifestProjection {
   return {
     spine: buildManifestProjection(),

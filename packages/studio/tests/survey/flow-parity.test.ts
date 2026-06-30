@@ -20,6 +20,8 @@ import type { FlowQuestion, FlowOption } from "../../src/survey/types.ts";
 import phaseAModularRaw from "../../../../content/flows/phase_a_identity.modular.yaml?raw";
 import phaseFModularRaw from "../../../../content/flows/phase_f_helpdocs.modular.yaml?raw";
 import identityLiteModularRaw from "../../../../content/flows/identity_lite.modular.yaml?raw";
+import trackModularRaw from "../../../../content/flows/track.modular.yaml?raw";
+import projectNameModularRaw from "../../../../content/flows/project_name.modular.yaml?raw";
 
 // ---------------------------------------------------------------------------
 // Author-visible field projection
@@ -251,5 +253,81 @@ describe("flow-parity: identity_lite — questions[]", () => {
   it("projected fields are stable (snapshot)", () => {
     const projected = modular.questions.map(projectQuestion);
     expect(projected).toMatchSnapshot("identity_lite questions projected");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase G — track selection (T003 coverage for new flow, task 6)
+// ---------------------------------------------------------------------------
+
+describe("flow-parity: track — questions[]", () => {
+  const modular = loadModularFlow(trackModularRaw);
+
+  it("has questions", () => {
+    expect(modular.questions.length).toBeGreaterThan(0);
+  });
+
+  it("flow_id is track", () => {
+    expect(modular.flow_id).toBe("track");
+  });
+
+  it("phase is G", () => {
+    expect(modular.phase).toBe("G");
+  });
+
+  it("contains track_choice question", () => {
+    expect(modular.questions.map((q) => q.id)).toContain("track_choice");
+  });
+
+  it("no provenance_questions in track flow", () => {
+    expect(modular.provenance_questions).toBeUndefined();
+  });
+
+  it("all questions have id, type, and at least prompt or label", () => {
+    for (const q of modular.questions) {
+      expect(q.id, "question missing id").toBeTruthy();
+      expect(q.type, `question "${q.id}" missing type`).toBeTruthy();
+      const hasText = q.prompt !== undefined || q.label !== undefined || q.body !== undefined;
+      expect(hasText, `question "${q.id}" has neither prompt, label, nor body`).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase G — project name (T003 coverage for new flow, task 6)
+// ---------------------------------------------------------------------------
+
+describe("flow-parity: project_name — questions[]", () => {
+  const modular = loadModularFlow(projectNameModularRaw);
+
+  it("has questions", () => {
+    expect(modular.questions.length).toBeGreaterThan(0);
+  });
+
+  it("flow_id is project_name", () => {
+    expect(modular.flow_id).toBe("project_name");
+  });
+
+  it("phase is G", () => {
+    expect(modular.phase).toBe("G");
+  });
+
+  it("contains project_display_name and project_keyboard_id questions", () => {
+    const ids = modular.questions.map((q) => q.id);
+    expect(ids).toContain("project_display_name");
+    expect(ids).toContain("project_keyboard_id");
+  });
+
+  it("no provenance_questions in project_name flow", () => {
+    expect(modular.provenance_questions).toBeUndefined();
+  });
+
+  it("all questions have id, type, and at least prompt or label", () => {
+    for (const q of modular.questions) {
+      expect(q.id, "question missing id").toBeTruthy();
+      expect(q.type, `question "${q.id}" missing type`).toBeTruthy();
+      const hasText = q.prompt !== undefined || q.label !== undefined || q.body !== undefined;
+      expect(hasText, `question "${q.id}" has neither prompt, label, nor body`).toBe(true);
+    }
   });
 });

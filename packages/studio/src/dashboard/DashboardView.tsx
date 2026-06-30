@@ -27,7 +27,6 @@ import identityLiteModularRaw from "../../../../content/flows/identity_lite.modu
 import {
   buildManifestProjection,
   attachDrillDowns,
-  CHARACTERS_STEP_ID,
 } from "./manifestProjection.ts";
 import { FLOW_SOURCES, safeBuild } from "./renderedNodeSet.ts";
 import { FlowGraphView } from "./FlowGraphView.tsx";
@@ -294,11 +293,36 @@ export function FlowMapView({ completeness }: FlowMapViewProps) {
   // only when FlowMapView mounts, which is gated by SHOW_FLOWMAP (StudioShell.tsx:84) —
   // no new flag is introduced (DEC-002).
   const manifestSpine = useMemo(() => buildManifestProjection(), []);
-  // Hang the four FLOW_SOURCES modular graphs as registry-keyed drill-downs under
-  // their manifest question-step node ("characters") — FR-004. Same graphs as
-  // today's four-section view, now reframed as drill-downs (no node dropped).
+  // Hang all FLOW_SOURCES modular graphs as registry-keyed drill-downs under their
+  // manifest question-step nodes — FR-004. Phase A/B/F hang under "characters";
+  // Phase G flows hang under "track" and "project_name" respectively.
   const drillDowns = useMemo(() => attachDrillDowns(flows), [flows]);
-  const charactersDrillDowns = drillDowns[CHARACTERS_STEP_ID] ?? [];
+
+  // Manifest-spine order: collect step ids that have drill-downs, preserving the
+  // order in which they appear on the manifest spine for consistent rendering.
+  // The spine order is: characters, track, project_name (and any future steps).
+  // We build the ordered list by walking the manifest-spine nodes and picking those
+  // that have drill-downs, so the sections always render in spine order.
+  const drillDownStepIds = useMemo(() => {
+    const withDrillDowns = new Set(Object.keys(drillDowns));
+    // Walk the manifest spine in its rendered order to get spine-ordered step ids.
+    const ordered: string[] = [];
+    const seen = new Set<string>();
+    for (const node of manifestSpine.nodes) {
+      if (withDrillDowns.has(node.id) && !seen.has(node.id)) {
+        ordered.push(node.id);
+        seen.add(node.id);
+      }
+    }
+    // Add any step ids not in the spine (defensive — should not happen in practice).
+    for (const id of withDrillDowns) {
+      if (!seen.has(id)) {
+        ordered.push(id);
+        seen.add(id);
+      }
+    }
+    return ordered;
+  }, [drillDowns, manifestSpine.nodes]);
 
   return (
     <div
@@ -355,48 +379,55 @@ export function FlowMapView({ completeness }: FlowMapViewProps) {
           </section>
 
           {/* Spec 015 (FR-004): per-phase modular graphs as registry-keyed drill-downs
-              under the "characters" question-step node — the intra-phase expansion of
-              the manifest's Phase A/B/F question battery. Same graphs as before. */}
-          <h2 style={{ margin: "0 0 4px", fontSize: 15, color: "#6ea8fe" }}>
-            Drill-downs under <code style={{ fontFamily: MONO }}>{CHARACTERS_STEP_ID}</code>
-          </h2>
-          <p style={{ margin: "0 0 16px", fontSize: 12, color: "#6e7681", maxWidth: 920 }}>
-            Per-phase question batteries hung as registry-keyed drill-downs under the manifest
-            <code style={{ fontFamily: MONO }}> {CHARACTERS_STEP_ID}</code> step.
-          </p>
-          {charactersDrillDowns.map(({ graph, error, title, registryKey }) => (
-            <section key={title} style={{ marginBottom: 28 }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
-                <h3 style={{ margin: 0, fontSize: 14, color: "#adbac7" }}>{title}</h3>
-                <span style={{ fontSize: 11.5, color: "#6e7681", fontFamily: MONO }}>
-                  drill-down key: {registryKey}
-                  {graph !== null && ` · ${graph.flowId} · ${graph.nodes.length} questions · ${graph.edges.length} edges`}
-                </span>
+              under their manifest question-step nodes. Phase A/B/F hang under
+              "characters"; Phase G flows hang under "track" and "project_name". */}
+          {drillDownStepIds.map((stepId) => {
+            const stepDrillDowns = drillDowns[stepId] ?? [];
+            return (
+              <div key={stepId}>
+                <h2 style={{ margin: "0 0 4px", fontSize: 15, color: "#6ea8fe" }}>
+                  Drill-downs under <code style={{ fontFamily: MONO }}>{stepId}</code>
+                </h2>
+                <p style={{ margin: "0 0 16px", fontSize: 12, color: "#6e7681", maxWidth: 920 }}>
+                  Question flows hung as registry-keyed drill-downs under the manifest
+                  <code style={{ fontFamily: MONO }}> {stepId}</code> step.
+                </p>
+                {stepDrillDowns.map(({ graph, error, title, registryKey }) => (
+                  <section key={title} style={{ marginBottom: 28 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
+                      <h3 style={{ margin: 0, fontSize: 14, color: "#adbac7" }}>{title}</h3>
+                      <span style={{ fontSize: 11.5, color: "#6e7681", fontFamily: MONO }}>
+                        drill-down key: {registryKey}
+                        {graph !== null && ` · ${graph.flowId} · ${graph.nodes.length} questions · ${graph.edges.length} edges`}
+                      </span>
+                    </div>
+                    {error !== null && (
+                      <div style={{ color: "#ff9492", fontFamily: MONO, fontSize: 12, padding: 12, border: "1px solid #763a3a", borderRadius: 6 }}>
+                        Failed to parse: {error}
+                      </div>
+                    )}
+                    {graph !== null && graph.danglingTargets.length > 0 && (
+                      <div
+                        style={{
+                          color: "#e3b341",
+                          fontFamily: MONO,
+                          fontSize: 12,
+                          padding: "8px 12px",
+                          marginBottom: 8,
+                          border: "1px solid #9e6a03",
+                          borderRadius: 6,
+                          background: "#241c10",
+                        }}
+                      >
+                        Dangling goto target(s): {graph.danglingTargets.join(", ")}
+                      </div>
+                    )}
+                    {graph !== null && <FlowGraphView graph={graph} />}
+                  </section>
+                ))}
               </div>
-              {error !== null && (
-                <div style={{ color: "#ff9492", fontFamily: MONO, fontSize: 12, padding: 12, border: "1px solid #763a3a", borderRadius: 6 }}>
-                  Failed to parse: {error}
-                </div>
-              )}
-              {graph !== null && graph.danglingTargets.length > 0 && (
-                <div
-                  style={{
-                    color: "#e3b341",
-                    fontFamily: MONO,
-                    fontSize: 12,
-                    padding: "8px 12px",
-                    marginBottom: 8,
-                    border: "1px solid #9e6a03",
-                    borderRadius: 6,
-                    background: "#241c10",
-                  }}
-                >
-                  Dangling goto target(s): {graph.danglingTargets.join(", ")}
-                </div>
-              )}
-              {graph !== null && <FlowGraphView graph={graph} />}
-            </section>
-          ))}
+            );
+          })}
         </>
       )}
 

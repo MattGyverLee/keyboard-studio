@@ -30,3 +30,71 @@ describe("FlowMapView (DashboardView)", () => {
     expect(screen.getAllByText("non-roman").length).toBeGreaterThan(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// DOM-render test: manifest-spine node cards paint writes/inputs/lock metadata
+// (Fix 4 — coverage gap: a JSX typo would be invisible without a DOM assertion)
+// ---------------------------------------------------------------------------
+
+describe("FlowMapView — manifest-spine step metadata rendering", () => {
+  it("paints writes/inputs/lock metadata on projected manifest-spine node cards", () => {
+    render(<FlowMapView />);
+
+    // The survey-flow section (default tab) renders the manifest spine.
+    // carve writes groups[]/stores[]/raw[] — assert at least one path fragment
+    // from CARVE_WRITES appears in the rendered output (groups[], stores[]).
+    const writeLabels = screen.getAllByText("writes:");
+    expect(writeLabels.length).toBeGreaterThan(0);
+
+    // The carve node card must include a recognizable write path fragment.
+    // CARVE_WRITES formats to "groups[]", "stores[]", "raw[]".
+    // We look for the formatted text inside any rendered node card.
+    const bodyText = document.body.textContent ?? "";
+    expect(bodyText).toMatch(/groups\[\]/);
+    expect(bodyText).toMatch(/stores\[\]/);
+
+    // inputs: lines must always render (symmetric contract — Fix 1).
+    // carve has inputs:[] → should render "inputs: —" (the em dash placeholder).
+    const inputLabels = screen.getAllByText("inputs:");
+    expect(inputLabels.length).toBeGreaterThan(0);
+
+    // mechanisms node must paint the lock·physical badge (lock="physical").
+    // getAllByText to handle multiple nodes.
+    const lockPhysical = screen.queryAllByText("lock·physical");
+    expect(lockPhysical.length).toBeGreaterThan(0);
+
+    // touch node must paint the lock·touch badge (lock="touch").
+    const lockTouch = screen.queryAllByText("lock·touch");
+    expect(lockTouch.length).toBeGreaterThan(0);
+
+    // A Form-3 node (track or project_name) must paint a non-empty inputs: line.
+    // track reads header.bcp47 and header.name; project_name reads header.bcp47.
+    // "header" appears in the formatted IRPath for both (e.g. "header.bcp47").
+    expect(bodyText).toMatch(/header\./);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DOM-render test: Phase G drill-down sections render under their manifest steps
+// ---------------------------------------------------------------------------
+
+describe("FlowMapView — Phase G drill-down sections (track / project_name)", () => {
+  it("renders a drill-down section under the 'track' manifest step", () => {
+    render(<FlowMapView />);
+    const bodyText = document.body.textContent ?? "";
+    // The drill-down heading for the "track" manifest step must appear.
+    expect(bodyText).toMatch(/Drill-downs under\s*track/);
+    // track_choice is the question id in the track flow — its node must render.
+    expect(bodyText).toContain("track_choice");
+  });
+
+  it("renders a drill-down section under the 'project_name' manifest step", () => {
+    render(<FlowMapView />);
+    const bodyText = document.body.textContent ?? "";
+    // The drill-down heading for the "project_name" manifest step must appear.
+    expect(bodyText).toMatch(/Drill-downs under\s*project_name/);
+    // project_display_name and project_keyboard_id are the question ids — both must render.
+    expect(bodyText).toContain("project_display_name");
+    expect(bodyText).toContain("project_keyboard_id");
+  });
+});
