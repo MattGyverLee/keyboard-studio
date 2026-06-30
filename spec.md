@@ -208,7 +208,7 @@ keyboard-studio
 |   |                                     plain-language throughout.
 |   +-- strategy selector       [engine/content]
 |   |                                     Consumes the discovery axes; runs the decision tree
-|   |                                     (Sec 7) to pick a primary output strategy (S-01..S-12)
+|   |                                     (Sec 7) to pick a primary output strategy (S-01..S-13)
 |   |                                     plus secondaries; ranks which patterns the gallery shows.
 |   +-- gallery                           Show-by-example mini-keyboards; surfaces the selected
 |                                         strategy's patterns first; user taps and picks; each
@@ -569,8 +569,8 @@ The validator is the sole arbiter of what the survey and LLM are allowed to emit
 
 | Layer | Name | Runs | Packages |
 |---|---|---|---|
-| A | Validity (structural + semantic) | Per-keystroke (TS checks) + per-compile (WASM oracle) | `@keymanapp/kmn-validator` |
-| B | Style / canonical form | Per-compile (TS AST rules) | `@keymanapp/kmn-validator` |
+| A | Validity (structural + semantic) | Per-keystroke (TS checks) + per-compile (WASM oracle) | `@keymanapp/kmn-validator` *(planned; not yet extracted — currently lives in `packages/engine/src/validator`)* |
+| B | Style / canonical form | Per-compile (TS AST rules) | `@keymanapp/kmn-validator` *(planned; not yet extracted — currently lives in `packages/engine/src/validator`)* |
 | C | Repo hygiene (criteria.md) | Per-phase-exit + at submit | `@keymanapp/keyboard-lint` |
 
 **Lint and compile cycle.** One debounce cycle (300 ms) runs two concurrent microtasks: the TS-check pass and the WASM oracle. A TS-check error suppresses the WASM call; a WASM diagnostic always supersedes a conflicting TS diagnostic. This is the resolved single-cycle design (see Sec 14, decision 3).
@@ -609,7 +609,7 @@ Note: checks #1-9 are portable to TypeScript and run per-keystroke. Checks #10-1
 
 #### Layer A' — import fidelity (5 checks)
 
-Layer A' runs on every codec parse (after import) and on every emit (before output). It is part of `@keymanapp/kmn-validator`. The checks are:
+Layer A' runs on every codec parse (after import) and on every emit (before output). It is part of `@keymanapp/kmn-validator` *(planned; currently lives in `packages/engine/src/validator`)*. The checks are:
 
 | # | Check | Severity | When |
 |---|-------|----------|------|
@@ -920,7 +920,7 @@ Note: touch/mobile layouts and `.kmp`/`.kvks`/`.keyboard_info` generation are **
 
 **functional phase labels.** The named steps that replace the retired sequential labels A–G (Decision 15, §14, decided 2026-06-26): **Identity, Characters, Carve, Mechanisms, Lock, Reorder, Desktop-OSK, Touch, Help, Package** (the plan spine). The old→new mapping is the A–G crosswalk in §4; on first mention in each major section a reference reads "FunctionalName (formerly Phase X)". The phase *model* in §8 is unchanged — this is a labelling change. Note the spec's single Phase C maps to **Mechanisms**, while **Carve** and **Lock** are spine steps that never had a phase letter (see the §4 flags).
 
-**decision tree.** The ordered rule set (Sec 7.2) that maps a keyboard's discovery-axis values to a primary output strategy (S-01..S-12) plus secondaries. The strategy selector runs it; its output drives which gallery patterns are shown.
+**decision tree.** The ordered rule set (Sec 7.2) that maps a keyboard's discovery-axis values to a primary output strategy (S-01..S-13) plus secondaries. The strategy selector runs it; its output drives which gallery patterns are shown.
 
 **functional equivalence.** Round-trip criterion (Decision 7, §14): two IRs are equivalent when, for every input in the bounded enumeration corpus (every virtual key x every modifier x deadkey paths up to depth 3), the WASM oracle produces the same output character sequence from both.
 
@@ -976,7 +976,7 @@ Changes to the KeyboardIR schema (§5a) — field renames, type changes, removal
 | Validator / lint architecture (14 compiler checks) | `docs/lint.md` in the keyboard-studio repo, or https://github.com/keyboard-studio/keyboard-studio/blob/main/docs/lint.md |
 | PR review criteria (~200 checkpoints, green/yellow/red) | `docs/criteria.md` in the keyboard-studio repo, or https://github.com/keyboard-studio/keyboard-studio/blob/main/docs/criteria.md |
 | Template-cleanup recipe (scaffolder source of truth) | `docs/making-a-template.md` in the keyboard-studio repo, or https://github.com/keyboard-studio/keyboard-studio/blob/main/docs/making-a-template.md |
-| `.kmn` strategy framework (discovery axes, decision tree, strategy cards S-01..S-12) | Merged into Sec 7 of this spec. `strategy tree/strategies.md` is retained only as a stub pointer — do not treat it as a separate source. |
+| `.kmn` strategy framework (discovery axes, decision tree, strategy cards S-01..S-13) | Merged into Sec 7 of this spec. `strategy tree/strategies.md` is retained only as a stub pointer — do not treat it as a separate source. |
 | GitHub repository | https://github.com/keyboard-studio/keyboard-studio |
 | Issue tracker | https://github.com/keyboard-studio/keyboard-studio/issues |
 | KeyboardIR schema (full TypeScript) | `packages/contracts/src/keyboard-ir.ts` |

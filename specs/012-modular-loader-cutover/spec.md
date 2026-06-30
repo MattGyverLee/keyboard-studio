@@ -4,7 +4,7 @@
 
 **Created**: 2026-06-27
 
-**Status**: Draft
+**Status**: Implemented (shipped in PR #781)
 
 **Input**: User description: P3 of the survey-modularity-cyoa-plan ([docs/survey-modularity-cyoa-plan.md](../../docs/survey-modularity-cyoa-plan.md) §6 P3) — finish the #410 A/F/identity-lite loader cutover, then retire the legacy full-YAML survey loader.
 
@@ -108,7 +108,7 @@ Once the three flows have cut over (Stories 1–3) and the golden comparisons co
 
 ### Key Entities *(include if feature involves data)*
 
-- **Legacy full-YAML flow**: A complete survey flow expressed inline as one YAML file, parsed by the legacy loader. The redundant delivery form being retired for A/F/identity-lite. Four exist (`phase_a_identity.yaml`, `phase_b_characters.yaml`, `phase_f_helpdocs.yaml`, `identity_lite.yaml`).
+- **Legacy full-YAML flow**: A complete survey flow expressed inline as one YAML file, parsed by the legacy loader. The redundant delivery form retired for A/F/identity-lite. Four have been deleted (`phase_a_identity.yaml`, `phase_b_characters.yaml`, `phase_f_helpdocs.yaml`, `identity_lite.yaml`).
 - **Thin modular manifest**: A small YAML file that references question ids resolved against the registry by the modular loader; the surviving delivery form. Exists for A/F/B; must be created for identity-lite.
 - **Question module**: One authored question with its definition, validation, and fixtures, registered by id. A module referenced by some manifest is "in flow"; one referenced by none is a library/reserve module — preserved, not deleted.
 - **Golden comparison baseline**: The recorded legacy-flow output per phase, used to prove the modular-loader output is identical before any deletion.
@@ -120,7 +120,7 @@ Once the three flows have cut over (Stories 1–3) and the golden comparisons co
 - **SC-001**: 100% of survey flows (A, B, F, identity-lite) resolve through the single modular loader; zero flows depend on the legacy full-YAML loader after the deletion change.
 - **SC-002**: For each of Phase A, Phase F, and identity-lite, the post-cutover question set, order, defaults, branching, and validation match the pre-cutover flow with zero differences (golden comparison passes).
 - **SC-003**: Zero `TODO(#410)` markers remain in the survey source after the cutover.
-- **SC-004**: Both Playwright E2E lanes run unskipped and pass.
+- **SC-004**: Both Playwright E2E lanes run unskipped and pass. *(E2E unblocking tracked by issue #741.)*
 - **SC-005**: Zero questions lose their research/content: every question module that survives manifest-dereferencing still compiles and its unit tests still pass; no non-Roman-script research module is deleted.
 - **SC-006**: The legacy loader and the four legacy full-flow files are removed, and the deletion change can be reverted in isolation without disturbing the cutover.
 - **SC-007**: The codebase builds and typechecks with all import extensions intact (no resolution failures introduced by moves/edits).

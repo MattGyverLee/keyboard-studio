@@ -32,7 +32,7 @@ All names below are valid `subagent_type` values for the Agent tool. Spawn them 
 **Domain expertise**
 - `km-domain` — master linguist; validates script/layout/normalization/IME-design decisions across world writing systems.
 - `km-keyman` — Keyman / `.kmn` / `kmcmplib` expert. Pattern schema `.kmn` semantics, 14 Layer-A compiler checks, keyboards output layout.
-- `km-strategy` — owns spec §7 strategy framework (A1–A7 axes, decision tree, S-01..S-12 catalog, §7.5 self-check, Pattern.strategyId linkage).
+- `km-strategy` — owns spec §7 strategy framework (A1–A7 axes, decision tree, S-01..S-13 catalog, §7.5 self-check, Pattern.strategyId linkage).
 - `km-validator` — validator-layer specialist (spec §10 three-layer architecture; Layer A/B in `kmn-validator`, Layer C in `keyboard-lint`; TS-portable + WASM-only check split; debounce + oracle concurrency D3).
 - `km-output` — output / scaffolder / VirtualFS specialist (spec §11/§12, .zip serialization, GitHub OAuth fork+PR, `keymanapp/keyboards` directory conformance).
 - `km-author` — original-intent reviewer for `keymanapp/keyman` upstream parity. Catches divergence from upstream conventions, `.kmn` idioms, commit-style.

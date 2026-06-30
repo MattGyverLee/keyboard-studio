@@ -30,7 +30,8 @@ export interface FragmentValidationContext {
 
 /**
  * Service contract for the Layer A (validity) and Layer B (style) validator.
- * Packaged as `@keymanapp/kmn-validator`.
+ * Packaged as `@keymanapp/kmn-validator` (planned; not yet extracted —
+ * currently in packages/engine/src/validator).
  *
  * Layer A runs 9 TS-portable checks per-keystroke and 5 WASM-oracle checks
  * per-compile, all within a single 300 ms debounce cycle (Decision 3, §14).

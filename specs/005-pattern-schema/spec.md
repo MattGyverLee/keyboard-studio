@@ -19,6 +19,14 @@ The optional `origin` and `ownedNodes` fields are non-breaking additions that li
 ```ts
 /** Canonical Pattern schema — packages/contracts/src/pattern.ts */
 
+/** Structured demo object as stored in content YAML files. */
+export interface DemoObject {
+  filled_kmn?: string | null;
+  touch_layout_fragment?: string | null;
+  sample_keys?: string[] | null;
+  sample_output?: string[] | null;
+}
+
 export type PatternCategory = "desktop" | "touch" | "reorder";
 
 export type AnswerType =
@@ -42,6 +50,12 @@ export interface PatternQuestion {
    *  (base, corpus §7.6, axis fill §7.1, CLDR/identity) with its own provenance;
    *  optionality is a static-slot vs. runtime-fill split, not licence to ask blank (§3c). */
   default?: string;
+  /**
+   * Whether this slot must be filled before a Pattern can be applied.
+   * Omitted implies true (every slot is required unless explicitly marked optional).
+   * @see spec.md §14 Decision 1
+   */
+  required?: boolean;
 }
 
 export interface TestVector {
@@ -71,7 +85,7 @@ export interface Pattern {
    */
   appliesTo: string[];
   /**
-   * The strategy card (S-01..S-12, Sec 7.3) this pattern implements.
+   * The strategy card (S-01..S-13, Sec 7.3) this pattern implements.
    * The strategy selector uses this to map a decision-tree result to the
    * pattern(s) the gallery should surface.
    * @see spec.md §5, §7.3
@@ -113,6 +127,11 @@ export interface Pattern {
    * @see §5a KeyboardIR — IRNodeRef
    */
   ownedNodes?: IRNodeRef[];
+  /**
+   * True when the author has manually edited slots on a recognized Pattern.
+   * Only meaningful when origin='recognized'. Default false / omitted.
+   */
+  authorModified?: boolean;
   /** Survey questions that fill the named slots in kmnFragment. */
   questions: PatternQuestion[];
   /**
@@ -160,13 +179,20 @@ export interface Pattern {
   provenance?: Array<{ keyboard: string; rule?: string; notes?: string }>;
 
   /**
-   * A demonstration KMN snippet or description string showing the pattern in action.
+   * A demonstration KMN snippet, description string, or structured demo object
+   * showing the pattern in action.
    * content-layer only; loader may omit when constructing engine Pattern objects.
    */
-  demo?: string | null;
+  demo?: string | DemoObject | null;
+  /**
+   * Ordering priority within the gallery (lower number = higher priority).
+   * Used by the pattern-library loader to select patterns at a specific priority tier.
+   * content-layer only; loader may omit when constructing engine Pattern objects.
+   */
+  priority?: number;
 }
 ```
 
-`StrategyId` is the union `'S-01' | 'S-02' | ... | 'S-12'` exported from `@keyboard-studio/contracts`; see §7.3 for the strategy catalog.
+`StrategyId` is the union `'S-01' | 'S-02' | ... | 'S-13'` exported from `@keyboard-studio/contracts`; see §7.3 for the strategy catalog.
 
 **`appliesTo` semantics.** An empty array (`[]`) means the pattern is unrestricted and will be offered to all script groups. A non-empty array lists BCP47 script subtags (e.g. `"Latn"`, `"Deva"`) or base-keyboard IDs; the pattern is then offered only to projects matching at least one listed value.

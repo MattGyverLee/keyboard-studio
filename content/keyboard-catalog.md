@@ -86,7 +86,7 @@ recorded openly here rather than papered over, so a follow-up pass can fill them
 Each keyboard has a short metadata block followed by a plain-English note:
 
 - **Group** — the spec §9 routing bucket (QWERTY/QWERTZ, AZERTY, or Non-Roman).
-- **Strategy** — the primary output strategy from the spec §7 catalog (S-01..S-12), plus secondaries.
+- **Strategy** — the primary output strategy from the spec §7 catalog (S-01..S-13), plus secondaries.
 - **Axes** — the discovery-axis values (spec §7.1) that explain the strategy choice: A1 scale,
   A2 script class, A3 phonetic intuition, A4 diacritic behaviour, A5 multi-mode, A6 constraint
   enforcement, A7 spare-key availability (A2a = cluster sensitivity, for abugida/abjad scripts).

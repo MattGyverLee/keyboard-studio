@@ -1,6 +1,6 @@
 {
-  "specVersion": "1.3.1",
-  "lastUpdated": "2026-06-28",
+  "specVersion": "2.0.0",
+  "lastUpdated": "2026-06-30",
   "specFile": "spec.md",
   "sections": {
     "§1": {
@@ -29,7 +29,7 @@
     },
     "§4": {
       "title": "4. System overview",
-      "hash": "sha256:5d07d9c4c8d1b481",
+      "hash": "sha256:21a433692a35c924",
       "status": "partial",
       "implements": [
         "packages/contracts/src/baseBrowser.ts",
@@ -58,7 +58,7 @@
     },
     "§5a": {
       "title": "5a. KeyboardIR (keyboard intermediate representation)",
-      "hash": "sha256:9ca9577cccfe0425",
+      "hash": "sha256:09e5ae3605a45969",
       "status": "partial",
       "implements": [
         "packages/contracts/src/baseKeyboard.ts",
@@ -116,7 +116,7 @@
     },
     "§9": {
       "title": "9. Three-group routing",
-      "hash": "sha256:c3458e711b6c278b",
+      "hash": "sha256:88cb800f27ad4590",
       "status": "unimplemented",
       "implements": [],
       "decisions": [
@@ -126,7 +126,7 @@
     },
     "§10": {
       "title": "10. Validator and lint engine",
-      "hash": "sha256:db644dd54c5ae5d7",
+      "hash": "sha256:3a8a55523e5ea30b",
       "status": "partial",
       "implements": [
         "packages/contracts/src/validator.ts",
@@ -181,7 +181,7 @@
     },
     "§14": {
       "title": "14. Open questions — resolved decisions",
-      "hash": "sha256:5c6e0dca84a7c8b1",
+      "hash": "sha256:183257f058a98735",
       "status": "reference",
       "implements": [],
       "decisions": [
@@ -199,7 +199,7 @@
     },
     "§15": {
       "title": "15. Acceptance scenarios",
-      "hash": "sha256:1d2bdc9b47a6b90d",
+      "hash": "sha256:5413c8950f782caf",
       "status": "unimplemented",
       "implements": [],
       "decisions": [],
@@ -207,7 +207,7 @@
     },
     "§16": {
       "title": "16. Out of scope",
-      "hash": "sha256:56da5a20e944bd4b",
+      "hash": "sha256:bdb006c9f3d7383b",
       "status": "reference",
       "implements": [],
       "decisions": [
@@ -218,7 +218,7 @@
     },
     "§17": {
       "title": "17. Glossary",
-      "hash": "sha256:18fc42de7b78b116",
+      "hash": "sha256:077ba095ad774225",
       "status": "reference",
       "implements": [],
       "decisions": [],
@@ -226,7 +226,7 @@
     },
     "§18": {
       "title": "18. Revision policy",
-      "hash": "sha256:05c4a85c51be1de4",
+      "hash": "sha256:fcfd7dcb4da82c48",
       "status": "reference",
       "implements": [],
       "decisions": [],
@@ -234,7 +234,7 @@
     },
     "§19": {
       "title": "19. Reference",
-      "hash": "sha256:8e9919d00e70c4e9",
+      "hash": "sha256:432c82e16562571b",
       "status": "reference",
       "implements": [],
       "decisions": [],
@@ -274,7 +274,7 @@
     },
     "specs/005-pattern-schema": {
       "title": "Feature spec — Pattern schema (spec.md §5)",
-      "hash": "sha256:269db42c81a1c560",
+      "hash": "sha256:5bb579a799d16de9",
       "status": "implemented",
       "implements": [
         "packages/contracts/src/pattern.ts",
@@ -287,7 +287,7 @@
     },
     "specs/007-strategy-selection": {
       "title": "Feature spec — Strategy selection (spec.md §7)",
-      "hash": "sha256:822706880f9434a7",
+      "hash": "sha256:570a057a9a66b568",
       "status": "partial",
       "implements": [
         "packages/contracts/src/strategy.ts",
@@ -300,7 +300,7 @@
     },
     "specs/008-data-flow": {
       "title": "Feature spec — Data flow (spec.md §8)",
-      "hash": "sha256:eff591baf04a9932",
+      "hash": "sha256:de6d579e40996345",
       "status": "partial",
       "implements": [
         "packages/contracts/src/surveySession.ts",
@@ -322,6 +322,126 @@
     "specs/014-mutate-seam-touch-propagation": {
       "title": "Feature Specification: KeyboardIR `mutate` seam + touch propagation",
       "hash": "sha256:517e6db32b3b3c0d",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/009-flow-map-editor": {
+      "title": "Feature Specification: Dev-only interactive flow-map editor",
+      "hash": "sha256:4260c960a38260d7",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/010-dashboard-honest-flow-map": {
+      "title": "Feature Specification: Dashboard-honest flow map (P0)",
+      "hash": "sha256:b7476b9d01dead19",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/010-irpath-inputs-writes": {
+      "title": "Feature Specification: IRPath + declared `inputs`/`writes` + folder-per-question opt-in",
+      "hash": "sha256:0ae9ee0a8dd28f68",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/011-ui-primitives": {
+      "title": "Feature Specification: Shared `ui/` Primitive Library Extraction",
+      "hash": "sha256:46212ea1a4401440",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/012-modular-loader-cutover": {
+      "title": "Feature Specification: Modular-loader cutover + legacy YAML retirement",
+      "hash": "sha256:bb18892cf1cfe69d",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/012-step-model-manifest": {
+      "title": "Feature Specification: Unified Step Model + Manifest-Driven Survey Ordering",
+      "hash": "sha256:7374bc00d7fb183e",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/013-retire-legacy-flow-loader": {
+      "title": "Feature Specification: Retire the legacy full-YAML survey flow loader",
+      "hash": "sha256:8c2e94012adea2c6",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/015-qu-map-projection": {
+      "title": "Feature Specification: Map projection — render the manifest spine in DashboardView via a StepGraph → FlowGraph/GraphNode adapter",
+      "hash": "sha256:c54d30125510c3e3",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/016-qu-drift-guardrail": {
+      "title": "Feature Specification: Drift guardrail — CI bijection between the rendered graph and manifest + questionRegistry runtime reach",
+      "hash": "sha256:3aeaa94c78dae70e",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/017-qu-declare-steps": {
+      "title": "Feature Specification: Declare steps — populate inputs/writes on existing editor-steps and add prefill / pb_build_list drill-down declarations (declared-only, flag off)",
+      "hash": "sha256:d22e4c96c102f6ff",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/018-qu-wire-track": {
+      "title": "Feature Specification: Wire track — TrackStep resolves as its first-class manifest node (hand-coded fork preserved)",
+      "hash": "sha256:eed3756170a160d2",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/019-qu-wire-prefill": {
+      "title": "Feature Specification: Wire prefill — Prefill resolves as a read-only registry drill-down under the opaque characters node (writes: [])",
+      "hash": "sha256:bd763de17b8d4c91",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/020-qu-wire-buildlist": {
+      "title": "Feature Specification: Wire build-list — BuildListView appears as the build-list branch drill-down behind the mandatory IntroChooser gate",
+      "hash": "sha256:c0b05458610d677a",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/021-qu-wire-galleries": {
+      "title": "Feature Specification: Wire galleries — carve / mechanisms / touch resolve as first-class map nodes (existing write mechanisms preserved)",
+      "hash": "sha256:f2db81ebbbf903d8",
+      "status": "unreviewed",
+      "implements": [],
+      "decisions": [],
+      "notes": ""
+    },
+    "specs/022-qu-library-demote": {
+      "title": "Feature Specification: Library demote — demote the `pb_*` battery and the full Phase A to reserve/library under the no-delete guardrail",
+      "hash": "sha256:3cd6cd6d53be4c86",
       "status": "unreviewed",
       "implements": [],
       "decisions": [],

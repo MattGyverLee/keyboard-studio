@@ -22,7 +22,7 @@ The Pattern schema (`spec.md` §5) is a TypeScript contract, but its `kmnFragmen
 2. **Compiler-check fidelity** — the Layer A check list (`spec.md` §10) matches what `kmcmplib` actually rejects/accepts. New TS-side checks reproduce the upstream check exactly.
 3. **Output-layout conformance** — the virtual FS structure (`spec.md` §12) matches the on-disk shape `kmcmplib` and `keymanapp/keyboards` expect: `source/<id>.kmn`, `<id>.kps`, `<id>.kvks`, `<id>.keyman-touch-layout`, `tests/<id>_tests.kmn`, etc.
 4. **Test-vector adequacy** — `Pattern.tests` covers the rules the fragment introduces; round-trip vectors actually exercise the deadkey / store / reorder logic they claim to.
-5. **Spec ↔ implementation traceability** — the 14 check entries in `spec.md` §10 (with `kmcmplib` line-number citations) match the implementation in `@keymanapp/kmn-validator`.
+5. **Spec ↔ implementation traceability** — the 14 check entries in `spec.md` §10 (with `kmcmplib` line-number citations) match the implementation in `@keymanapp/kmn-validator` (planned; not yet extracted — currently in `packages/engine/src/validator`).
 
 ## Core competencies
 
@@ -112,7 +112,7 @@ APPROVE / REQUEST CHANGES / REJECT
 
 - **Pairs with km-domain** on script-specific decisions (the linguist owns "should this script use a deadkey?"; this agent owns "is the deadkey written correctly in KMN?")
 - **Pairs with km-validator** on Layer A check implementations (this agent confirms Keyman semantics; km-validator owns layer-boundary correctness and the debounce concurrency)
-- **Pairs with km-strategy** when a pattern's `kmnFragment` must implement a specific strategy card (S-01..S-12) — this agent confirms the fragment actually realizes that strategy
+- **Pairs with km-strategy** when a pattern's `kmnFragment` must implement a specific strategy card (S-01..S-13) — this agent confirms the fragment actually realizes that strategy
 - **Pairs with km-output** on serialization / GitHub PR shape — this agent owns the `.kmn` content; km-output owns the surrounding file tree
 
 ## Sources of truth

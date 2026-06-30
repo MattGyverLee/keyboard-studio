@@ -23,7 +23,7 @@ Originally adapted from the flexlibs2 LEX crew (May 2026); rebuilt for keyboard-
 | `/km-simplify` | Post-goal refactor via Claude's `/simplify` | Simplify report + behavior-preserving diff |
 | `/km-keyman` | Keyman / .kmn / kmcmplib domain expert | Review against the 14 compiler checks, .kmn idioms, layout |
 | `/km-domain` | Master linguist (scripts, normalization, IPA, RTL) | Linguistic correctness review |
-| `/km-strategy` | §7 strategy framework (axes A1-A7, tree, S-01..S-12) | Tree/catalog/table coherence review |
+| `/km-strategy` | §7 strategy framework (axes A1-A7, tree, S-01..S-13) | Tree/catalog/table coherence review |
 | `/km-validator` | Validator-layer architecture (A/B/C, debounce, kmcmplib boundary) | Layer-boundary / timing review |
 | `/km-output` | Scaffolder / VirtualFS / GitHub PR delivery | Output-shape / upstream-conformance review |
 | `/km-author` | keymanapp/keyman parity — voice, conventions, vocabulary | Upstream-parity review |

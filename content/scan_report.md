@@ -67,7 +67,7 @@ Scripts represented: Latin (Europe, Francophone and Anglophone Africa, Philippin
 
 ## Patterns by frequency
 
-The table below maps each strategy in the spec §7.3 catalog (S-01..S-12) to two independent evidence sources: tallied occurrences across the 27 hand-scanned keyboards documented in [keyboard-catalog.md](keyboard-catalog.md), and corpus-wide primitive signals drawn from the 1,026-keyboard automated scan in [scan_summary.md](scan_summary.md). "Observed" counts include both primary and secondary appearances (a keyboard that uses S-02 as a secondary under a primary S-08 strategy contributes 1 to the S-02 tally).
+The table below maps each strategy in the spec §7.3 catalog (S-01..S-13) to two independent evidence sources: tallied occurrences across the 27 hand-scanned keyboards documented in [keyboard-catalog.md](keyboard-catalog.md), and corpus-wide primitive signals drawn from the 1,026-keyboard automated scan in [scan_summary.md](scan_summary.md). "Observed" counts include both primary and secondary appearances (a keyboard that uses S-02 as a secondary under a primary S-08 strategy contributes 1 to the S-02 tally).
 
 | Strategy (S-code + name) | Observed in the 27 (count + notes) | Corpus-wide signal | Pattern YAML |
 |---|---|---|---|

@@ -7,7 +7,7 @@
 # pattern is applied silently, NOT surfaced as a gallery choice, unless the
 # base keyboard already carries its own reorder scheme.
 #
-# Strategy framework: this is a Phase C' pipeline stage, not an S-01..S-12
+# Strategy framework: this is a Phase C' pipeline stage, not an S-01..S-13
 # output strategy, so strategyId / combinesWith are intentionally omitted
 # (km-strategy review, 2026-06-05).
 

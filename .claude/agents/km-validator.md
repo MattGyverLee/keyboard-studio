@@ -1,6 +1,6 @@
 ---
 name: km-validator
-description: Validator-layer specialist. Owns the spec §10 three-layer architecture (Layer A validity + Layer B style in @keymanapp/kmn-validator, Layer C hygiene in @keymanapp/keyboard-lint), the 9 TS-portable + 5 WASM-only check split, and the 300 ms debounce + TS-check/WASM-oracle concurrency (decision D3).
+description: Validator-layer specialist. Owns the spec §10 three-layer architecture (Layer A validity + Layer B style in @keymanapp/kmn-validator (planned; not yet extracted — currently in packages/engine/src/validator), Layer C hygiene in @keymanapp/keyboard-lint), the 9 TS-portable + 5 WASM-only check split, and the 300 ms debounce + TS-check/WASM-oracle concurrency (decision D3).
 tools: Read, Grep, Glob
 model: sonnet
 ---

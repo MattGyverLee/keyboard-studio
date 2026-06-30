@@ -4,7 +4,7 @@
 
 **Created**: 2026-06-27
 
-**Status**: Draft
+**Status**: Implemented (shipped in PR #781)
 
 **Input**: Phase 3b of [docs/survey-modularity-cyoa-plan.md](../../docs/survey-modularity-cyoa-plan.md) — the "beyond #410" follow-up that deletes the legacy full-YAML survey loader and its four full-flow YAMLs now that Phase 3a cut Phase A / F / identity-lite over to `loadModularFlow`.
 
@@ -43,7 +43,7 @@ The flow-map / dashboard must stop reading the legacy full-YAML files and instea
 
 ### User Story 2 - Legacy loader source is removed (Priority: P2)
 
-With no remaining consumer, delete the legacy parser `survey/loadFlow.ts` and its test `loadFlow.test.ts`.
+With no remaining consumer, the legacy parser `survey/loadFlow.ts` and its test `loadFlow.test.ts` have been deleted.
 
 **Why this priority**: This is the headline deletion of Phase 3b. It depends on Story 1 (no consumer may remain). Kept as its own commit so it can be reverted independently.
 
@@ -58,7 +58,7 @@ With no remaining consumer, delete the legacy parser `survey/loadFlow.ts` and it
 
 ### User Story 3 - Legacy full-flow YAMLs are removed (Priority: P2)
 
-Delete the four legacy full-flow YAMLs — `content/flows/phase_a_identity.yaml`, `phase_b_characters.yaml`, `phase_f_helpdocs.yaml`, `identity_lite.yaml` — keeping the thin `*.modular.yaml` manifests and the `content/flows/_examples/*` fixtures.
+The four legacy full-flow YAMLs — `content/flows/phase_a_identity.yaml`, `phase_b_characters.yaml`, `phase_f_helpdocs.yaml`, `identity_lite.yaml` — have been deleted, keeping the thin `*.modular.yaml` manifests and the `content/flows/_examples/*` fixtures.
 
 **Why this priority**: Completes the delivery-form cleanup. Depends on Stories 1 and 2. Kept as a separate commit so it reverts independently (restore from git).
 
@@ -87,7 +87,7 @@ Delete the four legacy full-flow YAMLs — `content/flows/phase_a_identity.yaml`
 - **FR-001**: The flow map MUST derive its Phase A, Phase F, and identity-lite graphs from the modular manifests (`content/flows/*.modular.yaml`) + the question registry, matching the live survey runtime — the same way Phase B already renders.
 - **FR-002**: After repointing, `packages/studio/src/flowmap/` MUST contain no import of `parseFlow` and no `?raw` import of any legacy full-flow YAML (`phase_a_identity.yaml`, `phase_b_characters.yaml`, `phase_f_helpdocs.yaml`, `identity_lite.yaml`).
 - **FR-003**: The script-routing view (`buildScriptRouting.ts`) MUST produce equivalent routing output after sourcing identity-lite from the modular manifest instead of the legacy YAML.
-- **FR-004**: `packages/studio/src/survey/loadFlow.ts` and `loadFlow.test.ts` MUST be deleted.
+- **FR-004**: `packages/studio/src/survey/loadFlow.ts` and `loadFlow.test.ts` have been deleted.
 - **FR-005**: The four legacy full-flow YAMLs MUST be deleted: `content/flows/phase_a_identity.yaml`, `phase_b_characters.yaml`, `phase_f_helpdocs.yaml`, `identity_lite.yaml`.
 - **FR-006**: The thin modular manifests (`content/flows/*.modular.yaml`) and the example fixtures (`content/flows/_examples/*`) MUST be retained unchanged.
 - **FR-007**: No modular question module (`survey/questions/**`) may be deleted or have its research content altered; deletion is limited to redundant delivery forms (the loader + the four YAMLs).

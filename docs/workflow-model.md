@@ -38,7 +38,7 @@ A disconnect is any edge where the source's *produces* doesn't satisfy the targe
 | `CARVE` Carve gallery | `KeyboardIR` | trimmed IR | STUBBED — no IR producer, no persist |
 | `SA` Survey A (identity) | language intent | `identity{lang,bcp47,script,routing}` | BUILT — output discarded |
 | `SB` Survey B (characters) | `identity` | inventory + axes A1/A3/A3a/A4(partial)/A7(partial) | PARTIAL (manual only) — discarded |
-| `SS` Strategy selector §7.2 | inventory + axes | strategy set S-01..S-12 | ABSENT |
+| `SS` Strategy selector §7.2 | inventory + axes | strategy set S-01..S-13 | ABSENT |
 | `GC` Gallery C (deadkey/tone) | strategy set | chosen patterns -> rules; resolves A4-cycling/A5/A6/A2a/A7a | ABSENT |
 | `GCp` Gallery C' (reorder/NFD) | inventory | normalization rules | ABSENT |
 | `PD` Phase D (desktop OSK) | IR + layout | `.kvks` | ABSENT (scaffolder emits; no UI) |
@@ -172,7 +172,7 @@ Stage 1 (physical) and Stage 2 (touch) of the tail.
 | Input mechanisms | modifiers (Shift/AltGr), dead keys, combos (chords), rotas (cycling keys) | modifiers + layers, long-press menus, flicks, multitaps, and more |
 | Operates on | the physical key grid | the **locked** desktop layout, re-projected to touch |
 | Emits | `.kmn` rules + `.kvks` (desktop OSK) | `.keyman-touch-layout` |
-| Seeded from | the §7.2 strategy selector (S-01..S-12) | the locked physical layout |
+| Seeded from | the §7.2 strategy selector (S-01..S-13) | the locked physical layout |
 | Spec nodes | `GC` (deadkey/tone), `GCp` (reorder), `PD` (desktop OSK) | `GE` (touch layout) |
 
 Stage 2's "simplify + make visual" work is, concretely, **mapping each physical

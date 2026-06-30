@@ -152,7 +152,7 @@ exactly.
 | Step | Status | Notes |
 |---|---|---|
 | `OutputService.toZip` contract | **Done** | `packages/contracts/src/outputService.ts` |
-| `toZip` implementation | **Done** | Issue #46 — `packages/engine/src/output/zip.ts`; fflate, injects `NEXT_STEPS.md`, compiled artifacts included per spec §12, 11 vitest specs |
+| `toZip` implementation | **Done** | Issue #46 — `packages/engine/src/output/zip.ts`; fflate, injects `NEXT_STEPS.md`, compiled artifacts included per spec §12, 19 vitest specs |
 | `serializeToZip` alias | **Done** | Exported from `packages/engine/src/output/zip.ts` |
 | `createOutputService()` factory | **Done** | `packages/engine/src/output/index.ts` — zip wired; GitHub path throws "not implemented" until issue #47 |
 | Studio UI — "Download ZIP" button | **Done** | Issue #32 — `PreviewShell` calls `getToZip()(stage.vfs)`, wraps result in `Blob`, triggers anchor click; button label "Download .zip"; `USE_REAL` flag respected (mock fallback in CI) |
@@ -164,7 +164,7 @@ exactly.
 | `OutputService.publishPR` contract | **Done** | `packages/contracts/src/outputService.ts`; `PublishPROptions` has `token`, `forkOwner`, `branchName`, `commitMessage`, `prTitle`, `prBody` |
 | `OutputService.verifyToken` contract | **Done** | Pre-flight scope check defined |
 | `verifyToken` implementation | **Done** | Issue #47 — `packages/engine/src/output/github.ts`; reads `X-OAuth-Scopes`, accepts `public_repo` or `repo` |
-| `publishPR` implementation | **Done** | Issue #47 — `packages/engine/src/output/github.ts`; fork-if-not-exists → tree → commit → branch ref → draft PR via GitHub Git Data API; compiled artifacts excluded (SS1); 13 vitest specs |
+| `publishPR` implementation | **Done** | Issue #47 — `packages/engine/src/output/github.ts`; fork-if-not-exists → tree → commit → branch ref → draft PR via GitHub Git Data API; compiled artifacts excluded (SS1); 20 vitest specs |
 | `createGitHubOutputService()` factory | **Done** | Injectable `GitHubFetchFn` for testability; default delegates to global fetch |
 | GitHub OAuth App registration | **Deploy-gated** | Issue #550 — runbook in [`utilities/oauth-backend/DEPLOY.md`](../utilities/oauth-backend/DEPLOY.md); needs org-admin to register a prod OAuth App with callback `https://<prod>/oauth/callback` |
 | OAuth token-exchange backend | **Done (code) — co-located on Vercel; deploy pending** | Core in `utilities/oauth-backend/` (Fastify v5 + 30 specs); co-located as Vercel functions in `api/oauth/{exchange,refresh,health}.ts` (issue #550) reusing the tested core — served same-origin via root `vercel.json` rewrites. Remaining: switch Vercel Root Directory → repo root, register OAuth App, set env (see DEPLOY.md) |
@@ -180,7 +180,7 @@ exactly.
 | Backend pipeline + route (`POST /submit/managed-pr`) | **Done (code) / deploy pending** | `utilities/oauth-backend/` POST /submit/managed-pr + `github-pipeline.ts` (vendored); org token from env `KEYBOARD_STUDIO_ORG_TOKEN`/`GITHUB_ORG_TOKEN`, fork owner from env; 106 vitest specs; real org account + deploy still pending infra |
 | Attribution (Co-authored-by) commit format | **Done** | `Co-authored-by` trailer + `[<keyboardId>]` PR title normalisation + PR-body provenance block naming the human author (name+email) for maintainer reachability — keymanapp upstream parity; `github-pipeline.ts` |
 | Branch-collision suffix (§5 Q1) | **Done** | `buildManagedBranchName()` — `add/<keyboardId>-<short7sha>`; content-unique, no `Date`/random |
-| Org bot identity + deploy (§5 Q3) | Not started | `KEYBOARD_STUDIO_ORG_TOKEN`/`GITHUB_ORG_TOKEN` unset → route returns `503`; org service-account + standing fork still to be provisioned (tracked with #550 deploy) |
+| Org bot identity + deploy (§5 Q3) | Not started | `KEYBOARD_STUDIO_ORG_TOKEN`/`GITHUB_ORG_TOKEN` unset → route returns `503`; org service-account + standing fork still to be provisioned (separate from #550, which is scoped to Option A identity/sign-up only) |
 | Studio UI — attribution form + submit | **Done** | `packages/studio/src/components/ManagedPRSubmitPanel.tsx` wired into `OutputScreen` as primary submit action; attribution form (displayName/email) + copyright-attestation gate + result/error states; prefill from `IdentitySession` |
 
 ### Summary

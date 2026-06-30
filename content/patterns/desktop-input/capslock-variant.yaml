@@ -2,7 +2,7 @@
 # Issue #30 — CapsLock state alters output beyond case: caps-on selects a
 # DIFFERENT character (not the uppercase of the same letter). Rare, easy to
 # misuse; offered in the more-options bucket (priority 5).
-# No strategyId: no S-01..S-12 card matches this mechanism (see spec §7.5 gaps).
+# No strategyId: no S-01..S-13 card matches this mechanism (see spec §7.5 gaps).
 
 id: capslock_variant
 title: "CapsLock switches to a different letter"

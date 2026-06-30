@@ -189,6 +189,12 @@ async function check() {
 
   for (const s of sections) {
     const stored = trace.sections[s.id];
+    // Reference-only sections (resolved decisions §14, out-of-scope §16, glossary
+    // §17, revision policy §18, reference §19) carry no implementing code, so a
+    // prose edit to them is not code-review-worthy drift. Skip them — otherwise
+    // every spec wording tweak re-opens a spec-drift Issue that has nothing to
+    // reconcile against.
+    if (stored && stored.status === 'reference') continue;
     const currentHash = hashSection(s.content);
     if (!stored) {
       drifted.push({ id: s.id, title: s.title, reason: 'new-section', currentHash });
@@ -287,6 +293,7 @@ function report() {
 
   for (const s of sections) {
     const stored = trace.sections[s.id];
+    if (stored && stored.status === 'reference') continue; // reference-only: not drift-tracked
     if (!stored || stored.hash !== hashSection(s.content)) {
       drifted.push({ id: s.id, title: s.title, stored: !!stored });
     }
