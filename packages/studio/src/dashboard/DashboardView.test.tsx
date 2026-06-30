@@ -73,3 +73,28 @@ describe("FlowMapView — manifest-spine step metadata rendering", () => {
     expect(bodyText).toMatch(/header\./);
   });
 });
+
+// ---------------------------------------------------------------------------
+// DOM-render test: Phase G drill-down sections render under their manifest steps
+// ---------------------------------------------------------------------------
+
+describe("FlowMapView — Phase G drill-down sections (track / project_name)", () => {
+  it("renders a drill-down section under the 'track' manifest step", () => {
+    render(<FlowMapView />);
+    const bodyText = document.body.textContent ?? "";
+    // The drill-down heading for the "track" manifest step must appear.
+    expect(bodyText).toMatch(/Drill-downs under\s*track/);
+    // track_choice is the question id in the track flow — its node must render.
+    expect(bodyText).toContain("track_choice");
+  });
+
+  it("renders a drill-down section under the 'project_name' manifest step", () => {
+    render(<FlowMapView />);
+    const bodyText = document.body.textContent ?? "";
+    // The drill-down heading for the "project_name" manifest step must appear.
+    expect(bodyText).toMatch(/Drill-downs under\s*project_name/);
+    // project_display_name and project_keyboard_id are the question ids — both must render.
+    expect(bodyText).toContain("project_display_name");
+    expect(bodyText).toContain("project_keyboard_id");
+  });
+});

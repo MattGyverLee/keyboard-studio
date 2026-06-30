@@ -211,23 +211,35 @@ export function registryKeyForFlow(graph: FlowGraph): string | null {
  * attachDrillDowns — hang the per-phase modular graphs under their manifest
  * question-step node, keyed by a questionRegistry id (FR-004).
  *
- * @param flows the per-phase modular graphs (the four FLOW_SOURCES, already built
- *              via safeBuild — each is { graph, error, title }).
+ * Each flow entry may carry a `stepId` indicating which manifest step it hangs
+ * under. Flows without a `stepId` default to CHARACTERS_STEP_ID for backwards
+ * compatibility with callers that pass plain { graph, error, title } triples.
+ *
+ * @param flows the per-phase modular graphs (FLOW_SOURCES entries, already built
+ *              via safeBuild — each is { graph, error, title, stepId? }).
  * @returns drill-downs grouped by the manifest step id they attach under.
  */
 export function attachDrillDowns(
-  flows: ReadonlyArray<{ graph: FlowGraph | null; error: string | null; title: string }>,
+  flows: ReadonlyArray<{ graph: FlowGraph | null; error: string | null; title: string; stepId?: string }>,
 ): Record<string, ManifestDrillDown[]> {
-  const drillDowns: ManifestDrillDown[] = flows.map((f) => ({
-    registryKey:
-      f.graph !== null ? (registryKeyForFlow(f.graph) ?? f.title) : f.title,
-    title: f.title,
-    graph: f.graph,
-    error: f.error,
-  }));
+  const grouped: Record<string, ManifestDrillDown[]> = {};
 
-  // Phase 1: all four batteries hang under the single "characters" placeholder.
-  return { [CHARACTERS_STEP_ID]: drillDowns };
+  for (const f of flows) {
+    const stepId = f.stepId ?? CHARACTERS_STEP_ID;
+    const dd: ManifestDrillDown = {
+      registryKey:
+        f.graph !== null ? (registryKeyForFlow(f.graph) ?? f.title) : f.title,
+      title: f.title,
+      graph: f.graph,
+      error: f.error,
+    };
+    if (!Object.prototype.hasOwnProperty.call(grouped, stepId)) {
+      grouped[stepId] = [];
+    }
+    grouped[stepId]!.push(dd);
+  }
+
+  return grouped;
 }
 
 /**
