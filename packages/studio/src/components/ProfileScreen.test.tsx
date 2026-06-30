@@ -173,6 +173,26 @@ describe("ProfileScreen — single global sign-out (one account)", () => {
   });
 });
 
+describe("ProfileScreen — verifying (token round-trip in flight)", () => {
+  it("does not flash the 'Guest' state while the GitHub token is being verified", () => {
+    mockAuth({ status: "verifying" });
+    render(<ProfileScreen />);
+    // No "Guest" heading, no "?" avatar, and none of the link/sign-out controls
+    // should appear before the token round-trip resolves.
+    expect(screen.queryByText("Guest")).toBeNull();
+    expect(screen.queryByText("?")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Link GitHub" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Link Google" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+  });
+
+  it("renders a neutral status placeholder while verifying", () => {
+    mockAuth({ status: "verifying" });
+    render(<ProfileScreen />);
+    expect(screen.getByRole("status")).toBeTruthy();
+  });
+});
+
 describe("ProfileScreen — error display", () => {
   it("renders github.error text as an alert when a GitHub error is present", () => {
     mockAuth({ status: "idle", error: "GitHub sign-in was rejected." });

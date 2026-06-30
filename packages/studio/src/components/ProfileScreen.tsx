@@ -24,6 +24,20 @@ import { GitHubMark, GoogleMark } from "./ProviderMarks.tsx";
 
 const AVATAR_SIZE = 96;
 
+const pageStyle: React.CSSProperties = {
+  background: BG_PAGE,
+  height: "100%",
+  boxSizing: "border-box",
+  fontFamily: FONT,
+  color: TEXT_MAIN,
+  padding: "48px 56px",
+  overflowY: "auto",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  gap: 40,
+};
+
 const avatarStyle: React.CSSProperties = {
   width: AVATAR_SIZE,
   height: AVATAR_SIZE,
@@ -39,6 +53,17 @@ const avatarStyle: React.CSSProperties = {
   fontWeight: 700,
   lineHeight: 1,
   userSelect: "none",
+};
+
+// Neutral dim circle shown during the initial token-verify pass — mirrors
+// AccountControl's placeholder so a returning user does not flash the "Guest"
+// state before the GitHub token round-trip resolves.
+const verifyingAvatarStyle: React.CSSProperties = {
+  width: AVATAR_SIZE,
+  height: AVATAR_SIZE,
+  borderRadius: "50%",
+  background: "#283040",
+  flexShrink: 0,
 };
 
 const providerLineStyle: React.CSSProperties = {
@@ -107,26 +132,31 @@ const backLinkStyle: React.CSSProperties = {
 // ---------------------------------------------------------------------------
 
 export function ProfileScreen() {
-  const { isSignedIn, displayName, initial, github, google, signOut } =
+  const { isSignedIn, isVerifying, displayName, initial, github, google, signOut } =
     useIdentitySession();
 
+  // During the initial token-verify pass we cannot yet know whether the user is
+  // signed in, so render a neutral placeholder rather than flashing the "Guest"
+  // state and the link controls before the GitHub token round-trip resolves.
+  if (isVerifying) {
+    return (
+      <main aria-label="Account profile" style={pageStyle}>
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <div style={verifyingAvatarStyle} aria-hidden="true" />
+          <div
+            role="status"
+            aria-live="polite"
+            style={{ fontSize: 15, color: TEXT_DIM, fontFamily: FONT }}
+          >
+            Checking sign-in&hellip;
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main
-      aria-label="Account profile"
-      style={{
-        background: BG_PAGE,
-        height: "100%",
-        boxSizing: "border-box",
-        fontFamily: FONT,
-        color: TEXT_MAIN,
-        padding: "48px 56px",
-        overflowY: "auto",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-start",
-        gap: 40,
-      }}
-    >
+    <main aria-label="Account profile" style={pageStyle}>
       {/* Top row — avatar + username on the left, provider details on the right */}
       <div
         style={{

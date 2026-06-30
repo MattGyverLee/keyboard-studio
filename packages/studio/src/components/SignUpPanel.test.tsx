@@ -1,8 +1,12 @@
 // Tests for SignUpPanel — the decoupled "Sign up with GitHub / Google" control.
 //
-// The OAuth lifecycle hooks (useGitHubAuth, useGoogleAuth) are mocked; these
-// tests assert the panel's rendering + that it is an IDENTITY control only
-// (no Submit PR / branch / PR vocabulary, per docs/github-integration.md §1a).
+// The OAuth lifecycle hooks (useGitHubAuth, useGoogleAuth) are mocked at the
+// module boundary; the panel composes them via useIdentitySession, whose real
+// logic runs (same idiom as ProfileScreen.test / AccountControl.test). These
+// tests assert the panel's rendering, that sign-out is a single GLOBAL action
+// (Keyboard Studio is one account — no per-provider sign-out), and that it is an
+// IDENTITY control only (no Submit PR / branch / PR vocabulary, per
+// docs/github-integration.md §1a).
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -79,13 +83,15 @@ describe("SignUpPanel", () => {
     expect(googleConnect).toHaveBeenCalledOnce();
   });
 
-  it("shows the signed-in GitHub identity + sign-out when GitHub connected", () => {
+  it("shows the signed-in GitHub identity + global sign-out when GitHub connected", () => {
     mockAuth({ status: "connected", login: "octocat" });
     render(<SignUpPanel />);
     expect(screen.getByText(/Signed up with GitHub as octocat/)).toBeTruthy();
     const signOut = screen.getByRole("button", { name: "Sign out" });
     signOut.click();
+    // Sign-out is global — it clears both providers even when only one is linked.
     expect(disconnect).toHaveBeenCalledOnce();
+    expect(googleDisconnect).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "Sign up with GitHub" })).toBeNull();
   });
 
@@ -116,6 +122,54 @@ describe("SignUpPanel", () => {
     signOut.click();
     expect(googleDisconnect).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "Sign up with Google" })).toBeNull();
+  });
+
+  it("shows both identities and exactly one global 'Sign out' when both are linked", () => {
+    mockAuth(
+      { status: "connected", login: "octocat" },
+      {
+        status: "connected",
+        identity: {
+          provider: "google",
+          sub: "1234567890",
+          email: "user@example.com",
+          emailVerified: true,
+          name: "Test User",
+          picture: "https://example.com/photo.jpg",
+        },
+      },
+    );
+    render(<SignUpPanel />);
+    expect(screen.getByText(/Signed up with GitHub as octocat/)).toBeTruthy();
+    expect(screen.getByText(/Signed in with Google as Test User/)).toBeTruthy();
+    // One account → one sign-out, never per-provider.
+    expect(screen.getAllByRole("button", { name: "Sign out" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Sign out of GitHub" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign out of Google" })).toBeNull();
+    // No sign-up buttons remain once both providers are linked.
+    expect(screen.queryByRole("button", { name: "Sign up with GitHub" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign up with Google" })).toBeNull();
+  });
+
+  it("global 'Sign out' disconnects both providers when both are linked", () => {
+    mockAuth(
+      { status: "connected", login: "octocat" },
+      {
+        status: "connected",
+        identity: {
+          provider: "google",
+          sub: "1234567890",
+          email: "user@example.com",
+          emailVerified: true,
+          name: "Test User",
+          picture: "https://example.com/photo.jpg",
+        },
+      },
+    );
+    render(<SignUpPanel />);
+    screen.getByRole("button", { name: "Sign out" }).click();
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(googleDisconnect).toHaveBeenCalledOnce();
   });
 
   it("renders the GitHub error message on failure", () => {
