@@ -6,7 +6,13 @@
 
 import { type CSSProperties } from "react";
 import type { GraphEdge } from "./model.ts";
-import { layoutFlowGraph, NODE_W, NODE_H, type LaidOutGraph, type PositionedNode } from "./layout.ts";
+import {
+  layoutFlowGraph,
+  NODE_W,
+  NODE_H,
+  type LaidOutGraph,
+  type PositionedNode,
+} from "./layout.ts";
 import type { FlowGraph } from "./model.ts";
 import { MONO, SANS } from "./tokens.ts";
 
@@ -48,18 +54,51 @@ function nodeRole(n: PositionedNode): {
   // are rendered with a distinct muted purple palette and a "reserve" badge so it is
   // immediately clear they do NOT run in the current survey.
   if (n.kind === "library-not-in-flow") {
-    return { border: "#6e40c9", bg: "#1a1030", badge: "reserve", badgeBg: "#4a2a8a" };
+    return {
+      border: "#6e40c9",
+      bg: "#1a1030",
+      badge: "reserve",
+      badgeBg: "#4a2a8a",
+    };
   }
   // Stub nodes (galleries / wizard steps not yet in the question registry).
   if (n.kind === "stub") {
-    return { border: "#58a6ff", bg: "#0d2035", badge: "stub", badgeBg: "#1c4a7a" };
+    return {
+      border: "#58a6ff",
+      bg: "#0d2035",
+      badge: "stub",
+      badgeBg: "#1c4a7a",
+    };
   }
   // Live nodes — standard role-based styling.
-  if (n.isEntry) return { border: "#6ea8fe", bg: "#11203a", badge: "entry", badgeBg: "#1f6feb" };
-  if (n.isGate) return { border: "#d29922", bg: "#241c10", badge: "gate", badgeBg: "#9e6a03" };
+  if (n.isEntry)
+    return {
+      border: "#6ea8fe",
+      bg: "#11203a",
+      badge: "entry",
+      badgeBg: "#1f6feb",
+    };
+  if (n.isGate)
+    return {
+      border: "#d29922",
+      bg: "#241c10",
+      badge: "gate",
+      badgeBg: "#9e6a03",
+    };
   if (n.engineResolved)
-    return { border: "#6e7681", bg: "#14181f", badge: "engine", badgeBg: "#373e47" };
-  if (n.isTerminal) return { border: "#3fb950", bg: "#0f2417", badge: "terminal", badgeBg: "#238636" };
+    return {
+      border: "#6e7681",
+      bg: "#14181f",
+      badge: "engine",
+      badgeBg: "#373e47",
+    };
+  if (n.isTerminal)
+    return {
+      border: "#3fb950",
+      bg: "#0f2417",
+      badge: "terminal",
+      badgeBg: "#238636",
+    };
   return { border: "#30363d", bg: "#161b22", badge: null, badgeBg: "#30363d" };
 }
 
@@ -71,9 +110,24 @@ export function FlowGraphView({ graph }: FlowGraphViewProps) {
   const laid: LaidOutGraph = layoutFlowGraph(graph);
   const pos = new Map<string, PositionedNode>(laid.nodes.map((n) => [n.id, n]));
 
+  // Every graph renders in full (page scrolls). Deep phases like Phase B must be
+  // fully visible inline — no node-capping / "Show more" collapse.
   return (
-    <div style={{ overflow: "auto", border: "1px solid #21262d", borderRadius: 8, background: "#0b0f14" }}>
-      <div style={{ position: "relative", width: laid.width, height: laid.height }}>
+    <div
+      style={{
+        overflow: "auto",
+        border: "1px solid #21262d",
+        borderRadius: 8,
+        background: "#0b0f14",
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          width: laid.width,
+          height: laid.height,
+        }}
+      >
         {/* Edge canvas */}
         <svg
           width={laid.width}
@@ -265,8 +319,7 @@ export function FlowGraphView({ graph }: FlowGraphViewProps) {
                     textOverflow: "ellipsis",
                   }}
                 >
-                  <span style={{ color: "#3fb950" }}>writes:</span>
-                  {" "}
+                  <span style={{ color: "#3fb950" }}>writes:</span>{" "}
                   {n.writePaths !== undefined && n.writePaths.length > 0
                     ? n.writePaths.map((p) => truncatePath(p)).join(", ")
                     : "—"}
@@ -284,8 +337,7 @@ export function FlowGraphView({ graph }: FlowGraphViewProps) {
                     textOverflow: "ellipsis",
                   }}
                 >
-                  <span style={{ color: "#58a6ff" }}>inputs:</span>
-                  {" "}
+                  <span style={{ color: "#58a6ff" }}>inputs:</span>{" "}
                   {n.inputPaths!.length > 0
                     ? n.inputPaths!.map((p) => truncatePath(p)).join(", ")
                     : "—"}
