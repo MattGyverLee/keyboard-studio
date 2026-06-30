@@ -11,10 +11,8 @@
 // inputs:  header.bcp47    — language context.
 // writes:  header.keyboardId — the keyboard ID is stored here.
 
-import { irPath, slugifyKeyboardId, validateKeyboardId } from "@keyboard-studio/contracts";
+import { irPath, validateKeyboardId } from "@keyboard-studio/contracts";
 import type { QuestionModule, ValidationResult } from "../../types.ts";
-
-export { slugifyKeyboardId };
 
 export const definition = {
   id: "project_keyboard_id",

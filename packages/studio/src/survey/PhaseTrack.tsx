@@ -19,7 +19,15 @@ import type { SurveyPhaseResult } from "@keyboard-studio/contracts";
 import { SurveyRunner } from "./SurveyRunner.tsx";
 import { loadModularFlow } from "./loadModularFlow.ts";
 import type { SurveyContext } from "./types.ts";
-import type { Track } from "../editors/panels/TrackStep.tsx";
+
+/**
+ * The two authoring tracks (spec §8 v1.3.0).
+ * Declared here rather than importing from editors/panels/TrackStep.tsx to
+ * keep survey/ independent of editors/ (depcruise boundary). TrackStep.tsx
+ * declares an identical union; the two are kept in sync by the parity
+ * tests in StudioShell.test.tsx and trackRouting.test.ts.
+ */
+export type Track = "copy" | "adapt";
 
 // Vite ?raw import — typed via the `*.yaml?raw` declaration in src/vite-env.d.ts.
 import trackRaw from "../../../../content/flows/track.modular.yaml?raw";

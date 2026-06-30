@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { validate, fixtures, definition, slugifyKeyboardId } from "../../../../src/survey/questions/g/project_keyboard_id.ts";
+import { validate, fixtures, definition } from "../../../../src/survey/questions/g/project_keyboard_id.ts";
+// P3 fix: slugifyKeyboardId is no longer re-exported from project_keyboard_id.ts;
+// import directly from @keyboard-studio/contracts (the single canonical source).
+import { slugifyKeyboardId } from "@keyboard-studio/contracts";
 
 describe("project_keyboard_id — validate() valid fixtures", () => {
   for (const { value, note } of fixtures.valid) {

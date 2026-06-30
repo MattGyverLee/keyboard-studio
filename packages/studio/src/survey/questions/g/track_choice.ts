@@ -4,12 +4,14 @@
 // based on the selected base (copy-track) or modifying it in place (adapt-track).
 //
 // Routing (DEC-D2): copy → project_name step; adapt → jumps to characters.
-// The fork is expressed as this question's next rules.
+// The fork is handled by PhaseTrack → onTrackSelected at the manifest level
+// (StudioShell.handleTrackSelected). Phase 2 qu-mutate-track is where a YAML
+// `next` rule here becomes load-bearing for router evaluation.
 //
-// inputs:  header.bcp47, header.name — read to frame the copy-vs-adapt choice.
+// inputs:  []  — the prompt uses {{base_name}} from SurveyContext, not the IR;
+//               neither validate() nor the question definition reads any IR path.
 // writes:  []  — branch selection only; no IR leaf in Phase 1 (DEC-D2 comment).
 
-import { irPath } from "@keyboard-studio/contracts";
 import type { QuestionModule, ValidationResult } from "../../types.ts";
 
 export const definition = {
@@ -33,13 +35,10 @@ export const definition = {
       note: "Keep the keyboard's existing name and ID. Useful for adding a language or fixing a layout.",
     },
   ],
-  // copy → project_display_name (first question in project_name flow);
-  // adapt → null (terminal — the PhaseTrack wrapper skips to characters).
-  // The next values here drive the SurveyRunner routing within the track flow.
-  next: [
-    { condition: "value == 'copy'", goto: null },
-    { default: true as const, goto: null },
-  ],
+  // Terminal — the PhaseTrack wrapper handles the copy-vs-adapt fork at the
+  // manifest level via onTrackSelected (StudioShell.handleTrackSelected).
+  // Phase 2 qu-mutate-track is where this becomes a routing-live YAML `next`.
+  next: null,
 } satisfies import("../../types.ts").FlowQuestion;
 
 export function validate(
@@ -72,7 +71,7 @@ const mod: QuestionModule = {
   definition,
   validate,
   fixtures,
-  inputs: [irPath("header", "bcp47"), irPath("header", "name")],
+  inputs: [],
   writes: [],
 };
 export default mod;

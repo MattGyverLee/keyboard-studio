@@ -37,24 +37,22 @@ describe("track_choice — definition shape", () => {
     expect(definition.required).toBe(true);
   });
 
-  it("next rules terminate the flow (both go to null)", () => {
-    // Both branches end at null so PhaseTrack's onComplete fires and maps the
-    // answer to handleTrackSelected — the runner itself never jumps to a
-    // project_name question ID; that routing is done outside the runner.
-    expect(Array.isArray(definition.next)).toBe(true);
-    if (Array.isArray(definition.next)) {
-      for (const rule of definition.next) {
-        expect(rule.goto).toBeNull();
-      }
-    }
+  it("next is null (terminal question — copy-vs-adapt fork is handled by PhaseTrack.onTrackSelected, not the runner)", () => {
+    // P2 fix: track_choice is terminal (next: null). The runner calls onComplete
+    // immediately on Next; PhaseTrack.handleComplete extracts the answer and
+    // calls onTrackSelected. The two-arm conditional was dead code (both went to
+    // null) — replaced with a single terminal null.
+    // Phase 2 qu-mutate-track is where this becomes a routing-live next.
+    expect(definition.next).toBeNull();
   });
 });
 
-describe("track_choice — next fork routing", () => {
-  it("both copy and adapt result in null next (terminal flow)", () => {
-    // The track_choice flow has exactly one question; both option values route
-    // to null so the runner calls onComplete immediately on Next.
-    const rules = Array.isArray(definition.next) ? definition.next : [];
-    expect(rules.every((r) => r.goto === null)).toBe(true);
+describe("track_choice — terminal routing (phase-1 invariant)", () => {
+  it("the runner terminates at track_choice and delegates routing to PhaseTrack", () => {
+    // The single-terminal shape ensures the runner always fires onComplete after
+    // the user commits their answer — the copy/adapt branch is extracted by
+    // PhaseTrack.handleComplete outside the runner's routing graph.
+    expect(definition.next).toBeNull();
+    expect(Array.isArray(definition.next)).toBe(false);
   });
 });
