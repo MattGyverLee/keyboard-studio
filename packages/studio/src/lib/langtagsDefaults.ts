@@ -12,6 +12,7 @@
 //   scriptToTargetOption() — map ISO-15924 → il_target_script option value.
 
 import type { LanguageDefaults, LanguageSummary } from "@keyboard-studio/contracts";
+import { regionCodeToName } from "./iso3166Names.ts";
 
 // ---------------------------------------------------------------------------
 // Internal state — a single promise for the module, memoized after first call.
@@ -73,6 +74,31 @@ export async function defaultsFor(
   if (!code) return null;
   const mod = await loadLangtags();
   return mod.getLanguageDefaults(code);
+}
+
+// ---------------------------------------------------------------------------
+// Region name helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert an ISO 3166-1 alpha-2 region code to an English country name for
+ * display in the region survey question.
+ *
+ * The region question asks for a COUNTRY NAME (e.g. "Nigeria"), not a code
+ * (e.g. "NG"). This helper maps the code from LanguageDefaults.defaultRegion
+ * to the name the user expects to see.
+ *
+ * Returns undefined when:
+ *   - `code` is undefined or empty (LanguageDefaults.defaultRegion absent)
+ *   - The code is not in the ISO 3166-1 alpha-2 map (e.g. a UN M.49 numeric)
+ *
+ * In either case the caller should NOT seed the region field (FR-009).
+ *
+ * @param code - ISO 3166-1 alpha-2 or UN M.49 code from LanguageDefaults, e.g. "NG".
+ * @returns English country name, e.g. "Nigeria", or `undefined`.
+ */
+export function regionNameFor(code: string | undefined): string | undefined {
+  return regionCodeToName(code);
 }
 
 // ---------------------------------------------------------------------------
