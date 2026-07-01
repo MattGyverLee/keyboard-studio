@@ -229,6 +229,9 @@ export function outputToChar(output: OutputElement[]): string {
         return '…';
       case 'beep':
         return '🔔';
+      case 'useGroup':
+        // Control-flow jump to another group (#268) — not a glyph; no tile.
+        return '?';
       case 'raw':
         return '?';
     }
