@@ -116,17 +116,20 @@ export function regionNameFor(code: string | undefined): string | undefined {
  * Map an ISO-15924 script subtag to the corresponding `il_target_script`
  * option value.
  *
- * The mapping covers the scripts present in il_target_script.ts. The
- * romanization-Latn and fonipa entries are NOT proposed here — they are
- * user-only choices (spec §8/§9 decoupling). An unsupported or absent script
- * maps to "other".
+ * The mapping covers the scripts present in il_target_script.ts that have a
+ * dedicated option. The romanization-Latn and fonipa entries are NOT proposed
+ * here — they are user-only choices (spec §8/§9 decoupling). Scripts that
+ * have no dedicated il_target_script option return null rather than "other",
+ * so callers can distinguish "no proposal" from a real mapping — seeding
+ * "other" for a Bengali or Thai user would be worse than no proposal at all.
  *
  * @param defaultScript - ISO-15924 script subtag from LanguageDefaults.
- * @returns A value from the il_target_script options list.
+ * @returns A value from the il_target_script options list, or null when the
+ *   script has no dedicated option (caller should leave the field unseeded).
  */
 export function scriptToTargetOption(
   defaultScript: string | undefined,
-): string {
+): string | null {
   switch (defaultScript) {
     case "Latn": return "Latn";
     case "Deva": return "Deva";
@@ -139,6 +142,6 @@ export function scriptToTargetOption(
     case "Ethi": return "Ethi";
     case "Hani": return "Hani";
     case "Hang": return "Hang";
-    default:     return "other";
+    default:     return null;
   }
 }

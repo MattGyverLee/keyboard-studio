@@ -58,12 +58,26 @@ describe("scriptToTargetOption", () => {
     expect(scriptToTargetOption("Hang")).toBe("Hang");
   });
 
-  it("maps undefined to other (no default script)", () => {
-    expect(scriptToTargetOption(undefined)).toBe("other");
+  it("maps undefined to null (no default script — caller leaves field unseeded)", () => {
+    expect(scriptToTargetOption(undefined)).toBeNull();
   });
 
-  it("maps an unknown script to other", () => {
-    expect(scriptToTargetOption("Mymr")).toBe("other");
+  it("maps an unknown script (e.g. Mymr/Burmese) to null, not 'other'", () => {
+    // Scripts without a dedicated il_target_script option must return null so
+    // callers do NOT seed "other" — which would be a worse proposal than nothing.
+    expect(scriptToTargetOption("Mymr")).toBeNull();
+  });
+
+  it("maps Bengali script (Beng) to null — no seed produced", () => {
+    expect(scriptToTargetOption("Beng")).toBeNull();
+  });
+
+  it("maps Thai script (Thai) to null — no seed produced", () => {
+    expect(scriptToTargetOption("Thai")).toBeNull();
+  });
+
+  it("maps Khmer script (Khmr) to null — no seed produced", () => {
+    expect(scriptToTargetOption("Khmr")).toBeNull();
   });
 
   it("does NOT map romanization-Latn — that is a user-only choice", () => {
@@ -71,7 +85,7 @@ describe("scriptToTargetOption", () => {
     // il_target_script-level concept. The mapping must never produce it
     // from a defaultScript value (spec §8/§9 decoupling).
     const result = scriptToTargetOption("romanization-Latn");
-    expect(result).toBe("other"); // falls through to default
+    expect(result).toBeNull(); // falls through to default
   });
 });
 

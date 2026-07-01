@@ -77,6 +77,9 @@ export function buildTargetBcp47(
   if (targetScriptRaw === "fonipa") return `${lang}-fonipa`;
   if (targetScriptRaw === "romanization-Latn") return `${lang}-Latn`;
   const { script } = normalizeTargetScript(targetScriptRaw);
+  // "other" and empty string are not valid ISO-15924 subtags; return the bare
+  // language tag (valid BCP47) rather than the malformed "lang-other".
+  if (script === "" || script === "other") return lang;
   return `${lang}-${script}`;
 }
 
@@ -179,20 +182,25 @@ export function IdentityLite({
             const defaults = mod.getLanguageDefaults(code);
             if (defaults !== null) {
               const scriptOption = scriptToTargetOption(defaults.defaultScript);
-              scriptSeedRef.current = scriptOption;
+              // Only seed when there is a dedicated option for this script.
+              // null means no mapping — seeding "other" would be misleading.
+              scriptSeedRef.current = scriptOption ?? undefined;
 
               // Seed English name when langtags provides one (nice-to-have).
               if (defaults.englishName !== undefined && defaults.englishName !== "") {
                 englishNameSeedRef.current = defaults.englishName;
               }
 
-              // Record provenance for all seeded fields.
+              // Record provenance for seeded fields. Only include il_target_script
+              // in the provenance map when we actually have a seed for it.
               const provenance: LangtagsProvenance = {
                 source: "langtags",
                 caption: "Suggested from langtags — edit if needed",
               };
               provenanceRef.current = new Map([
-                ["il_target_script", provenance],
+                ...(scriptSeedRef.current !== undefined
+                  ? [["il_target_script", provenance] as [string, LangtagsProvenance]]
+                  : []),
                 ...(englishNameSeedRef.current !== undefined
                   ? [["il_language_english", provenance] as [string, LangtagsProvenance]]
                   : []),

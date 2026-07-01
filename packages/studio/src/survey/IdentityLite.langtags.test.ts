@@ -71,11 +71,10 @@ describe("T018(b) — author override of seeded script wins", () => {
     expect(buildTargetBcp47("ha", "fonipa")).toBe("ha-fonipa");
   });
 
-  it("other override after a Deva seed produces correct bcp47 (normalizes to other)", () => {
-    // "other" is not a standard script subtag; normalizeTargetScript returns it
-    // as-is. buildTargetBcp47 will produce "hi-other" — a non-standard BCP47
-    // but the correct behavior for the "other" escape hatch.
-    expect(buildTargetBcp47("hi", "other")).toBe("hi-other");
+  it("other override after a Deva seed produces the bare lang tag (guards malformed 'lang-other')", () => {
+    // "other" is not a valid ISO-15924 subtag. buildTargetBcp47 must return
+    // the bare language tag rather than the malformed "hi-other".
+    expect(buildTargetBcp47("hi", "other")).toBe("hi");
   });
 
   it("extractIdentityLite uses the author-chosen script, not the seed", () => {
@@ -111,12 +110,17 @@ describe("T018(b) — author override of seeded script wins", () => {
 // ---------------------------------------------------------------------------
 
 describe("T018(c) — language not in langtags leaves fields free-text", () => {
-  it("scriptToTargetOption(undefined) returns other, not a false proposal", () => {
+  it("scriptToTargetOption(undefined) returns null — no seed, no false proposal", () => {
     // When defaultsFor(code) returns null, defaultScript is undefined.
-    // The seed function gets undefined → returns "other", which is NOT seeded
-    // (the seed logic only seeds non-undefined from a non-null defaults record).
-    // Confirmed: IdentityLite.tsx only sets scriptSeedRef when defaults !== null.
-    expect(scriptToTargetOption(undefined)).toBe("other");
+    // scriptToTargetOption must return null so the caller does NOT seed any
+    // value (confirmed: IdentityLite.tsx only sets scriptSeedRef when
+    // defaults !== null AND scriptToTargetOption returns non-null).
+    expect(scriptToTargetOption(undefined)).toBeNull();
+  });
+
+  it("scriptToTargetOption(Beng) returns null — Bengali (bn) does not seed il_target_script", () => {
+    // Beng has no dedicated il_target_script option; null means no seed.
+    expect(scriptToTargetOption("Beng")).toBeNull();
   });
 
   it("extractIdentityLite with a blank script still produces a valid result without throwing", () => {
@@ -137,12 +141,12 @@ describe("T018(c) — language not in langtags leaves fields free-text", () => {
     expect(identity.supported).toBe(true);
   });
 
-  it("buildTargetBcp47 with empty script does not throw (edge case)", () => {
-    // A free-text code with an empty script produces "lang-" (normalizeTargetScript("") → {script:""}).
-    // The caller (il_target_script) is required, so this edge case only occurs when the
-    // author skips it — the UI validates required fields before committing. The important
-    // contract: no exception is thrown.
+  it("buildTargetBcp47 with empty script does not throw and returns bare lang (edge case)", () => {
+    // normalizeTargetScript("") → {script:""}, which the guard treats as no
+    // valid script subtag → returns the bare language tag. The important
+    // contract: no exception is thrown and no malformed tag is produced.
     expect(() => buildTargetBcp47("xyz", "")).not.toThrow();
+    expect(buildTargetBcp47("xyz", "")).toBe("xyz");
   });
 });
 

@@ -255,10 +255,11 @@ describe("T024 — unknown code produces null defaults, no seed, no caption", ()
     expect(getSeedProvenance("region")).toBeUndefined();
   });
 
-  it("scriptToTargetOption(undefined) returns 'other' — not a false script proposal", () => {
+  it("scriptToTargetOption(undefined) returns null — no seed, not a false script proposal", () => {
     // When getLanguageDefaults returns null, defaultScript is undefined.
-    // IdentityLite guards: only seeds il_target_script when defaults !== null.
-    expect(scriptToTargetOption(undefined)).toBe("other");
+    // scriptToTargetOption returns null so the caller leaves the field unseeded
+    // rather than misleadingly seeding "other".
+    expect(scriptToTargetOption(undefined)).toBeNull();
   });
 });
 
