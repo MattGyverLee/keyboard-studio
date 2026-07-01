@@ -36,13 +36,15 @@ const LATIN_ALPHABETIC = new Set(["Latn", "Cyrl", "Grek", "Geor", "Armn"]);
 // Brahmic + SE-Asian abugidas. NOTE: Tibt (Tibetan) is an abugida but uses
 // subjoined-consonant stacking (U+0F90–U+0FAD) unlike the others — a pattern
 // designed for Devanagari will not handle Tibetan stacking; A2 alone underspecifies it.
+// Rohg (Hanifi Rohingya) — inherent-vowel abugida (dependent vowel signs U+10D24–10D27),
+// not a true alphabet; correctly classified here alongside the other Brahmic abugidas.
 const ABUGIDA = new Set([
   "Deva", "Beng", "Taml", "Telu", "Knda", "Mlym", "Guru", "Gujr",
-  "Orya", "Sinh", "Thai", "Khmr", "Mymr", "Laoo", "Tibt",
+  "Orya", "Sinh", "Thai", "Khmr", "Mymr", "Laoo", "Tibt", "Rohg",
 ]);
 // Consonantal scripts. Syrc (Syriac) and Nkoo (N'Ko) are RTL abjads in active use.
 // Mand (Mandaic) and Samr (Samaritan) are also abjads; added alongside the RTL
-// scripts that primary_script.ts exposes (Thaa/Adlm/Rohg are RTL alphabets and
+// scripts that primary_script.ts exposes (Thaa/Adlm are RTL alphabets and
 // correctly fall through to the "alphabetic" default).
 const ABJAD = new Set(["Arab", "Hebr", "Syrc", "Nkoo", "Mand", "Samr"]);
 // Cher (Cherokee) and Yiii (Yi) are true syllabaries, not alphabets.
