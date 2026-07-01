@@ -206,11 +206,20 @@ async function navigateToOutput(page: Page): Promise<void> {
  * We set a generous timeout because the WASM compiler may still be initialising
  * on first load. The button becomes enabled when stage.kind === "ready", which
  * means the kmcmplib WASM compile completed without fatal errors.
+ *
+ * NOTE: usePreviewArtifact seeds baseKeyboard but leaves scaffoldSpec = null /
+ * pickerMode = "open", so useKeyboardArtifact runs in open-base mode. The
+ * compile signal therefore reflects the BASE keyboard (basic_kbdfr), not the
+ * Track 1-scaffolded output. The downloaded .zip content is the working-copy
+ * projection (correct), but the canDownload gate verifies the base keyboard
+ * reached stage.kind === "ready". Strengthening this to verify the scaffolded
+ * compile is a tracked follow-up (seed scaffoldSpec in usePreviewArtifact).
  */
 async function triggerDownload(page: Page): Promise<Download> {
-  // Wait for the download button to be enabled. This is the "WASM compiles
-  // cleanly" signal: canDownload = stage.kind === "ready" && isInstantiated,
-  // and stage.kind reaches "ready" only after a successful kmcmplib compile.
+  // Wait for the download button to be enabled. This is the base-keyboard
+  // compile-clean signal: canDownload = stage.kind === "ready" && isInstantiated,
+  // and stage.kind reaches "ready" only after a successful kmcmplib compile of
+  // the base keyboard in open-base mode (scaffoldSpec is null here).
   const downloadBtn = page.getByTestId("emit-download");
   await expect(downloadBtn).not.toBeDisabled({ timeout: 60_000 });
 
@@ -265,7 +274,7 @@ test.describe("Track 1 (copy-edit) E2E", () => {
 
   });
 
-  test("emitted .kmn compiles cleanly via kmcmplib WASM oracle", async ({
+  test("base keyboard compiles cleanly via kmcmplib WASM oracle (open-base mode)", async ({
     page,
   }) => {
     // Walk the full wizard and reach the Output screen.
@@ -277,12 +286,20 @@ test.describe("Track 1 (copy-edit) E2E", () => {
     await completePhaseB(page);
     await navigateToOutput(page);
 
-    // The download button becoming enabled IS the compile-clean assertion:
-    // canDownload = (stage.kind === "ready") && isInstantiated
+    // The download button becoming enabled IS the compile-clean assertion for
+    // the BASE keyboard (basic_kbdfr) in open-base mode:
+    //   canDownload = (stage.kind === "ready") && isInstantiated
     // stage.kind reaches "ready" only when KmnCompiler.run() returns artifacts
     // without fatal/error diagnostics (see engine/src/compiler/index.ts).
     // If the WASM compile produced fatal errors the stage stays "error" and the
     // button remains disabled — which would cause the expect() below to fail.
+    //
+    // Scope note: usePreviewArtifact seeds baseKeyboard but leaves
+    // scaffoldSpec = null / pickerMode = "open", so useKeyboardArtifact runs in
+    // open-base mode. This test therefore verifies that basic_kbdfr itself
+    // compiles clean, NOT that the Track 1-scaffolded output compiles clean.
+    // Strengthening to verify the scaffolded compile is a tracked follow-up
+    // (seed scaffoldSpec in usePreviewArtifact).
     const downloadBtn = page.getByTestId("emit-download");
     await expect(downloadBtn).not.toBeDisabled({ timeout: 60_000 });
 
