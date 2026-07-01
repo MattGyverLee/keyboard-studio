@@ -9,11 +9,15 @@
 // post-primary passes in SECONDARY_RULES order. The existing index.test.ts
 // suite pins the exact behavior these tables must reproduce.
 //
-// NOTE on rule "3a": spec §7.2 documents a rule 3a (A2=alphabetic AND A3=strong
-// AND A3a=postfix → S-03) that intercepts between rules 3 and 4. It is NOT yet
-// implemented in the selector (A3a is not elicited end-to-end), so it is
-// deliberately absent from PRIMARY_RULES below — the map reflects what the code
-// actually does, not the spec's intended-but-unbuilt rule. See spec.md §7.2.
+// NOTE on rule "3a": spec §7.2 documents rule 3a (A2=alphabetic AND A3=strong
+// AND A3a=postfix → S-03) intercepting between rules 3 and 4. It IS implemented
+// below (in PRIMARY_RULES, between rules 3 and 4). What is NOT yet wired up is
+// production supply of A3a=postfix: no survey phase or import path elicits
+// markInputOrder end-to-end yet (that's a deferred follow-up), and the §7.2
+// script-class default-fill prior (default-fill.ts) deliberately never fills
+// A3a with "postfix" (it only ever fills the unmarked "prefix" state, per the
+// prior's load-bearing invariant). So today rule 3a fires only when a caller
+// (currently: tests) supplies markInputOrder="postfix" directly. See spec.md §7.2.
 
 import type {
   DiscoveryAxisVector,
@@ -134,6 +138,16 @@ export const PRIMARY_RULES: readonly PrimaryRuleDef[] = [
     conditionText: "A4=replacing-cycling",
     when: (a) => a.diacriticBehavior === "replacing-cycling",
     primary: "S-07",
+    secondaries: [{ strategy: "S-04" }],
+  },
+  {
+    rule: "3a",
+    conditionText: "A2=alphabetic AND A3=strong AND A3a=postfix",
+    when: (a) =>
+      a.scriptClass === "alphabetic" &&
+      a.phoneticIntuition === "strong" &&
+      a.markInputOrder === "postfix",
+    primary: "S-03",
     secondaries: [{ strategy: "S-04" }],
   },
   {
