@@ -1,11 +1,7 @@
-// TODO(P4a shell extraction): MechanismGallery and TouchGallery share a
-// two-pane header+left+right shell. Extract AssignLoopShell.tsx (surface-
-// parameterized) with separate physicalBehavior.ts / touchBehavior.ts in P4b.
-// Kept as separate components here because the behavior divergence (modality,
-// VFS transform, lint panel, navigation stack) is deep enough to warrant a
-// dedicated extraction pass rather than risking a behavior diff in P4a.
-
 // MechanismGallery — Phase C "add a key" flow (two-pane redesign).
+//
+// This file is now a thin wrapper. All hook logic lives in physicalBehavior.ts;
+// the chrome (header + two-pane layout) lives in AssignLoopShell.tsx.
 //
 // On first entry a brief intro splash orients the author to the desktop
 // authoring flow; "Get started" dismisses it for the rest of the working-copy
@@ -31,133 +27,39 @@
 //                           modifier_as_layer_switch (S-08)
 // (must match the `id:` fields in content/patterns/ — see PATTERN_* constants)
 
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  type CSSProperties,
-} from "react";
-import { useShallow } from "zustand/react/shallow";
-import type {
-  BaseKeyboard,
-  Pattern,
-  MechanismAssignment,
-  PlacementMap,
-} from "@keyboard-studio/contracts";
-import { toUPlusNotation, isDecomposableAccented } from "@keyboard-studio/contracts";
-import { useWorkingCopyStore } from "../../stores/workingCopyStore.ts";
-import { getPatternLibraryService } from "../../lib/services.ts";
-import type { DiscoveryAxisVector } from "@keyboard-studio/contracts";
-import { useKeyboardArtifact, type ScaffoldSpec, type Stage } from "../../hooks/useKeyboardArtifact.ts";
-import { useWorkingCopyTransform } from "../../hooks/useWorkingCopyTransform.ts";
-import { useInventoryDiff } from "../../hooks/useInventoryDiff.ts";
-import type { PlacementSeedEntry } from "../../survey/placementSeeds.ts";
-import { getSuggestionForChar } from "../../survey/placementSeeds.ts";
-import { KEY_OPTIONS, ALL_PICKABLE_KEYS } from "../../lib/keyOptions.ts";
+import { type CSSProperties } from "react";
+import type { BaseKeyboard, PlacementMap } from "@keyboard-studio/contracts";
+import { toUPlusNotation } from "@keyboard-studio/contracts";
+import { KEY_OPTIONS } from "../../lib/keyOptions.ts";
 import { GalleryPreviewPane } from "./PreviewPane.tsx";
 import { GalleryIntroSplash } from "./IntroSplash.tsx";
 import {
-  BG_PAGE, BG_CARD, BORDER, ACCENT, TEXT_DIM, TEXT_MAIN, FONT, BLUE_ACTION,
+  BG_PAGE, BG_CARD, BORDER, TEXT_DIM, TEXT_MAIN, FONT, BLUE_ACTION, ACCENT,
 } from "../../lib/galleryTheme.ts";
+import { AssignLoopShell } from "./AssignLoopShell.tsx";
+import {
+  usePhysicalAssignLoop,
+  methodLabel,
+  DEADKEY_OPTIONS,
+  type Method,
+} from "./physicalBehavior.ts";
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Re-export PATTERN_* constants so MechanismGallery.test.tsx can import them
+// from this file (the test does:
+//   import { MechanismGallery, PATTERN_SEQUENCE, PATTERN_DEADKEY } from "./MechanismGallery.tsx"
+// )
 // ---------------------------------------------------------------------------
-
-// Pattern IDs as they exist in the browser pattern library (content/patterns/).
-// These MUST match the `id:` fields in the YAML — a mismatch means getById()
-// returns undefined, the assignment can't resolve, and the live preview never
-// reflects the added key.
-export const PATTERN_SEQUENCE = "multi_char_sequence"; // S-03
-export const PATTERN_DEADKEY = "deadkey_single_tap"; // S-02
-export const PATTERN_SWAP = "simple_swap"; // S-01
-export const PATTERN_RALT = "modifier_as_layer_switch"; // S-08
-
-function methodLabel(ref: { patternId: string; slotValues?: Record<string, string> }): string {
-  const sv = ref.slotValues ?? {};
-  switch (ref.patternId) {
-    case "multi_char_sequence":
-      return `Sequence: ${sv["firstLetterOut"] ?? "?"}+${sv["secondLetter"] ?? "?"}`;
-    case "deadkey_single_tap":
-      return `Deadkey: ${sv["triggerKey"] ?? "?"} + ${sv["baseLetters"] ?? "?"}`;
-    case "simple_swap":
-      return `Key: ${(sv["kmnRules"] ?? "").replace(/^\+ \[/, "").replace(/\].*/, "")}`;
-    case "modifier_as_layer_switch":
-      return `RAlt: ${(sv["altgrKeyList"] ?? "").split(" ").pop()?.replace(/^\[/, "").replace(/\]$/, "") ?? "?"}`;
-    default:
-      return ref.patternId;
-  }
-}
-
-// Maps each DEADKEY_OPTIONS key value to the unshifted character it produces.
-// Used to derive a deadkey ID matching the sil_cameroon_qwerty convention
-// (dk ID = Unicode codepoint of the trigger key's character, e.g. dk(003b) for `;`).
-const TRIGGER_KEY_CHARS: Record<string, string> = {
-  "K_LBRKT":   "[", // left bracket [
-  "K_RBRKT":   "]", // right bracket ]
-  "K_BKQUOTE": "`", // backtick `
-  "K_COLON":   ";", // semicolon ;
-};
-
-/**
- * Returns the hex deadkey ID for a given trigger key, following the convention
- * used in sil_cameroon_qwerty: `dk(003b)` for `;`, `dk(0027)` for `'`, etc.
- * Matches the character the key produces (unshifted) on US QWERTY.
- */
-function deadkeyNameFor(triggerKey: string): string {
-  const char = TRIGGER_KEY_CHARS[triggerKey];
-  if (char !== undefined) {
-    return char.codePointAt(0)!.toString(16).padStart(4, "0");
-  }
-  // Fallback: unknown key — use a generic ID.
-  return "dead0";
-}
-
-// ---------------------------------------------------------------------------
-// GalleryPreviewWithPatterns — right pane
-//
-// The compile pipeline (useKeyboardArtifact + useWorkingCopyTransform) is
-// owned by MechanismGallery and passed in as props. During Phase C the outer
-// SurveyView's useKeyboardArtifact hook is still mounted (React hooks cannot
-// be conditional) but its OSK preview section is NOT rendered (SurveyView
-// returns MechanismGallery full-screen). To avoid two concurrent WASM compiles
-// for the same keyboard, MechanismGallery owns the single live pipeline and
-// passes the resulting stage + retry down here. This satisfies the
-// single-artifact invariant (decision D3 / spec §8).
-// ---------------------------------------------------------------------------
-
-interface GalleryPreviewWithPatternsProps {
-  selectedBaseKeyboard: BaseKeyboard;
-  stage: Stage;
-  retry: () => void;
-  onKeyTap?: (keyId: string) => void;
-}
-
-function GalleryPreviewWithPatterns({
-  selectedBaseKeyboard,
-  stage,
-  retry,
-  onKeyTap,
-}: GalleryPreviewWithPatternsProps) {
-  return (
-    <GalleryPreviewPane
-      baseKeyboard={selectedBaseKeyboard}
-      stage={stage}
-      retry={retry}
-      {...(onKeyTap !== undefined ? { onKeyTap } : {})}
-      defaultOskMode="desktop"
-      heading="Live preview"
-      warningLabel="Apply warnings:"
-    />
-  );
-}
+export {
+  PATTERN_SEQUENCE,
+  PATTERN_DEADKEY,
+  PATTERN_SWAP,
+  PATTERN_RALT,
+} from "./physicalBehavior.ts";
 
 // ---------------------------------------------------------------------------
 // MethodChooser — S-03 / S-02 / S-01 / S-08 single-card selection + inline config
 // ---------------------------------------------------------------------------
-
-type Method = "sequence" | "deadkey" | "swap" | "ralt";
 
 interface MethodChooserProps {
   currentChar: string;
@@ -176,19 +78,6 @@ interface MethodChooserProps {
   selectedRaltKey: string;
   onRaltKeyChange: (v: string) => void;
 }
-
-const DEADKEY_OPTIONS = [
-  { value: "K_COLON",   label: "K_COLON (semicolon ;)" },
-  { value: "K_LBRKT",   label: "K_LBRKT (left bracket [)" },
-  { value: "K_RBRKT",   label: "K_RBRKT (right bracket ])" },
-  { value: "K_BKQUOTE", label: "K_BKQUOTE (backtick `)" },
-] as const;
-
-// Module-level Sets for O(1) membership checks in handleKeyTap.
-// ALL_PICKABLE_KEYS is imported from keyOptions.ts.
-const VALID_DEADKEY_TRIGGER_KEYS: ReadonlySet<string> = new Set(
-  DEADKEY_OPTIONS.map((o) => o.value),
-);
 
 const selectStyle: CSSProperties = {
   background: BG_PAGE,
@@ -488,7 +377,7 @@ function MethodChooser({
 }
 
 // ---------------------------------------------------------------------------
-// MechanismGallery — main component
+// MechanismGalleryProps (re-exported for adapters that mount this component)
 // ---------------------------------------------------------------------------
 
 export interface MechanismGalleryProps {
@@ -504,507 +393,79 @@ export interface MechanismGalleryProps {
   placementMap?: PlacementMap;
 }
 
+// ---------------------------------------------------------------------------
+// MechanismGallery — main component (thin wrapper)
+// ---------------------------------------------------------------------------
+
 export function MechanismGallery({
   selectedBaseKeyboard,
   onComplete,
   onBack,
   placementMap,
 }: MechanismGalleryProps) {
-  const locked = useWorkingCopyStore((s) => s.desktopLocked);
-  const recordAssignments = useWorkingCopyStore((s) => s.recordAssignments);
-  const inventory = useWorkingCopyStore((s) => s.session.confirmedInventory);
-  const phaseResults = useWorkingCopyStore((s) => s.phaseResults);
-  const axes = useWorkingCopyStore(
-    useShallow((s) => s.session.axes as Partial<DiscoveryAxisVector>),
-  );
-
-  // One-time intro splash — read the seen flag on mount; mark it on "Get started".
-  const mechIntroSeen = useWorkingCopyStore((s) => s.galleryIntrosSeen.mechanism);
-  const markGalleryIntroSeen = useWorkingCopyStore((s) => s.markGalleryIntroSeen);
-
-  const { lettersToAdd } = useInventoryDiff();
-
-  // Read Phase C assignments directly (not the merged session.assignments view)
-  // so multiple methods per character are preserved.
-  const sessionAssignments = useMemo(
-    () =>
-      (phaseResults.find((p) => p.phase === "C")?.assignments ?? []).filter(
-        (a) => a.modality === "physical",
-      ),
-    [phaseResults],
-  );
-
-  // The covered set: chars in lettersToAdd that have at least one assignment.
-  const coveredChars = useMemo(
-    () =>
-      new Set(
-        sessionAssignments
-          .filter((a) => a.scope === "individual")
-          .map((a) => a.target)
-          .filter((t) => lettersToAdd.includes(t)),
-      ),
-    [sessionAssignments, lettersToAdd],
-  );
-
-  // Skipped chars — tracked in local state; count toward Done gate.
-  const [skippedChars, setSkippedChars] = useState<Set<string>>(new Set());
-
-  // One-time intro splash — shown on first entry to the desktop gallery so the
-  // move into the authoring flow is explicit. The store flag persists "seen"
-  // across unmount/remount (e.g. navigating to the touch gallery and back), so
-  // it shows once and not again.
-  const [showIntro, setShowIntro] = useState(() => !mechIntroSeen);
-
-  // currentChar: explicit state — does NOT auto-advance when a method is applied.
-  // Only advances when the user clicks "Next character →" or "Skip".
-  const [currentChar, setCurrentChar] = useState<string | null>(null);
-  const lettersKey = lettersToAdd.join("\0");
-  useEffect(() => {
-    setCurrentChar((prev) => {
-      // Keep current char if it's still in the list (e.g., inventory refresh).
-      if (prev !== null && lettersToAdd.includes(prev)) return prev;
-      // Pick the first uncovered+unskipped char, or the very first if all covered.
-      return (
-        lettersToAdd.find(
-          (c) => !coveredChars.has(c) && !skippedChars.has(c),
-        ) ??
-        lettersToAdd[0] ??
-        null
-      );
-    });
-    // Intentionally omit coveredChars/skippedChars — only re-run when the
-    // inventory list itself changes, not when methods are applied.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lettersKey]);
-
-  // Done = every char in lettersToAdd is covered or skipped.
-  const isDone = useMemo(
-    () =>
-      lettersToAdd.length === 0 ||
-      lettersToAdd.every((c) => coveredChars.has(c) || skippedChars.has(c)),
-    [lettersToAdd, coveredChars, skippedChars],
-  );
-
-  // ---------------------------------------------------------------------------
-  // Pattern loading — needed for patternMap (GalleryPreviewWithPatterns)
-  // ---------------------------------------------------------------------------
-
-  const [patternMap, setPatternMap] = useState<Map<string, Pattern>>(
-    new Map(),
-  );
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (selectedBaseKeyboard === null) {
-      setPatternMap(new Map());
-      setLoadError(null);
-      return;
-    }
-
-    setLoading(true);
-    setLoadError(null);
-    const svc = getPatternLibraryService();
-
-    const fullAxes: DiscoveryAxisVector | undefined =
-      axes.scale !== undefined &&
-      axes.scriptClass !== undefined &&
-      axes.phoneticIntuition !== undefined &&
-      axes.diacriticBehavior !== undefined &&
-      axes.multiMode !== undefined &&
-      axes.constraintEnforcement !== undefined &&
-      axes.spareKeyAvailability !== undefined
-        ? (axes as DiscoveryAxisVector)
-        : undefined;
-
-    svc
-      .filterFor(selectedBaseKeyboard, fullAxes)
-      .then((ranked) => {
-        // Load ranked patterns PLUS all four methods the add-a-key UI offers.
-        // Axis-based ranking may exclude off-strategy patterns, so load them
-        // explicitly so the preview transform can always resolve an applied
-        // assignment.
-        const ids = new Set<string>(ranked.map((m) => m.patternId));
-        ids.add(PATTERN_SEQUENCE);
-        ids.add(PATTERN_DEADKEY);
-        ids.add(PATTERN_SWAP);
-        ids.add(PATTERN_RALT);
-        return Promise.all([...ids].map((id) => svc.getById(id)));
-      })
-      .then((patterns) => {
-        const map = new Map<string, Pattern>();
-        for (const p of patterns) {
-          if (p !== undefined) {
-            map.set(p.id, p);
-          } else {
-            console.warn(
-              "[MechanismGallery] getById() returned undefined for a patternId",
-            );
-          }
-        }
-        setPatternMap(map);
-        setLoading(false);
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error("[MechanismGallery] filterFor error:", err);
-        setLoadError(msg);
-        setLoading(false);
-      });
-  }, [selectedBaseKeyboard, axes]);
-
-  // ---------------------------------------------------------------------------
-  // Keyboard artifact pipeline — owns the single WASM compile for Phase C.
-  //
-  // MechanismGallery is rendered full-screen (SurveyView returns early at
-  // stage === "mechanisms"). SurveyView's useKeyboardArtifact hook remains
-  // mounted but its OSK output section is not rendered. To prevent two
-  // concurrent WASM compiles we own the pipeline here and pass stage+retry
-  // down to GalleryPreviewWithPatterns as props (single-artifact invariant).
-  // ---------------------------------------------------------------------------
-
-  const identity = useWorkingCopyStore((s) => s.identity);
-  const galleryScaffoldSpec = useMemo<ScaffoldSpec | null>(
-    () =>
-      identity?.keyboardId != null
-        ? { keyboardId: identity.keyboardId, displayName: identity.displayName ?? "" }
-        : null,
-    [identity?.keyboardId, identity?.displayName],
-  );
-  const galleryVfsTransform = useWorkingCopyTransform({ patternMap });
-  const { stage: artifactStage, retry: artifactRetry } = useKeyboardArtifact(
+  const state = usePhysicalAssignLoop({
     selectedBaseKeyboard,
-    galleryScaffoldSpec,
-    galleryVfsTransform,
-  );
+    ...(onComplete !== undefined ? { onComplete } : {}),
+    ...(onBack !== undefined ? { onBack } : {}),
+    ...(placementMap !== undefined ? { placementMap } : {}),
+  });
 
-  // ---------------------------------------------------------------------------
-  // Per-char method state — reset when currentChar changes
-  // ---------------------------------------------------------------------------
-
-  const [method, setMethod] = useState<Method>("sequence");
-  const [seqFirst, setSeqFirst] = useState("");
-  const [seqSecond, setSeqSecond] = useState("");
-  const [triggerKey, setTriggerKey] = useState("K_COLON");
-  const [deadkeyBaseLetter, setDeadkeyBaseLetter] = useState("");
-  const [selectedSwapKey, setSelectedSwapKey] = useState("");
-  const [selectedRaltKey, setSelectedRaltKey] = useState("");
-
-  // kbgen placement suggestion for the current character (null when no map or
-  // no qualifying candidate). Memoized against currentChar + placementMap so it
-  // only recomputes on actual input changes, not on unrelated re-renders.
-  const suggestion = useMemo(
-    (): PlacementSeedEntry | null =>
-      placementMap !== undefined && currentChar !== null
-        ? getSuggestionForChar(currentChar, placementMap)
-        : null,
-    [currentChar, placementMap],
-  );
-
-  // Whether the author has dismissed the suggestion row for the current char.
-  // Reset to false whenever currentChar changes (see effect below).
-  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
-
-  // ---------------------------------------------------------------------------
-  // Method-input reset — called after apply or suggestion accept
-  // ---------------------------------------------------------------------------
-
-  const resetMethodState = useCallback(() => {
-    setMethod("sequence");
-    setSeqFirst("");
-    setSeqSecond("");
-    setTriggerKey("K_COLON");
-    setDeadkeyBaseLetter("");
-    setSelectedSwapKey("");
-    setSelectedRaltKey("");
-  }, []);
-
-  // Reset inputs whenever currentChar changes.
-  useEffect(() => {
-    setSuggestionDismissed(false);
-    resetMethodState();
-    if (currentChar !== null && isDecomposableAccented(currentChar)) {
-      // §3c defaults-first: for a decomposable accented letter the natural method
-      // is deadkey (S-02) — propose-then-confirm. resetMethodState sets "sequence"
-      // unconditionally, so override here after the reset.
-      setDeadkeyBaseLetter([...currentChar.normalize("NFD")][0] ?? "");
-      setMethod("deadkey");
-    }
-  }, [currentChar, resetMethodState]);
-
-  // ---------------------------------------------------------------------------
-  // Suggestion row handlers
-  // ---------------------------------------------------------------------------
-
-  // Accept: immediately apply the suggested assignment (same logic as handleApply
-  // for swap/ralt, but using the candidate's vkey directly to avoid the async
-  // state-update window that would occur if we pre-filled pickers first).
-  const handleSuggestionAccept = useCallback(() => {
-    if (suggestion === null || currentChar === null) return;
-    const { vkey } = suggestion.topCandidate;
-    let assignment: MechanismAssignment;
-    if (suggestion.strategyId === "S-01") {
-      const cp = currentChar.codePointAt(0)?.toString(16).toUpperCase().padStart(4, "0") ?? "0000";
-      assignment = {
-        scope: "individual",
-        target: currentChar,
-        modality: "physical",
-        mechanisms: [{ patternId: PATTERN_SWAP, strategyId: "S-01", slotValues: { kmnRules: `+ [${vkey}] > U+${cp}` } }],
-        source: "user",
-      };
-    } else if (suggestion.strategyId === "S-08") {
-      assignment = {
-        scope: "individual",
-        target: currentChar,
-        modality: "physical",
-        mechanisms: [{ patternId: PATTERN_RALT, strategyId: "S-08", slotValues: { altgrKeyList: `[RALT ${vkey}]`, altgrOutputList: currentChar } }],
-        source: "user",
-      };
-    } else {
-      setSuggestionDismissed(true);
-      console.warn(`[MechanismGallery] handleSuggestionAccept: unrecognised strategyId "${suggestion.strategyId}" — dismissing suggestion`);
-      return;
-    }
-    recordAssignments([...sessionAssignments, assignment]);
-    setSuggestionDismissed(true);
-    resetMethodState();
-  }, [suggestion, currentChar, sessionAssignments, recordAssignments, resetMethodState]);
-
-  // Change: dismiss the suggestion row; pickers stay blank for manual selection.
-  const handleSuggestionChange = useCallback(() => {
-    setSuggestionDismissed(true);
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Apply action
-  // ---------------------------------------------------------------------------
-
-  const canApply = useMemo(() => {
-    if (currentChar === null) return false;
-    if (method === "sequence") {
-      // Both must be single graphemes (non-empty).
-      return seqFirst.trim().length > 0 && seqSecond.trim().length > 0;
-    }
-    if (method === "swap") {
-      return selectedSwapKey !== "";
-    }
-    if (method === "ralt") {
-      return selectedRaltKey !== "";
-    }
-    // deadkey: triggerKey always has a value; base letter must be non-empty.
-    return deadkeyBaseLetter.trim().length > 0;
-  }, [currentChar, method, seqFirst, seqSecond, deadkeyBaseLetter, selectedSwapKey, selectedRaltKey]);
-
-  const handleApply = useCallback(() => {
-    if (currentChar === null || !canApply) return;
-
-    let assignment: MechanismAssignment;
-
-    if (method === "sequence") {
-      assignment = {
-        scope: "individual",
-        target: currentChar,
-        modality: "physical",
-        mechanisms: [
-          {
-            patternId: PATTERN_SEQUENCE,
-            strategyId: "S-03",
-            slotValues: {
-              firstLetterOut: seqFirst.trim(),
-              secondLetter: seqSecond.trim(),
-              collapsedChar: currentChar,
-            },
-          },
-        ],
-        source: "user",
-      };
-    } else if (method === "deadkey") {
-      const base = deadkeyBaseLetter.trim();
-      // accentChar: the character emitted when the trigger key is pressed twice.
-      // Always use the trigger key's literal character (e.g. ';' for K_COLON)
-      // so that pressing trigger+trigger escapes back to the bare character.
-      const accentChar = TRIGGER_KEY_CHARS[triggerKey] ?? "";
-      assignment = {
-        scope: "individual",
-        target: currentChar,
-        modality: "physical",
-        mechanisms: [
-          {
-            patternId: PATTERN_DEADKEY,
-            strategyId: "S-02",
-            slotValues: {
-              triggerKey,
-              deadkeyName: deadkeyNameFor(triggerKey),
-              baseLetters: base,
-              accentedForms: currentChar,
-              accentChar,
-            },
-          },
-        ],
-        source: "user",
-      };
-    } else if (method === "swap") {
-      // S-01: simple_swap — kmnFragment uses {{kmnRules}}.
-      // Build the single KMN rule for this character: `+ [K_X] > U+XXXX`.
-      const cp = currentChar.codePointAt(0)?.toString(16).toUpperCase().padStart(4, "0") ?? "0000";
-      const kmnRules = `+ [${selectedSwapKey}] > U+${cp}`;
-      assignment = {
-        scope: "individual",
-        target: currentChar,
-        modality: "physical",
-        mechanisms: [
-          {
-            patternId: PATTERN_SWAP,
-            strategyId: "S-01",
-            slotValues: {
-              kmnRules,
-            },
-          },
-        ],
-        source: "user",
-      };
-    } else {
-      // method === "ralt"
-      // S-08: modifier_as_layer_switch — kmnFragment uses {{altgrKeyList}} and {{altgrOutputList}}.
-      // Build a single-entry held-layer rule for this character.
-      assignment = {
-        scope: "individual",
-        target: currentChar,
-        modality: "physical",
-        mechanisms: [
-          {
-            patternId: PATTERN_RALT,
-            strategyId: "S-08",
-            slotValues: {
-              altgrKeyList: `[RALT ${selectedRaltKey}]`,
-              altgrOutputList: currentChar,
-            },
-          },
-        ],
-        source: "user",
-      };
-    }
-
-    recordAssignments([...sessionAssignments, assignment]);
-    resetMethodState();
-  }, [
+  const {
+    locked,
+    inventory,
+    showIntro,
+    setShowIntro,
+    markGalleryIntroSeen,
+    lettersToAdd,
     currentChar,
-    canApply,
-    method,
-    seqFirst,
-    seqSecond,
-    triggerKey,
-    deadkeyBaseLetter,
-    selectedSwapKey,
-    selectedRaltKey,
-    recordAssignments,
+    isDone,
+    coveredChars,
+    skippedChars: _skippedChars,
+    coveredCount,
     sessionAssignments,
-    resetMethodState,
-  ]);
-
-  // How many methods have already been applied to the current character.
-  const appliedForCurrentChar = useMemo(
-    () =>
-      sessionAssignments.filter(
-        (a) => a.scope === "individual" && a.target === currentChar,
-      ).length,
-    [sessionAssignments, currentChar],
-  );
-  const canGoNext = appliedForCurrentChar > 0;
-
-  const handleNext = useCallback(() => {
-    if (currentChar === null) return;
-    const idx = lettersToAdd.indexOf(currentChar);
-    const next =
-      lettersToAdd
-        .slice(idx + 1)
-        .find((c) => !coveredChars.has(c) && !skippedChars.has(c)) ??
-      lettersToAdd
-        .slice(0, idx)
-        .find((c) => !coveredChars.has(c) && !skippedChars.has(c)) ??
-      null;
-    // When no uncovered+unskipped char remains, explicitly land on null so the
-    // "All done" branch (currentChar === null && isDone) becomes visible.
-    setCurrentChar(next);
-  }, [currentChar, lettersToAdd, coveredChars, skippedChars]);
-
-  const canGoBack = useMemo(() => {
-    if (currentChar === null) return false;
-    return lettersToAdd.indexOf(currentChar) > 0;
-  }, [currentChar, lettersToAdd]);
-
-  const handleBack = useCallback(() => {
-    if (currentChar === null) return;
-    const idx = lettersToAdd.indexOf(currentChar);
-    if (idx <= 0) return;
-    setCurrentChar(lettersToAdd[idx - 1] ?? null);
-  }, [currentChar, lettersToAdd]);
-
-  const handleSkip = useCallback(() => {
-    if (currentChar === null) return;
-    setSkippedChars((prev) => new Set([...prev, currentChar]));
-    const idx = lettersToAdd.indexOf(currentChar);
-    const next =
-      lettersToAdd
-        .slice(idx + 1)
-        .find(
-          (c) =>
-            !coveredChars.has(c) &&
-            !skippedChars.has(c) &&
-            c !== currentChar,
-        ) ??
-      lettersToAdd
-        .slice(0, idx)
-        .find(
-          (c) =>
-            !coveredChars.has(c) &&
-            !skippedChars.has(c) &&
-            c !== currentChar,
-        ) ??
-      null;
-    setCurrentChar(next);
-  }, [currentChar, lettersToAdd, coveredChars, skippedChars]);
-
-  const handleRemoveCovered = useCallback(
-    (char: string) => {
-      const next = sessionAssignments.filter(
-        (a) => !(a.scope === "individual" && a.target === char),
-      );
-      recordAssignments(next);
-    },
-    [sessionAssignments, recordAssignments],
-  );
-
-  const handleRemoveMechanism = useCallback(
-    (assignment: MechanismAssignment) => {
-      recordAssignments(sessionAssignments.filter((a) => a !== assignment));
-    },
-    [sessionAssignments, recordAssignments],
-  );
-
-  const handleKeyTap = useCallback(
-    (keyId: string) => {
-      if (locked) return;
-      if (method === "swap" && ALL_PICKABLE_KEYS.has(keyId)) {
-        setSelectedSwapKey(keyId);
-      } else if (method === "ralt" && ALL_PICKABLE_KEYS.has(keyId)) {
-        setSelectedRaltKey(keyId);
-      } else if (method === "deadkey" && VALID_DEADKEY_TRIGGER_KEYS.has(keyId)) {
-        setTriggerKey(keyId);
-      }
-      // method === "sequence" or unrecognised key: ignore
-    },
-    [method, locked],
-  );
+    loading,
+    loadError,
+    artifactStage,
+    artifactRetry,
+    method,
+    setMethod,
+    seqFirst,
+    setSeqFirst,
+    seqSecond,
+    setSeqSecond,
+    triggerKey,
+    setTriggerKey,
+    deadkeyBaseLetter,
+    setDeadkeyBaseLetter,
+    selectedSwapKey,
+    setSelectedSwapKey,
+    selectedRaltKey,
+    setSelectedRaltKey,
+    suggestion,
+    suggestionDismissed,
+    handleSuggestionAccept,
+    handleSuggestionChange,
+    canApply,
+    handleApply,
+    appliedForCurrentChar,
+    canGoNext,
+    handleNext,
+    canGoBack,
+    handleBack,
+    handleSkip,
+    handleRemoveCovered,
+    handleRemoveMechanism,
+    handleKeyTap,
+  } = state;
 
   // ---------------------------------------------------------------------------
   // Shared styles
   // ---------------------------------------------------------------------------
 
-  const pageStyle: CSSProperties = {
+  const pageStyle = {
     background: BG_PAGE,
     height: "100%",
-    boxSizing: "border-box",
+    boxSizing: "border-box" as const,
     fontFamily: FONT,
     color: TEXT_MAIN,
   };
@@ -1110,16 +571,10 @@ export function MechanismGallery({
   }
 
   // ---------------------------------------------------------------------------
-  // Compute coverage line: covered-in-lettersToAdd count / lettersToAdd.length
+  // Left pane body — built here, passed to AssignLoopShell as renderLeft
   // ---------------------------------------------------------------------------
 
-  const coveredCount = lettersToAdd.filter((c) => coveredChars.has(c)).length;
-
-  // ---------------------------------------------------------------------------
-  // Left pane content
-  // ---------------------------------------------------------------------------
-
-  const leftContent = (
+  const renderLeft = () => (
     <div
       style={{
         display: "flex",
@@ -1611,100 +1066,28 @@ export function MechanismGallery({
   );
 
   // ---------------------------------------------------------------------------
-  // Two-pane layout
+  // Two-pane layout via AssignLoopShell
   // ---------------------------------------------------------------------------
 
   return (
-    <div
-      style={{
-        ...pageStyle,
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        overflow: "hidden",
-      }}
-    >
-      {/* Header bar */}
-      <div
-        style={{
-          padding: "16px 24px 14px",
-          borderBottom: `1px solid ${BORDER}`,
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "baseline",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "1.05rem",
-            fontWeight: 600,
-            color: ACCENT,
-            fontFamily: FONT,
-          }}
-        >
-          Mechanism Gallery
-        </h1>
-        <span
-          style={{
-            fontSize: 12,
-            color: TEXT_DIM,
-            fontFamily: FONT,
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          Desktop
-        </span>
-      </div>
-
-      {/* Two-pane row */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "row",
-          overflow: "hidden",
-        }}
-      >
-        {/* LEFT pane */}
-        <div
-          style={{
-            flexBasis: "45%",
-            flexShrink: 0,
-            borderRight: `1px solid ${BORDER}`,
-            overflowY: "auto",
-            boxSizing: "border-box",
-          }}
-        >
-          {leftContent}
-        </div>
-
-        {/* RIGHT pane */}
-        <div
-          style={{
-            flexGrow: 1,
-            overflowY: "auto",
-            padding: "24px 20px",
-            boxSizing: "border-box",
-          }}
-        >
-          {!loading && loadError === null ? (
-            <GalleryPreviewWithPatterns
-              selectedBaseKeyboard={selectedBaseKeyboard}
-              stage={artifactStage}
-              retry={artifactRetry}
-              onKeyTap={handleKeyTap}
-            />
-          ) : loading ? (
-            <p style={{ color: TEXT_DIM, fontSize: 13, fontFamily: FONT }}>
-              Loading patterns...
-            </p>
-          ) : null}
-        </div>
-      </div>
-    </div>
+    <AssignLoopShell
+      title="Mechanism Gallery"
+      surfaceLabel="Desktop"
+      surfaceLabelInsideHeading={false}
+      renderLeft={renderLeft}
+      previewPane={
+        <GalleryPreviewPane
+          baseKeyboard={selectedBaseKeyboard}
+          stage={artifactStage}
+          retry={artifactRetry}
+          {...(handleKeyTap !== undefined ? { onKeyTap: handleKeyTap } : {})}
+          defaultOskMode="desktop"
+          heading="Live preview"
+          warningLabel="Apply warnings:"
+        />
+      }
+      previewLoading={loading}
+      loadError={loadError}
+    />
   );
 }

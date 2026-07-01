@@ -15,7 +15,9 @@
 //   2. reducer touch-repropagation (T024) — steps/reducer.ts, MECHANISMS_STEP_ID.
 //   3. carve projection (T016)           — lib/projectWorkingCopyVfs.ts.
 //   4. add-gallery projection (T017)     — lib/projectWorkingCopyVfs.ts.
-//   5. touch promotion on manual edit (T025) — editors/assignLoop/TouchGallery.tsx.
+//   5. touch promotion on manual edit (T025) — editors/assignLoop/touchBehavior.ts
+//      (the useTouchAssignLoop hook; relocated here from TouchGallery.tsx by the
+//      AssignLoopShell extraction — the gate moved verbatim with the write).
 //
 // The structural assertions below read each source file and confirm the gate
 // guards the write at the same site. This is deliberately a SOURCE-LEVEL pin
@@ -107,22 +109,24 @@ describe("T031 / US4 — every mutate() execution site is gated on isMutateSeamE
     });
   });
 
-  // -- TouchGallery.tsx: site 5 (touch promotion on manual edit) --------------
-  describe("editors/assignLoop/TouchGallery.tsx — touch promotion on manual edit (T025)", () => {
-    const gallery = read("editors/assignLoop/TouchGallery.tsx");
+  // -- touchBehavior.ts: site 5 (touch promotion on manual edit) --------------
+  describe("editors/assignLoop/touchBehavior.ts — touch promotion on manual edit (T025)", () => {
+    const behavior = read("editors/assignLoop/touchBehavior.ts");
 
     it("imports the flag", () => {
-      expect(gallery).toMatch(/import\s*\{\s*isMutateSeamEnabled\s*\}\s*from\s*["'].*mutateFlag/);
+      expect(behavior).toMatch(/import\s*\{\s*isMutateSeamEnabled\s*\}\s*from\s*["'].*mutateFlag/);
     });
 
     it("the promoteOnManualEdit / setIR write is guarded by the flag (site 5)", () => {
-      expect(gallery).toMatch(/if\s*\(\s*isMutateSeamEnabled\(\)\s*&&[\s\S]*?promoteOnManualEdit/);
+      expect(behavior).toMatch(/if\s*\(\s*isMutateSeamEnabled\(\)\s*&&[\s\S]*?promoteOnManualEdit/);
     });
 
     it("the flag read precedes the IR write", () => {
-      const firstGate = gallery.indexOf("isMutateSeamEnabled(");
+      const firstGate = behavior.indexOf("isMutateSeamEnabled(");
       expect(firstGate).toBeGreaterThanOrEqual(0);
-      expect(firstGate).toBeLessThan(gallery.search(/promoteOnManualEdit\(/));
+      // Target the WRITE call site — setWorkingIR(promoteOnManualEdit(...)) — not
+      // the pure helper's export definition, which appears earlier in this file.
+      expect(firstGate).toBeLessThan(behavior.search(/setWorkingIR\(promoteOnManualEdit\(/));
     });
   });
 
@@ -131,6 +135,6 @@ describe("T031 / US4 — every mutate() execution site is gated on isMutateSeamE
     // each of the three source files carrying mutate() write sites reads the flag.
     expect(gateCallCount(read("steps/reducer.ts"))).toBeGreaterThanOrEqual(2);
     expect(gateCallCount(read("lib/projectWorkingCopyVfs.ts"))).toBeGreaterThanOrEqual(2);
-    expect(gateCallCount(read("editors/assignLoop/TouchGallery.tsx"))).toBeGreaterThanOrEqual(1);
+    expect(gateCallCount(read("editors/assignLoop/touchBehavior.ts"))).toBeGreaterThanOrEqual(1);
   });
 });

@@ -930,6 +930,38 @@ describe("MechanismGallery — vfsTransform passed to useKeyboardArtifact", () =
 });
 
 // ---------------------------------------------------------------------------
+// Desktop locked state
+// ---------------------------------------------------------------------------
+
+describe("MechanismGallery — desktop locked", () => {
+  it("Apply button is disabled and Continue to touch layout affordance is present when desktopLocked", async () => {
+    seedInventory(["á"]);
+    // Lock the desktop layout via the store action.
+    useWorkingCopyStore.getState().lockDesktop();
+
+    await act(async () => {
+      render(
+        <MechanismGallery
+          selectedBaseKeyboard={basicKbdus}
+          onComplete={vi.fn()}
+        />,
+      );
+    });
+
+    // The Apply button must be disabled when the layout is locked.
+    const applyBtn = screen.getByRole("button", { name: /Apply method for á/i });
+    expect((applyBtn as HTMLButtonElement).disabled).toBe(true);
+
+    // The "Continue to touch layout" affordance must be present.
+    expect(
+      screen.getByRole("button", {
+        name: "Continue to touch layout (desktop layout locked)",
+      }),
+    ).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Intro splash — first-entry orientation
 // ---------------------------------------------------------------------------
 
