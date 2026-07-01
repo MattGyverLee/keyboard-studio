@@ -313,7 +313,7 @@ export async function checkSidecarHash(
  *  convention — I1's KM_ERROR_PARSE_INCOMPLETE, I5's KM_ERROR_SIDECAR_HASH_MISMATCH.
  *  The issue suggested KM_LINT_OWNERSHIP_CONSISTENCY, but KM_LINT_* is the Layer C
  *  hygiene namespace; a Layer A' error belongs under KM_ERROR_*.) */
-const OWNERSHIP_CONSISTENCY_CODE = "KM_ERROR_OWNERSHIP_CONSISTENCY";
+export const OWNERSHIP_CONSISTENCY_CODE = "KM_ERROR_OWNERSHIP_CONSISTENCY";
 
 /**
  * I6: Ownership consistency between recognized Patterns and the IR nodes they
