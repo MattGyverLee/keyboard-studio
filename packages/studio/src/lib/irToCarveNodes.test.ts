@@ -1,8 +1,16 @@
 // Tests for ruleModifier(), modifierLabel(), glyph-shape integration, and StoreUsage.patternRefs in irToCarveNodes.ts
 
 import { describe, it, expect } from 'vitest';
-import type { IRRule, IRGroup, KeyboardIR } from '@keyboard-studio/contracts';
-import { ruleModifier, modifierLabel, groupToGlyphs, glyphsTriState, toRailNodes } from './irToCarveNodes.ts';
+import type { IRRule, IRGroup, KeyboardIR, Pattern } from '@keyboard-studio/contracts';
+import {
+  ruleModifier,
+  modifierLabel,
+  groupToGlyphs,
+  glyphsTriState,
+  toRailNodes,
+  collectOwnedNodeIds,
+  patternToGlyphs,
+} from './irToCarveNodes.ts';
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -206,6 +214,146 @@ describe('groupToGlyphs modifierLayer + modifierLabel', () => {
       ownedByPattern: 'p1',
     };
     expect(groupToGlyphs(makeGroup([ownedRule]))).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #886 ghost-chip regression — ownedNodes-only exclusion (no ownedByPattern
+// stamp at all) via collectOwnedNodeIds, plus companion patternToGlyphs
+// single-render assertions and toRailNodes group-suppression.
+// ---------------------------------------------------------------------------
+
+/** Minimal recognized Pattern fixture — only the fields these tests read. */
+function makePatternFixture(id: string, ownedNodeIds: string[]): Pattern {
+  return {
+    id,
+    title: 'Test pattern',
+    description: '',
+    category: 'desktop',
+    appliesTo: [],
+    origin: 'recognized',
+    ownedNodes: ownedNodeIds.map((nodeId) => ({ kind: 'rule', nodeId })),
+    questions: [],
+    kmnFragment: '',
+    tests: [],
+    validatedForFamilies: [],
+    sourceKeyboards: [],
+    reviewedBy: 'recognizer',
+    reviewDate: '2026-01-01',
+  } as Pattern;
+}
+
+/** Minimal KeyboardIR fixture — only the fields these tests read. */
+function makeMinimalIR(groups: IRGroup[], recognizedPatterns: Pattern[] = []): KeyboardIR {
+  return {
+    origin: {} as KeyboardIR['origin'],
+    header: {} as KeyboardIR['header'],
+    stores: [],
+    groups,
+    comments: [],
+    raw: [],
+    recognizedPatterns,
+  } as unknown as KeyboardIR;
+}
+
+describe('groupToGlyphs — ownedNodeIds-only exclusion (#886 ghost chip)', () => {
+  it('returns [] for a rule claimed via ownedNodes alone (ownedByPattern unset) when ownedNodeIds is passed', () => {
+    // The exact drift shape #886 fixed: the rule's own ownedByPattern stamp
+    // never got set (e.g. a recognizer bug, or a pre-fix double-claim leaving
+    // one signal stale), but the pattern's ownedNodes DOES list this rule.
+    // Before the fix, groupToGlyphs only checked rule.ownedByPattern and
+    // would render this rule a SECOND time in the group's glyph list even
+    // though a pattern already claims it.
+    const ghostOwnedRule: IRRule = {
+      nodeId: 'rule#ghost-owned',
+      context: [{ kind: 'vkey', name: 'K_Q', modifiers: [] }],
+      output: [{ kind: 'char', value: 'ɛ' }],
+      // ownedByPattern deliberately left undefined.
+    };
+    const group = makeGroup([ghostOwnedRule]);
+    const pattern = makePatternFixture('pattern-1', ['rule#ghost-owned']);
+    const ir = makeMinimalIR([group], [pattern]);
+
+    const ownedNodeIds = collectOwnedNodeIds(ir);
+    expect(ownedNodeIds.has('rule#ghost-owned')).toBe(true);
+
+    const glyphs = groupToGlyphs(group, ir, new Map(), ownedNodeIds);
+    expect(glyphs).toHaveLength(0);
+  });
+
+  it('companion: patternToGlyphs renders exactly the one glyph for the same fixture (single Inspector, not zero, not two)', () => {
+    const ghostOwnedRule: IRRule = {
+      nodeId: 'rule#ghost-owned',
+      context: [{ kind: 'vkey', name: 'K_Q', modifiers: [] }],
+      output: [{ kind: 'char', value: 'ɛ' }],
+    };
+    const group = makeGroup([ghostOwnedRule]);
+    const pattern = makePatternFixture('pattern-1', ['rule#ghost-owned']);
+    const ir = makeMinimalIR([group], [pattern]);
+
+    const glyphs = patternToGlyphs(pattern, ir);
+    expect(glyphs).toHaveLength(1);
+    expect(glyphs[0]!.gid).toBe('rule#ghost-owned');
+    expect(glyphs[0]!.ch).toBe('ɛ');
+  });
+
+  it('does not exclude an unowned rule when ownedNodeIds is empty (no regression to the non-#886 path)', () => {
+    const rule: IRRule = {
+      nodeId: 'rule#free',
+      context: [{ kind: 'vkey', name: 'K_A', modifiers: [] }],
+      output: [{ kind: 'char', value: 'a' }],
+    };
+    const group = makeGroup([rule]);
+    expect(groupToGlyphs(group, undefined, undefined, new Set())).toHaveLength(1);
+  });
+});
+
+describe('toRailNodes — suppresses a group node when its only rule is claimed via ownedNodes alone (#886)', () => {
+  it('emits no kind:"group" node for a group whose sole rule is ownedNodes-only claimed', () => {
+    const ghostOwnedRule: IRRule = {
+      nodeId: 'rule#ghost-owned',
+      context: [{ kind: 'vkey', name: 'K_Q', modifiers: [] }],
+      output: [{ kind: 'char', value: 'ɛ' }],
+      // ownedByPattern deliberately left undefined — the group-emission
+      // guard at toRailNodes must fall back to ownedNodeIds, not just the
+      // per-rule stamp, or a ghost group card renders alongside the pattern
+      // card that legitimately owns the rule.
+    };
+    const group = makeGroup([ghostOwnedRule]);
+    const pattern = makePatternFixture('pattern-1', ['rule#ghost-owned']);
+    const ir = makeMinimalIR([group], [pattern]);
+
+    const nodes = toRailNodes(ir);
+    expect(nodes.filter((n) => n.kind === 'group')).toHaveLength(0);
+    // The pattern card itself is still present — ownership isn't lost, only
+    // the duplicate group rendering is suppressed.
+    expect(nodes.filter((n) => n.kind === 'pattern')).toHaveLength(1);
+  });
+});
+
+describe('collectOwnedNodeIds', () => {
+  it('returns an empty set when there are no recognizedPatterns', () => {
+    const ir = makeMinimalIR([], []);
+    expect(collectOwnedNodeIds(ir)).toEqual(new Set());
+  });
+
+  it('unions ownedNodes across multiple recognized patterns', () => {
+    const patternA = makePatternFixture('pattern-a', ['rule#a1', 'rule#a2']);
+    const patternB = makePatternFixture('pattern-b', ['rule#b1']);
+    const ir = makeMinimalIR([], [patternA, patternB]);
+
+    const ids = collectOwnedNodeIds(ir);
+    expect(ids).toEqual(new Set(['rule#a1', 'rule#a2', 'rule#b1']));
+  });
+
+  it('ignores patterns whose origin is not "recognized"', () => {
+    const authoredPattern = {
+      ...makePatternFixture('pattern-authored', ['rule#authored-1']),
+      origin: 'authored',
+    } as Pattern;
+    const ir = makeMinimalIR([], [authoredPattern]);
+
+    expect(collectOwnedNodeIds(ir)).toEqual(new Set());
   });
 });
 
