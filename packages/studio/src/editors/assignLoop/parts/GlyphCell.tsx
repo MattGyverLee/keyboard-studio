@@ -20,17 +20,25 @@ export const GlyphCell = memo(function GlyphCell({ gid, ch, keys, off, color, on
   const clearInfo = useHoverInfoStore((s) => s.clearInfo);
   const display = displayChar(ch);
   const isNotRemovable = capability.startsWith('not-removable:');
+  const handleClick = () => {
+    if (isNotRemovable) {
+      setInfo({ kind: 'key', keys, ch, off, capability });
+      return;
+    }
+    onToggle(gid);
+  };
   return (
     <button
-      onClick={() => onToggle(gid)}
+      onClick={handleClick}
       onMouseEnter={() => setInfo({ kind: 'key', keys, ch, off, capability })}
       onMouseLeave={clearInfo}
       onFocus={() => setInfo({ kind: 'key', keys, ch, off, capability })}
       onBlur={clearInfo}
+      aria-disabled={isNotRemovable}
       style={{
         position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center',
         justifyContent: 'center', gap: 8,
-        width: '100%', padding: '10px 4px 12px', cursor: 'pointer', borderRadius: 8,
+        width: '100%', padding: '10px 4px 12px', cursor: isNotRemovable ? 'not-allowed' : 'pointer', borderRadius: 8,
         border: '1px solid ' + (off ? 'var(--app-border)' : 'var(--app-border-strong)'),
         borderTop: '3px solid ' + (off ? 'var(--app-border-strong)' : color),
         background: off ? 'var(--app-surface-2)' : 'var(--app-surface)',

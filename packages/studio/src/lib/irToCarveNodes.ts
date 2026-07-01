@@ -369,16 +369,34 @@ const EMPTY_IR: KeyboardIR = {
   recognizedPatterns: [],
 };
 
-export function groupToGlyphs(group: IRGroup, ir: KeyboardIR = EMPTY_IR, capabilities: Map<string, RemovalCapability> = new Map()): CarveGlyph[] {
+export function groupToGlyphs(group: IRGroup, ir: KeyboardIR = EMPTY_IR, capabilities: Map<string, RemovalCapability> = new Map(), ownedNodeIds: Set<string> = new Set()): CarveGlyph[] {
   const glyphs: CarveGlyph[] = [];
   const seen = new Set<string>();
   group.rules.forEach((rule) => {
     if (rule.ownedByPattern !== undefined) return;
+    if (ownedNodeIds.has(rule.nodeId)) return;
     for (const g of ruleToGlyphs(rule, ir, capabilities)) {
       if (!seen.has(g.gid)) { seen.add(g.gid); glyphs.push(g); }
     }
   });
   return glyphs;
+}
+
+// ---------------------------------------------------------------------------
+// collectOwnedNodeIds — union of every nodeId claimed by any recognized
+// pattern's ownedNodes (the render-layer hardening for the ghost-chip bug:
+// even if ownedByPattern drifts from a pattern's ownedNodes, this set lets
+// the group-Inspector rendering fall back to the authoritative ownedNodes
+// list rather than trusting only the per-rule stamp).
+// ---------------------------------------------------------------------------
+
+export function collectOwnedNodeIds(ir: KeyboardIR): Set<string> {
+  const ids = new Set<string>();
+  for (const p of ir.recognizedPatterns) {
+    if (p.origin !== 'recognized') continue;
+    for (const n of p.ownedNodes ?? []) ids.add(n.nodeId);
+  }
+  return ids;
 }
 
 // ---------------------------------------------------------------------------
@@ -632,6 +650,7 @@ export function nodeState(
 export function toRailNodes(ir: KeyboardIR, capabilities: Map<string, RemovalCapability> = new Map()): CarveNode[] {
   const nodes: CarveNode[] = [];
   const recognized = ir.recognizedPatterns.filter((p) => p.origin === 'recognized');
+  const ownedNodeIds = collectOwnedNodeIds(ir);
 
   for (const pattern of recognized) {
     const glyphs = patternToGlyphs(pattern, ir, capabilities);
@@ -646,8 +665,8 @@ export function toRailNodes(ir: KeyboardIR, capabilities: Map<string, RemovalCap
   }
 
   for (const group of ir.groups) {
-    if (!group.rules.some((r) => r.ownedByPattern === undefined)) continue;
-    const glyphs = groupToGlyphs(group, ir, capabilities);
+    if (!group.rules.some((r) => r.ownedByPattern === undefined && !ownedNodeIds.has(r.nodeId))) continue;
+    const glyphs = groupToGlyphs(group, ir, capabilities, ownedNodeIds);
     nodes.push({
       nodeId: group.nodeId,
       kind: 'group',
