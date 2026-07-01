@@ -4,6 +4,7 @@ import {
   hasNonUSBase,
   dedupCapsNcaps,
   detectBaseLayoutFamily,
+  hasInvertedNumberRow,
 } from "./filters.js";
 import { parse } from "../codec/parse.js";
 import { existsSync, readFileSync } from "fs";
@@ -295,5 +296,160 @@ describe("detectBaseLayoutFamily against the real basic_kbdbe AZERTY base", () =
   it.skipIf(!available)("classifies basic_kbdbe as AZERTY (not QWERTY/QWERTZ)", () => {
     const { ir } = parse(readFileSync(KMN_PATH, "utf-8"), "basic_kbdbe");
     expect(detectBaseLayoutFamily(ir)).toBe("AZERTY");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hasInvertedNumberRow
+// ---------------------------------------------------------------------------
+
+describe("hasInvertedNumberRow", () => {
+  // Single-char symbol stand-ins for the base (unshifted) row across the
+  // digit keys (mirrors AZERTY's punctuation-on-base-row inversion).
+  const symbols: Record<string, string> = {
+    K_1: "&", K_2: "e", K_3: "\"", K_4: "q", K_5: "p",
+  };
+
+  function invertedRuleBlock(vkeys: string[]): string {
+    return vkeys
+      .map((vkey) => {
+        const digit = { K_1: "1", K_2: "2", K_3: "3", K_4: "4", K_5: "5", K_6: "6", K_7: "7", K_8: "8", K_9: "9", K_0: "0" }[vkey];
+        return [
+          `+ [NCAPS ${vkey}] > '${symbols[vkey] ?? "x"}'`,
+          `+ [NCAPS SHIFT ${vkey}] > '${digit}'`,
+        ].join("\n");
+      })
+      .join("\n");
+  }
+
+  it("returns true for an inverted number row across >=5 keys", () => {
+    const rules = [
+      "+ [NCAPS K_1] > '&'",
+      "+ [NCAPS SHIFT K_1] > '1'",
+      "+ [NCAPS K_2] > 'e'",
+      "+ [NCAPS SHIFT K_2] > '2'",
+      "+ [NCAPS K_3] > '\"'",
+      "+ [NCAPS SHIFT K_3] > '3'",
+      "+ [NCAPS K_4] > 'q'",
+      "+ [NCAPS SHIFT K_4] > '4'",
+      "+ [NCAPS K_5] > 'p'",
+      "+ [NCAPS SHIFT K_5] > '5'",
+    ].join("\n");
+    const { ir } = parse(makeUnicodeKmn(rules), "kb-inverted");
+    expect(hasInvertedNumberRow(ir)).toBe(true);
+  });
+
+  it("feeds into detectBaseLayoutFamily as AZERTY when the letter row is unrecognised", () => {
+    const rules = [
+      // Letter row deliberately not AZERTY/QWERTY/QWERTZ (falls through to 'other').
+      "+ [NCAPS K_Q] > 'x'",
+      "+ [NCAPS K_A] > 'y'",
+      "+ [NCAPS K_Z] > 'z'",
+      "+ [NCAPS K_1] > '&'",
+      "+ [NCAPS SHIFT K_1] > '1'",
+      "+ [NCAPS K_2] > 'e'",
+      "+ [NCAPS SHIFT K_2] > '2'",
+      "+ [NCAPS K_3] > '\"'",
+      "+ [NCAPS SHIFT K_3] > '3'",
+      "+ [NCAPS K_4] > 'q'",
+      "+ [NCAPS SHIFT K_4] > '4'",
+      "+ [NCAPS K_5] > 'p'",
+      "+ [NCAPS SHIFT K_5] > '5'",
+    ].join("\n");
+    const { ir } = parse(makeUnicodeKmn(rules), "kb-inverted-other-letters");
+    expect(detectBaseLayoutFamily(ir)).toBe("AZERTY");
+  });
+
+  it("returns false for a QWERTY/QWERTZ-style digit row (base already the digit)", () => {
+    const rules = [
+      "+ [NCAPS K_1] > '1'",
+      "+ [NCAPS K_2] > '2'",
+      "+ [NCAPS K_3] > '3'",
+      "+ [NCAPS K_4] > '4'",
+      "+ [NCAPS K_5] > '5'",
+      "+ [NCAPS SHIFT K_1] > '!'",
+      "+ [NCAPS SHIFT K_2] > '@'",
+      "+ [NCAPS SHIFT K_3] > '#'",
+      "+ [NCAPS SHIFT K_4] > '$'",
+      "+ [NCAPS SHIFT K_5] > '%'",
+    ].join("\n");
+    const { ir } = parse(makeUnicodeKmn(rules), "kb-normal-digits");
+    expect(hasInvertedNumberRow(ir)).toBe(false);
+  });
+
+  it("reads the NCAPS (not CAPS) state for the base row, even when CapsLock flips the row back to digits", () => {
+    // With CapsLock ON the row flips back to plain digits — this must NOT be
+    // mistaken for the base state.
+    const rules = [
+      "+ [NCAPS K_1] > '&'",
+      "+ [CAPS K_1] > '1'",
+      "+ [NCAPS SHIFT K_1] > '1'",
+      "+ [NCAPS K_2] > 'e'",
+      "+ [CAPS K_2] > '2'",
+      "+ [NCAPS SHIFT K_2] > '2'",
+      "+ [NCAPS K_3] > '\"'",
+      "+ [CAPS K_3] > '3'",
+      "+ [NCAPS SHIFT K_3] > '3'",
+      "+ [NCAPS K_4] > 'q'",
+      "+ [CAPS K_4] > '4'",
+      "+ [NCAPS SHIFT K_4] > '4'",
+      "+ [NCAPS K_5] > 'p'",
+      "+ [CAPS K_5] > '5'",
+      "+ [NCAPS SHIFT K_5] > '5'",
+    ].join("\n");
+    const { ir } = parse(makeUnicodeKmn(rules), "kb-capslock-flip");
+    expect(hasInvertedNumberRow(ir)).toBe(true);
+  });
+
+  it("returns false when only CAPS rows are present (no NCAPS base defined)", () => {
+    const rules = [
+      "+ [CAPS K_1] > '1'",
+      "+ [CAPS K_2] > '2'",
+      "+ [CAPS K_3] > '3'",
+      "+ [CAPS K_4] > '4'",
+      "+ [CAPS K_5] > '5'",
+      "+ [NCAPS SHIFT K_1] > '1'",
+      "+ [NCAPS SHIFT K_2] > '2'",
+      "+ [NCAPS SHIFT K_3] > '3'",
+      "+ [NCAPS SHIFT K_4] > '4'",
+      "+ [NCAPS SHIFT K_5] > '5'",
+    ].join("\n");
+    const { ir } = parse(makeUnicodeKmn(rules), "kb-caps-only");
+    expect(hasInvertedNumberRow(ir)).toBe(false);
+  });
+
+  it("threshold boundary: exactly 5 inverted keys is true with the default threshold", () => {
+    const rules = invertedRuleBlock(["K_1", "K_2", "K_3", "K_4", "K_5"]);
+    const { ir } = parse(makeUnicodeKmn(rules), "kb-exactly-5");
+    expect(hasInvertedNumberRow(ir)).toBe(true);
+  });
+
+  it("threshold boundary: 4 inverted keys is false with the default threshold", () => {
+    const rules = invertedRuleBlock(["K_1", "K_2", "K_3", "K_4"]);
+    const { ir } = parse(makeUnicodeKmn(rules), "kb-only-4");
+    expect(hasInvertedNumberRow(ir)).toBe(false);
+  });
+
+  it("a letter-row-AZERTY keyboard still returns AZERTY via the primary letter check (regression)", () => {
+    const bareAzerty = "+ [K_Q] > 'a'\n+ [K_A] > 'q'\n+ [K_Z] > 'w'";
+    expect(detectBaseLayoutFamily(parse(makeUnicodeKmn(bareAzerty), "k").ir)).toBe("AZERTY");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hasInvertedNumberRow — real corpus (Belgian AZERTY base)
+// ---------------------------------------------------------------------------
+
+describe("hasInvertedNumberRow against the real basic_kbdbe AZERTY base", () => {
+  const __dir = dirname(fileURLToPath(import.meta.url));
+  const KMN_PATH = resolve(
+    __dir,
+    "../../../../../keyboards/release/basic/basic_kbdbe/source/basic_kbdbe.kmn"
+  );
+  const available = existsSync(KMN_PATH);
+
+  it.skipIf(!available)("detects the inverted number row in basic_kbdbe", () => {
+    const { ir } = parse(readFileSync(KMN_PATH, "utf-8"), "basic_kbdbe");
+    expect(hasInvertedNumberRow(ir)).toBe(true);
   });
 });
