@@ -15,7 +15,7 @@
 // pending Track 2 liveness confirmation. See each spec header for the unblock
 // recipe.
 
-import { defineConfig } from "@playwright/test";
+import { defineConfig } from "playwright/test";
 
 export default defineConfig({
   testDir: "e2e",

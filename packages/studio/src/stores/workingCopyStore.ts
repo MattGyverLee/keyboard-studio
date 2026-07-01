@@ -641,18 +641,34 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
   // -- Instantiation actions (spec §8 v1.3.0) ----------------------------------
 
   instantiateFromBase: (base, { vfs, ir, removalCapabilities }) => {
-    // Idempotence guard: if already instantiated with the SAME base keyboard id,
-    // do nothing. This prevents an async re-fire of onInstantiate from wiping
-    // recorded survey answers when the user has not actually changed the base.
-    // A different base id bypasses this guard and re-instantiates fully.
+    // Three cases, in order:
+    //
+    // 1. Redundant re-fire, SAME id (current.baseKeyboard !== null and matches
+    //    base.id) — FULL early-return no-op. Preserves EVERYTHING (removalCapabilities,
+    //    deletedNodeIds, undoStack, carve overlays, phaseResults) exactly as
+    //    they stood. This guards against setScaffoldSpec() triggering a second
+    //    compile whose onInstantiate would otherwise re-apply this call's
+    //    (possibly different/default) removalCapabilities and reset the carve
+    //    overlay for no reason — see StudioShell's instantiatedRef comment.
+    // 2. First instantiate (current.baseKeyboard === null) — proceeds with the
+    //    full set(...) below, but PRESERVES any phaseResults/irAxes already
+    //    recorded. Root cause: onInstantiate fires from an async WASM compile
+    //    pipeline decoupled from the survey flow (see useKeyboardArtifact.ts)
+    //    and can settle LATE — after Phase A/B has already recorded
+    //    phaseResults against the pending base selection. A guard keyed only on
+    //    "baseKeyboard.id already matches" can never catch this, because
+    //    baseKeyboard is still null at this point. On a truly fresh session
+    //    phaseResults/irAxes are already empty, so preserving is a no-op there.
+    // 3. Genuine base SWITCH (current.baseKeyboard !== null and differs from
+    //    base.id) — full reset, including clearing phaseResults/irAxes, exactly
+    //    as before.
     const current = get();
-    if (
-      current.instantiationMode === "new-from-base" &&
-      current.baseKeyboard !== null &&
-      current.baseKeyboard.id === base.id
-    ) {
+    if (current.baseKeyboard !== null && current.baseKeyboard.id === base.id) {
       return;
     }
+    const isGenuineSwitch = current.baseKeyboard !== null;
+    const preservedPhaseResults = isGenuineSwitch ? [] : current.phaseResults;
+    const preservedIrAxes = isGenuineSwitch ? {} : current.irAxes;
 
     // Track 1: new keyboard from base — identity RESET, edit layers cleared.
     _reopenedRoots = new Set(); // reset staleness roots for the new session
@@ -669,10 +685,11 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       deletedNodeIds: new Set(),
       deletedItemIds: new Set(),
       undoStack: [],
-      // Clear all survey results so the new keyboard starts without inherited
-      // phase data from a prior session. irAxes also cleared (re-derived from
-      // the new IR after recognition runs).
-      ...remerge({}, []),
+      // Clear survey results only on a genuine base switch; otherwise carry
+      // forward any phaseResults/irAxes recorded while this instantiate was
+      // still in flight. irAxes re-derives from the new IR after recognition
+      // runs when there is nothing to preserve.
+      ...remerge(preservedIrAxes, preservedPhaseResults),
       desktopLocked: false,
       touchLayoutJson: null,
       touchDraft: null,
@@ -682,6 +699,32 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
   },
 
   instantiateFromExisting: (keyboard, { vfs, ir, removalCapabilities }) => {
+    // Three cases, in order (mirrors instantiateFromBase above):
+    //
+    // 1. Redundant re-fire, SAME id (current.baseKeyboard !== null and matches
+    //    keyboard.id) — FULL early-return no-op. Preserves EVERYTHING
+    //    (removalCapabilities, deletedNodeIds, undoStack, carve overlays,
+    //    phaseResults) exactly as they stood.
+    // 2. First instantiate (current.baseKeyboard === null) — proceeds with the
+    //    full set(...) below, but PRESERVES any phaseResults/irAxes already
+    //    recorded. Root cause: onInstantiate fires from an async WASM compile
+    //    pipeline decoupled from the survey flow (see useKeyboardArtifact.ts)
+    //    and can settle LATE — after Phase A/B has already recorded
+    //    phaseResults against the pending base selection. A guard keyed only on
+    //    "baseKeyboard.id already matches" can never catch this, because
+    //    baseKeyboard is still null at this point. On a truly fresh session
+    //    phaseResults/irAxes are already empty, so preserving is a no-op there.
+    // 3. Genuine base SWITCH (current.baseKeyboard !== null and differs from
+    //    keyboard.id) — full reset, including clearing phaseResults/irAxes,
+    //    exactly as before.
+    const current = get();
+    if (current.baseKeyboard !== null && current.baseKeyboard.id === keyboard.id) {
+      return;
+    }
+    const isGenuineSwitch = current.baseKeyboard !== null;
+    const preservedPhaseResults = isGenuineSwitch ? [] : current.phaseResults;
+    const preservedIrAxes = isGenuineSwitch ? {} : current.irAxes;
+
     _reopenedRoots = new Set(); // reset staleness roots for the new session
     // Track 2: adapt existing keyboard — identity PRESERVED from loaded keyboard.
     set({
@@ -705,8 +748,10 @@ export const useWorkingCopyStore = create<WorkingCopyState>((set, get) => ({
       deletedNodeIds: new Set(),
       deletedItemIds: new Set(),
       undoStack: [],
-      // Edit layers start clean for an adapt session too.
-      ...remerge({}, []),
+      // Edit layers start clean only on a genuine base switch; otherwise carry
+      // forward any phaseResults/irAxes recorded while this instantiate was
+      // still in flight.
+      ...remerge(preservedIrAxes, preservedPhaseResults),
       desktopLocked: false,
       touchLayoutJson: null,
       touchDraft: null,
