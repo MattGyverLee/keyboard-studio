@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import type { RemovalCapability } from '@keyboard-studio/contracts';
+import type { GlyphOwner } from '../../../lib/irToCarveNodes.ts';
 import { displayChar } from '../../../lib/irToCarveNodes.ts';
 import { KeySeq } from './KeySeq.tsx';
 import { useHoverInfoStore } from '../../../stores/hoverInfoStore.ts';
@@ -13,16 +14,19 @@ interface GlyphCellProps {
   onToggle: (gid: string) => void;
   modifierLabel: string;
   capability: RemovalCapability;
+  owners?: GlyphOwner[];
+  onOwnerClick?: (nodeId: string) => void;
 }
 
-export const GlyphCell = memo(function GlyphCell({ gid, ch, keys, off, color, onToggle, modifierLabel, capability }: GlyphCellProps) {
+export const GlyphCell = memo(function GlyphCell({ gid, ch, keys, off, color, onToggle, modifierLabel, capability, owners, onOwnerClick }: GlyphCellProps) {
   const setInfo = useHoverInfoStore((s) => s.setInfo);
   const clearInfo = useHoverInfoStore((s) => s.clearInfo);
   const display = displayChar(ch);
   const isNotRemovable = capability.startsWith('not-removable:');
+  const storeOwners = owners?.filter((o) => o.kind === 'store') ?? [];
   const handleClick = () => {
     if (isNotRemovable) {
-      setInfo({ kind: 'key', keys, ch, off, capability });
+      setInfo({ kind: 'key', keys, ch, off, capability, ...(owners ? { owners } : {}) });
       return;
     }
     onToggle(gid);
@@ -30,9 +34,9 @@ export const GlyphCell = memo(function GlyphCell({ gid, ch, keys, off, color, on
   return (
     <button
       onClick={handleClick}
-      onMouseEnter={() => setInfo({ kind: 'key', keys, ch, off, capability })}
+      onMouseEnter={() => setInfo({ kind: 'key', keys, ch, off, capability, ...(owners ? { owners } : {}) })}
       onMouseLeave={clearInfo}
-      onFocus={() => setInfo({ kind: 'key', keys, ch, off, capability })}
+      onFocus={() => setInfo({ kind: 'key', keys, ch, off, capability, ...(owners ? { owners } : {}) })}
       onBlur={clearInfo}
       aria-disabled={isNotRemovable}
       style={{
@@ -69,6 +73,35 @@ export const GlyphCell = memo(function GlyphCell({ gid, ch, keys, off, color, on
         {display}
       </span>
       <KeySeq keys={keys} prefix={modifierLabel} dim={off} />
+      {storeOwners.length > 0 && (
+        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center' }}>
+          {storeOwners.map((o) => (
+            <span
+              key={o.nodeId}
+              role="button"
+              tabIndex={0}
+              aria-label={`Go to store ${o.label}`}
+              onClick={(e) => { e.stopPropagation(); onOwnerClick?.(o.nodeId); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onOwnerClick?.(o.nodeId);
+                }
+              }}
+              style={{
+                font: '600 9px/1 var(--app-font-mono)', letterSpacing: '.02em',
+                padding: '2px 6px', borderRadius: 6, cursor: 'pointer',
+                color: 'var(--app-accent-text)',
+                background: 'var(--app-accent-subtle)',
+                border: '1px solid var(--app-border)',
+              }}
+            >
+              {o.label}
+            </span>
+          ))}
+        </span>
+      )}
     </button>
   );
 });

@@ -164,8 +164,20 @@ export function invisibleCharLabel(ch: string): string | null {
 }
 
 // A glyph tile the user is hovering/focusing, plus its current removed state — used by the Info View.
-export interface HoverGlyph extends Pick<CarveGlyph, 'keys' | 'ch' | 'capability'> {
+export interface HoverGlyph extends Pick<CarveGlyph, 'keys' | 'ch' | 'capability' | 'owners'> {
   off: boolean;
+}
+
+/**
+ * A studio-only display tag identifying something a glyph's underlying rule
+ * is tied to — a named store it reads/writes, or (for pattern-inspector
+ * chips) the pattern that owns it. Render-layer only; not part of the
+ * KeyboardIR/Pattern contract (see #917).
+ */
+export interface GlyphOwner {
+  kind: 'pattern' | 'store';
+  nodeId: string;
+  label: string;
 }
 
 export interface CarveGlyph {
@@ -175,6 +187,7 @@ export interface CarveGlyph {
   modifierLayer: ModifierLayer;
   modifierLabel: string;
   capability: RemovalCapability;
+  owners?: GlyphOwner[];
 }
 
 // ---------------------------------------------------------------------------
@@ -280,6 +293,18 @@ function expandParallelStoreRule(rule: IRRule, ir: KeyboardIR, capabilities: Map
     ? ir.stores.find((s) => s.name === inputStoreName)
     : undefined;
 
+  // Store owners for this rule — the output store plus the input store (when
+  // resolved), deduped by nodeId, skipping system stores. Attached to every
+  // slot glyph the rule expands to (they all share the same store pair).
+  const slotOwners: GlyphOwner[] = [];
+  const slotOwnerNodeIds = new Set<string>();
+  for (const s of [outputStore, inputStore]) {
+    if (!s || s.isSystem) continue;
+    if (slotOwnerNodeIds.has(s.nodeId)) continue;
+    slotOwnerNodeIds.add(s.nodeId);
+    slotOwners.push({ kind: 'store', nodeId: s.nodeId, label: s.name });
+  }
+
   const modLayer = ruleModifier(rule);
   const modLabel = modifierLabel(rule);
   const hasDeadkey = rule.context.some((el) => el.kind === 'deadkey');
@@ -317,10 +342,47 @@ function expandParallelStoreRule(rule: IRRule, ir: KeyboardIR, capabilities: Map
     if (seen.has(gid)) continue;  // dedup: same store+index appearing in multiple rules
     seen.add(gid);
 
-    glyphs.push({ gid, keys, ch, modifierLayer: modLayer, modifierLabel: modLabel, capability: slotCapability });
+    glyphs.push({
+      gid, keys, ch, modifierLayer: modLayer, modifierLabel: modLabel, capability: slotCapability,
+      ...(slotOwners.length > 0 ? { owners: slotOwners } : {}),
+    });
   }
 
   return glyphs;
+}
+
+// ---------------------------------------------------------------------------
+// ruleStoreOwners — distinct named (non-system) stores a rule reads from or
+// writes to, as GlyphOwner tags. Mirrors the element-kind checks already
+// used by describeRuleForStore/analyzeStoreUsage (context: any/notany/index;
+// output: index/outs) so the "store tag" render layer and the store "Used
+// by" panel never drift on which elements count as a store reference.
+// ---------------------------------------------------------------------------
+
+function ruleStoreOwners(rule: IRRule, ir: KeyboardIR): GlyphOwner[] {
+  const storeNames: string[] = [];
+  const seenNames = new Set<string>();
+  const addName = (name: string) => {
+    if (!seenNames.has(name)) { seenNames.add(name); storeNames.push(name); }
+  };
+
+  for (const el of rule.context) {
+    if (el.kind === 'any' || el.kind === 'notany' || el.kind === 'index') addName(el.storeRef);
+  }
+  for (const el of rule.output) {
+    if (el.kind === 'index' || el.kind === 'outs') addName(el.storeRef);
+  }
+
+  const owners: GlyphOwner[] = [];
+  const seenNodeIds = new Set<string>();
+  for (const name of storeNames) {
+    const store = ir.stores.find((s) => s.name === name);
+    if (!store || store.isSystem) continue;
+    if (seenNodeIds.has(store.nodeId)) continue;
+    seenNodeIds.add(store.nodeId);
+    owners.push({ kind: 'store', nodeId: store.nodeId, label: store.name });
+  }
+  return owners;
 }
 
 // ---------------------------------------------------------------------------
@@ -340,6 +402,7 @@ function ruleToGlyphs(rule: IRRule, ir: KeyboardIR, capabilities: Map<string, Re
   if (keys.length === 0) return [];
   const ch = outputToChar(rule.output);
   if (ch === '?' || ch === '‹dk›') return [];
+  const owners = ruleStoreOwners(rule, ir);
   return [{
     gid: rule.nodeId,
     keys,
@@ -347,6 +410,7 @@ function ruleToGlyphs(rule: IRRule, ir: KeyboardIR, capabilities: Map<string, Re
     modifierLayer: ruleModifier(rule),
     modifierLabel: modifierLabel(rule),
     capability: capabilities.get(rule.nodeId) ?? 'not-removable:unknown',
+    ...(owners.length > 0 ? { owners } : {}),
   }];
 }
 
@@ -416,12 +480,21 @@ export function patternToGlyphs(pattern: Pattern, ir: KeyboardIR, capabilities: 
   const ownedIds = new Set(pattern.ownedNodes.map((n) => n.nodeId));
   const glyphs: CarveGlyph[] = [];
   const seen = new Set<string>();
+  // Owning-pattern tag prepended to every produced glyph's owners. Consumed
+  // only by the not-removable info message (InfoView "Managed by the
+  // [Pattern] pattern") — never rendered as a redundant tag in a
+  // pattern-inspector chip (that AC is intentionally not implemented; see
+  // #917 scope decision).
+  const patternOwner: GlyphOwner = { kind: 'pattern', nodeId: pattern.id, label: pattern.title };
 
   for (const group of ir.groups) {
     group.rules.forEach((rule) => {
       if (!ownedIds.has(rule.nodeId)) return;
       for (const g of ruleToGlyphs(rule, ir, capabilities)) {
-        if (!seen.has(g.gid)) { seen.add(g.gid); glyphs.push(g); }
+        if (!seen.has(g.gid)) {
+          seen.add(g.gid);
+          glyphs.push({ ...g, owners: [patternOwner, ...(g.owners ?? [])] });
+        }
       }
     });
   }
