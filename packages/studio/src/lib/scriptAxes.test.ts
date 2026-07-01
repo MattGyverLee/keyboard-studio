@@ -45,13 +45,17 @@ describe("scriptClassOf (A2)", () => {
     expect(scriptClassOf("Mand")).toBe("abjad");
     expect(scriptClassOf("Samr")).toBe("abjad");
   });
-  it("classifies Thaana, Adlam, and Hanifi Rohingya as alphabetic (RTL alphabets, not abjads)", () => {
+  it("classifies Thaana and Adlam as alphabetic (RTL alphabets, not abjads)", () => {
     // These are RTL scripts added to primary_script in PR #870.
     // They are true alphabets (vowels written), so they fall through to the
     // "alphabetic" default — NOT the ABJAD set.
     expect(scriptClassOf("Thaa")).toBe("alphabetic");
     expect(scriptClassOf("Adlm")).toBe("alphabetic");
-    expect(scriptClassOf("Rohg")).toBe("alphabetic");
+  });
+  it("classifies Hanifi Rohingya (Rohg) as abugida, not alphabetic", () => {
+    // Rohg has an inherent vowel /a/ and dependent vowel signs (U+10D24–10D27),
+    // making it an abugida like Devanagari — not a true alphabet. km-domain triage.
+    expect(scriptClassOf("Rohg")).toBe("abugida");
   });
   it("defaults unknown subtags to alphabetic", () => {
     expect(scriptClassOf("Zxxx")).toBe("alphabetic");
@@ -92,9 +96,10 @@ describe("primary_script ↔ scriptAxes classification guard", () => {
     // RTL alphabets (vowels written) — true alphabets, so alphabetic is correct.
     // These are exactly the scripts #870 added; keeping them OUT of ABJAD is the
     // fix from that PR, so they are allowlisted rather than classified.
+    // Note: Rohg (Hanifi Rohingya) was here but has been moved to ABUGIDA —
+    // it has an inherent vowel /a/ and dependent vowel signs (U+10D24–10D27).
     "Thaa", // Thaana (Maldivian / Dhivehi)
     "Adlm", // Adlam (Fulani / Pular)
-    "Rohg", // Hanifi Rohingya
     // Phase A out-of-scope gate (D5): Ethiopic and Hangul are routed to the
     // script-not-supported stub before any A2 class matters, so they are left to
     // the alphabetic default. Han/Hani (the third gated script) IS explicitly
