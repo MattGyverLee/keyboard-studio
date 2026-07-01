@@ -352,10 +352,43 @@ function expandParallelStoreRule(rule: IRRule, ir: KeyboardIR, capabilities: Map
 }
 
 // ---------------------------------------------------------------------------
+// storeRefsOf — single source of truth for "what counts as a store
+// reference in a rule, and its role." context any/notany -> asSource;
+// context index -> asOutput; output index/outs -> asOutput. Returns one
+// entry per DISTINCT store name (first-seen order), OR-ing roles across
+// multiple refs to the same store. Shared by ruleStoreOwners and
+// analyzeStoreUsage so the "store tag" render layer and the store "Used by"
+// panel never drift on which elements count as a store reference.
+// (Positional consumers like describeRuleForStore that need the element
+// index keep their own scan — see the comment on that function.)
+// ---------------------------------------------------------------------------
+
+function storeRefsOf(rule: IRRule): { storeName: string; asSource: boolean; asOutput: boolean }[] {
+  const byName = new Map<string, { storeName: string; asSource: boolean; asOutput: boolean }>();
+  const touch = (name: string, role: 'asSource' | 'asOutput') => {
+    let entry = byName.get(name);
+    if (!entry) {
+      entry = { storeName: name, asSource: false, asOutput: false };
+      byName.set(name, entry);
+    }
+    entry[role] = true;
+  };
+
+  for (const el of rule.context) {
+    if (el.kind === 'any' || el.kind === 'notany') touch(el.storeRef, 'asSource');
+    else if (el.kind === 'index') touch(el.storeRef, 'asOutput');
+  }
+  for (const el of rule.output) {
+    if (el.kind === 'index' || el.kind === 'outs') touch(el.storeRef, 'asOutput');
+  }
+
+  return [...byName.values()];
+}
+
+// ---------------------------------------------------------------------------
 // ruleStoreOwners — distinct named (non-system) stores a rule reads from or
-// writes to, as GlyphOwner tags. Mirrors the element-kind checks already
-// used by describeRuleForStore/analyzeStoreUsage (context: any/notany/index;
-// output: index/outs) so the "store tag" render layer and the store "Used
+// writes to, as GlyphOwner tags. Shares storeRefsOf with
+// analyzeStoreUsage so the "store tag" render layer and the store "Used
 // by" panel never drift on which elements count as a store reference.
 // Store resolution is by name (ir.stores.find(s => s.name === ...)), so if
 // two stores share a name the first one wins — a pre-existing, Keyman-legal
@@ -364,22 +397,9 @@ function expandParallelStoreRule(rule: IRRule, ir: KeyboardIR, capabilities: Map
 // ---------------------------------------------------------------------------
 
 function ruleStoreOwners(rule: IRRule, ir: KeyboardIR): GlyphOwner[] {
-  const storeNames: string[] = [];
-  const seenNames = new Set<string>();
-  const addName = (name: string) => {
-    if (!seenNames.has(name)) { seenNames.add(name); storeNames.push(name); }
-  };
-
-  for (const el of rule.context) {
-    if (el.kind === 'any' || el.kind === 'notany' || el.kind === 'index') addName(el.storeRef);
-  }
-  for (const el of rule.output) {
-    if (el.kind === 'index' || el.kind === 'outs') addName(el.storeRef);
-  }
-
   const owners: GlyphOwner[] = [];
   const seenNodeIds = new Set<string>();
-  for (const name of storeNames) {
+  for (const { storeName: name } of storeRefsOf(rule)) {
     const store = ir.stores.find((s) => s.name === name);
     if (!store || store.isSystem) continue;
     if (seenNodeIds.has(store.nodeId)) continue;
@@ -569,6 +589,10 @@ function precedingContextLabel(elements: ContextElement[]): string {
 
 const PLATFORM_GUARD_RE = /^\s*platform\s*\(\s*'(\w+)'\s*\)/i;
 
+// Stays bespoke rather than consuming storeRefsOf: it needs the element
+// INDEX of the store ref (ctxRefIdx/outRefIdx) to compute isKeystroke via
+// the '+'/raw separator and to slice the preceding context — a positional
+// need storeRefsOf's per-store roll-up can't serve.
 function describeRuleForStore(rule: IRRule, storeName: string): StoreRuleDetail {
   const ctxRefIdx = rule.context.findIndex((el) =>
     ((el.kind === 'any' || el.kind === 'notany') && el.storeRef === storeName) ||
@@ -613,20 +637,10 @@ function analyzeStoreUsage(storeName: string, ir: KeyboardIR): StoreUsage {
 
   for (const group of ir.groups) {
     for (const rule of group.rules) {
-      let used = false;
-      for (const el of rule.context) {
-        if ((el.kind === 'any' || el.kind === 'notany') && el.storeRef === storeName) {
-          used = true; asSource = true;
-        } else if (el.kind === 'index' && el.storeRef === storeName) {
-          used = true; asOutput = true;
-        }
-      }
-      for (const el of rule.output) {
-        if ((el.kind === 'index' || el.kind === 'outs') && el.storeRef === storeName) {
-          used = true; asOutput = true;
-        }
-      }
-      if (used) {
+      const ref = storeRefsOf(rule).find((r) => r.storeName === storeName);
+      if (ref) {
+        if (ref.asSource) asSource = true;
+        if (ref.asOutput) asOutput = true;
         ruleCount++;
         groupNameSet.add(group.name);
       }
@@ -643,14 +657,7 @@ function analyzeStoreUsage(storeName: string, ir: KeyboardIR): StoreUsage {
     for (const group of ir.groups) {
       for (const rule of group.rules) {
         if (!ownedIds.has(rule.nodeId)) continue;
-        let used = false;
-        for (const el of rule.context) {
-          if ((el.kind === 'any' || el.kind === 'notany') && el.storeRef === storeName) used = true;
-          if (el.kind === 'index' && el.storeRef === storeName) used = true;
-        }
-        for (const el of rule.output) {
-          if ((el.kind === 'index' || el.kind === 'outs') && el.storeRef === storeName) used = true;
-        }
+        const used = storeRefsOf(rule).some((r) => r.storeName === storeName);
         if (used) pRules.push(describeRuleForStore(rule, storeName));
       }
     }
@@ -669,14 +676,7 @@ function analyzeStoreUsage(storeName: string, ir: KeyboardIR): StoreUsage {
     const gRules: StoreRuleDetail[] = [];
     for (const rule of group.rules) {
       if (rule.ownedByPattern !== undefined || ownedNodeIds.has(rule.nodeId)) continue; // skip — already counted in patternRefs
-      let used = false;
-      for (const el of rule.context) {
-        if ((el.kind === 'any' || el.kind === 'notany') && el.storeRef === storeName) used = true;
-        if (el.kind === 'index' && el.storeRef === storeName) used = true;
-      }
-      for (const el of rule.output) {
-        if ((el.kind === 'index' || el.kind === 'outs') && el.storeRef === storeName) used = true;
-      }
+      const used = storeRefsOf(rule).some((r) => r.storeName === storeName);
       if (used) gRules.push(describeRuleForStore(rule, storeName));
     }
     if (gRules.length > 0) groupRefs.push({ groupId: group.nodeId, groupName: group.name, ruleCount: gRules.length, rules: gRules });
