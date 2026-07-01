@@ -71,3 +71,4 @@ export * from "./utils/charUtils";
 // ---------------------------------------------------------------------------
 export * from "./criteriaData";
 export * from "./fontEntry";
+export * from "./langtags";
